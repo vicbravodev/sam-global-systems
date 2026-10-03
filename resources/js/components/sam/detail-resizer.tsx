@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface DetailResizerProps {
@@ -12,6 +12,25 @@ export interface DetailResizerProps {
     storageKey?: string;
     /** Extra classes merged onto the handle (e.g. to hide it on mobile). */
     className?: string;
+}
+
+/** Applies the detail width to the layout grid (cleared below 1000px). */
+function apply(root: HTMLElement | null, w: number) {
+    if (!root) {
+        return;
+    }
+
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    if (window.innerWidth < 1000) {
+        root.style.gridTemplateColumns = '';
+
+        return;
+    }
+
+    root.style.gridTemplateColumns = `minmax(0,1fr) ${w}px`;
 }
 
 /**
@@ -42,31 +61,16 @@ export function DetailResizer({
         return Math.max(min, Math.min(max, w));
     };
 
-    const widthRef = useRef(readWidth());
-    const [width, setWidth] = useState(widthRef.current);
+    const [width, setWidth] = useState(readWidth);
+    const widthRef = useRef(width);
 
     const setCurrentWidth = (w: number) => {
         widthRef.current = w;
         setWidth(w);
     };
 
-    const apply = (root: HTMLElement | null, w: number) => {
-        if (!root) {
-            return;
-        }
-
-        if (typeof window === 'undefined') {
-            return;
-        }
-
-        if (window.innerWidth < 1000) {
-            root.style.gridTemplateColumns = '';
-
-            return;
-        }
-
-        root.style.gridTemplateColumns = `minmax(0,1fr) ${w}px`;
-    };
+    // Re-applies the stored width with the latest bounds (on mount/resize).
+    const fit = useEffectEvent((root: HTMLElement) => apply(root, readWidth()));
 
     useEffect(() => {
         const root = ref.current?.closest<HTMLElement>('.has-detail') ?? null;
@@ -75,9 +79,9 @@ export function DetailResizer({
             return;
         }
 
-        apply(root, readWidth());
+        fit(root);
 
-        const onResize = () => apply(root, readWidth());
+        const onResize = () => fit(root);
 
         window.addEventListener('resize', onResize);
 
@@ -85,7 +89,6 @@ export function DetailResizer({
             window.removeEventListener('resize', onResize);
             root.style.gridTemplateColumns = '';
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {

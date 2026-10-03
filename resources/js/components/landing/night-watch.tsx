@@ -9,7 +9,13 @@ import {
     useReducedMotion,
 } from 'motion/react';
 import type { AnimationPlaybackControls } from 'motion/react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+    useEffect,
+    useEffectEvent,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from 'react';
 import { cn } from '@/lib/utils';
 
 /* Minutos desde las 20:00. La noche dura 600 minutos (hasta las 06:00). */
@@ -209,7 +215,10 @@ export function NightWatch() {
         setPassed((prev) => (prev === count ? prev : count));
     };
 
-    // Posiciones fijas de los eventos, medidas sobre las carreteras reales.
+    const placeNow = useEffectEvent(() => place(time.get()));
+
+    // Posiciones fijas de los eventos, medidas sobre las carreteras reales
+    // (una sola vez, al montar).
     useLayoutEffect(() => {
         setPoints(
             EVENTS.map((e) => {
@@ -226,9 +235,7 @@ export function NightWatch() {
                 return { x: p.x, y: p.y };
             }),
         );
-        place(time.get());
-        // Mount-only measurement.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        placeNow();
     }, []);
 
     useMotionValueEvent(time, 'change', place);
@@ -250,13 +257,14 @@ export function NightWatch() {
         setPlaying(false);
     };
 
+    const autoplay = useEffectEvent(() => play(0));
+
     useEffect(() => {
         if (inView && !reduce) {
-            play(0);
+            autoplay();
         }
 
         return () => controls.current?.stop();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inView, reduce]);
 
     const log = EVENTS.slice(0, passed).reverse();

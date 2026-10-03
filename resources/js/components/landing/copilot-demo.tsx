@@ -5,7 +5,7 @@ import {
     useInView,
     useReducedMotion,
 } from 'motion/react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { CopilotCard } from './copilot-demo-cards';
 import type { CardKind } from './copilot-demo-cards';
@@ -124,86 +124,83 @@ export function CopilotDemo({ className }: { className?: string }) {
             );
         });
 
-    const ask = useCallback(
-        async (script: ScriptId, typedQuestion?: string) => {
-            const token = ++runToken.current;
-            const question = typedQuestion ?? SCRIPTS[script].question;
-            setBusy(true);
+    const ask = async (script: ScriptId, typedQuestion?: string) => {
+        const token = ++runToken.current;
+        const question = typedQuestion ?? SCRIPTS[script].question;
+        setBusy(true);
 
-            // El visitante "escribe" la pregunta en el compositor.
-            if (!typedQuestion && !reduce) {
-                for (let i = 1; i <= question.length; i++) {
-                    setDraft(question.slice(0, i));
+        // El visitante "escribe" la pregunta en el compositor.
+        if (!typedQuestion && !reduce) {
+            for (let i = 1; i <= question.length; i++) {
+                setDraft(question.slice(0, i));
 
-                    if (!(await sleep(28, token))) {
-                        return;
-                    }
-                }
-
-                if (!(await sleep(260, token))) {
+                if (!(await sleep(28, token))) {
                     return;
                 }
             }
 
-            setDraft('');
-            const id = nextId.current++;
-            const total = SCRIPTS[script].answer.split(' ').length;
-            setTurns((prev) => [
-                ...prev.slice(-2),
-                {
-                    id,
-                    script,
-                    question,
-                    stepsDone: reduce ? 99 : 0,
-                    words: reduce ? total : 0,
-                    done: reduce,
-                },
-            ]);
-
-            if (reduce) {
-                setBusy(false);
-
+            if (!(await sleep(260, token))) {
                 return;
             }
+        }
 
-            const update = (patch: Partial<Turn>) =>
-                setTurns((prev) =>
-                    prev.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-                );
+        setDraft('');
+        const id = nextId.current++;
+        const total = SCRIPTS[script].answer.split(' ').length;
+        setTurns((prev) => [
+            ...prev.slice(-2),
+            {
+                id,
+                script,
+                question,
+                stepsDone: reduce ? 99 : 0,
+                words: reduce ? total : 0,
+                done: reduce,
+            },
+        ]);
 
-            for (let s = 1; s <= SCRIPTS[script].steps.length; s++) {
-                if (!(await sleep(s === 1 ? 700 : 950, token))) {
-                    return;
-                }
-
-                update({ stepsDone: s });
-            }
-
-            if (!(await sleep(350, token))) {
-                return;
-            }
-
-            for (let w = 1; w <= total; w++) {
-                update({ words: w });
-
-                if (!(await sleep(38, token))) {
-                    return;
-                }
-            }
-
-            update({ done: true });
+        if (reduce) {
             setBusy(false);
-        },
-        // sleep reads refs only; reduce is the one real dependency.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [reduce],
-    );
+
+            return;
+        }
+
+        const update = (patch: Partial<Turn>) =>
+            setTurns((prev) =>
+                prev.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+            );
+
+        for (let s = 1; s <= SCRIPTS[script].steps.length; s++) {
+            if (!(await sleep(s === 1 ? 700 : 950, token))) {
+                return;
+            }
+
+            update({ stepsDone: s });
+        }
+
+        if (!(await sleep(350, token))) {
+            return;
+        }
+
+        for (let w = 1; w <= total; w++) {
+            update({ words: w });
+
+            if (!(await sleep(38, token))) {
+                return;
+            }
+        }
+
+        update({ done: true });
+        setBusy(false);
+    };
+
+    const startDemo = useEffectEvent(() => void ask('night'));
 
     useEffect(() => {
         if (inView && turns.length === 0) {
-            void ask('night');
+            startDemo();
         }
-    }, [inView, turns.length, ask]);
+    }, [inView, turns.length]);
 
     useEffect(() => () => void runToken.current++, []);
 

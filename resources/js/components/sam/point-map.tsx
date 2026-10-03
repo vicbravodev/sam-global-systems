@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react';
 import {
     resolveCssColor,
     SAM_LAYER_PREFIX,
@@ -110,31 +110,37 @@ export function PointMap({
         [tone, heading, speed, label],
     );
 
+    // Builds the marker with the latest position and state; afterwards the
+    // effect below patches and moves it in place.
+    const createMarker = useEffectEvent(
+        (target: maplibregl.Map, kind: Props['variant']) => {
+            const element =
+                kind === 'pin'
+                    ? createPinMarker(TONE_VAR[tone], label)
+                    : createUnitMarker(unitState, false);
+
+            if (kind === 'unit') {
+                element.style.setProperty('--unit', TONE_VAR[tone]);
+            }
+
+            return new maplibregl.Marker({ element })
+                .setLngLat([longitude, latitude])
+                .addTo(target);
+        },
+    );
+
     // Marker: created once per variant, then patched and moved in place.
     useEffect(() => {
         if (map === null) {
             return;
         }
 
-        const element =
-            variant === 'pin'
-                ? createPinMarker(TONE_VAR[tone], label)
-                : createUnitMarker(unitState, false);
-
-        if (variant === 'unit') {
-            element.style.setProperty('--unit', TONE_VAR[tone]);
-        }
-
-        markerRef.current = new maplibregl.Marker({ element })
-            .setLngLat([longitude, latitude])
-            .addTo(map);
+        markerRef.current = createMarker(map, variant);
 
         return () => {
             markerRef.current?.remove();
             markerRef.current = null;
         };
-        // Position and state are applied by the effect below.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [map, variant]);
 
     useEffect(() => {
