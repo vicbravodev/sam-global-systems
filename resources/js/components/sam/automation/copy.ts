@@ -17,7 +17,12 @@ import {
     UserPlus,
 } from 'lucide-react';
 import { delayLabel } from '@/lib/labels';
-import type { Option, WorkflowRow, WorkflowStep } from './types';
+import type {
+    ExecutionStatusFilter,
+    Option,
+    WorkflowRow,
+    WorkflowStep,
+} from './types';
 
 /*
  * Vocabulario de la página de Automatizaciones para un operador sin
@@ -409,3 +414,19 @@ export function executionStatus(
         }
     );
 }
+
+export const EXECUTION_SEGMENTS: {
+    value: ExecutionStatusFilter;
+    label: string;
+    dot: string;
+}[] = [
+    { value: 'failed', label: 'Fallidas', dot: 'bg-severity-critical' },
+    {
+        value: 'pending',
+        label: 'Esperan confirmación',
+        dot: 'bg-severity-high',
+    },
+    { value: 'in_progress', label: 'En curso', dot: 'bg-severity-info' },
+    { value: 'completed', label: 'Hechas', dot: 'bg-severity-low' },
+    { value: 'cancelled', label: 'Canceladas', dot: 'bg-fg-3' },
+];
