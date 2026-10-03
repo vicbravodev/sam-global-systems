@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -187,10 +188,11 @@ function groupByRecipient(
     return [...groups.values()];
 }
 
-export default function NotificationShow() {
+export default function NotificationShow({
+    notification,
+    deliveries,
+}: NotificationShowProps) {
     const page = usePage();
-    const { notification, deliveries } =
-        page.props as unknown as NotificationShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const groups = groupByRecipient(deliveries);
 
@@ -270,10 +272,9 @@ export default function NotificationShow() {
     );
 }
 
-NotificationShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    notification?: { id: number } | null;
-}) => ({
+NotificationShow.layout = (
+    props: SharedPageProps & Partial<NotificationShowProps>,
+) => ({
     breadcrumbs: [
         {
             title: 'Notificaciones',

@@ -50,9 +50,7 @@ function useIncidentViewers(incidentId: number): Viewer[] {
 }
 
 export function IncidentViewers({ incidentId }: { incidentId: number }) {
-    const me =
-        (usePage().props.auth as { user?: { id?: number } | null } | undefined)
-            ?.user?.id ?? null;
+    const me = usePage().props.auth?.user?.id ?? null;
     const others = useIncidentViewers(incidentId).filter((v) => v.id !== me);
 
     if (others.length === 0) {

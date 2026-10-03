@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     BarChart3,
@@ -33,9 +34,8 @@ function sortConversations(list: CopilotConversation[]): CopilotConversation[] {
     });
 }
 
-export default function CopilotIndex() {
+export default function CopilotIndex(props: PageProps) {
     const page = usePage();
-    const props = page.props as unknown as PageProps;
     const team = page.props.currentTeam;
     const user = page.props.auth.user;
     const teamSlug = team?.slug ?? '';
@@ -302,7 +302,7 @@ function QuotaMeter({ quota }: { quota: CopilotQuota }) {
     );
 }
 
-CopilotIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+CopilotIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'SAM Copilot',

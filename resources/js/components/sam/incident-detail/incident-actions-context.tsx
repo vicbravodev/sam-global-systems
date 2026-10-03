@@ -73,13 +73,12 @@ export interface IncidentActionsValue {
 
 const IncidentActionsContext = createContext<IncidentActionsValue | null>(null);
 
-interface PageProps {
-    currentTeam?: { slug?: string | null } | null;
-    auth?: { user?: { id?: number | null } | null } | null;
+/** Props de las páginas de incidentes (bandeja y detalle) que usa el contexto. */
+type IncidentPageProps = {
     members?: InboxMember[];
     reclassifyOptions?: ReclassifyOptions;
     can?: IncidentAbilities;
-}
+};
 
 interface ProviderProps {
     incident: IncidentDetail;
@@ -93,8 +92,7 @@ export function IncidentActionsProvider({
     onMutated,
     children,
 }: ProviderProps) {
-    const page = usePage();
-    const props = page.props as unknown as PageProps;
+    const { props } = usePage<IncidentPageProps>();
 
     const teamSlug = props.currentTeam?.slug ?? null;
     const currentUserId = props.auth?.user?.id ?? null;

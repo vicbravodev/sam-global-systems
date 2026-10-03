@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -172,13 +173,12 @@ const EMPTY_OPTIONS: NotificationFilterOptions = {
     priorities: [],
 };
 
-export default function NotificationsIndex() {
+export default function NotificationsIndex(pageProps: NotificationsIndexProps) {
     // A notification addressed to me landed: refresh the list and counters.
     useBroadcastReload({
         'notification.pushed': ['notifications', 'pagination', 'summary'],
     });
     const page = usePage();
-    const pageProps = page.props as unknown as NotificationsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const notifications = pageProps.notifications ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -278,9 +278,7 @@ export default function NotificationsIndex() {
     );
 }
 
-NotificationsIndex.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+NotificationsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Notificaciones',

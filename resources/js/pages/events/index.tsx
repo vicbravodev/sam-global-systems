@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Activity,
@@ -474,9 +475,8 @@ function FilterBar({
 
 // ---- Page ----
 
-export default function EventsIndex() {
+export default function EventsIndex(pageProps: EventsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as EventsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const events = pageProps.events ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -599,7 +599,7 @@ export default function EventsIndex() {
     );
 }
 
-EventsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+EventsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Eventos',

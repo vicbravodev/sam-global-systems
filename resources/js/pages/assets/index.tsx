@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
@@ -37,10 +38,7 @@ import type {
     AssetsSummary,
     MonitoringSummary,
 } from '@/types/assets';
-import type {
-    FleetPosition,
-    FleetPositionsUpdatedPayload,
-} from '@/types/realtime';
+import type { FleetPosition } from '@/types/realtime';
 
 // Props each broadcast refreshes (debounced below). Feed positions
 // (`fleet.positions_updated`) are applied to the rows in memory instead. A
@@ -393,9 +391,8 @@ const EMPTY_OPTIONS: AssetFilterOptions = {
     monitoring: [],
 };
 
-export default function AssetsIndex() {
+export default function AssetsIndex(pageProps: AssetsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as AssetsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const [livePositions, setLivePositions] = useState<
         Map<number, FleetPosition>
@@ -429,7 +426,7 @@ export default function AssetsIndex() {
             data: { monitoring: 'pending', page: undefined },
             onSuccess: (page) => {
                 const pending = (
-                    (page.props as unknown as AssetsIndexProps).assets ?? []
+                    (page.props.assets as AssetsIndexProps['assets']) ?? []
                 ).map((asset) => asset.id);
 
                 if (pending.length === 0) {
@@ -509,8 +506,7 @@ export default function AssetsIndex() {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
             if (detail?.event === 'fleet.positions_updated') {
-                const { positions } =
-                    detail.payload as unknown as FleetPositionsUpdatedPayload;
+                const { positions } = detail.payload;
 
                 setLivePositions((prev) => {
                     const next = new Map(prev);
@@ -670,7 +666,7 @@ export default function AssetsIndex() {
     );
 }
 
-AssetsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AssetsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Flota',

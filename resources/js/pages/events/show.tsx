@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { DecisionCard } from '@/components/sam/events/detail/decision-card';
 import { EvaluationCard } from '@/components/sam/events/detail/evaluation-card';
@@ -10,10 +11,14 @@ import { PipelineStepper } from '@/components/sam/events/detail/pipeline-stepper
 import eventRoutes from '@/routes/events';
 import type { EventShowProps } from '@/types/events';
 
-export default function EventShow() {
+export default function EventShow({
+    event,
+    evaluation,
+    decision,
+    incident,
+    media,
+}: EventShowProps) {
     const page = usePage();
-    const { event, evaluation, decision, incident, media } =
-        page.props as unknown as EventShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     const unmapped = event.status === 'unmapped';
@@ -67,10 +72,7 @@ export default function EventShow() {
     );
 }
 
-EventShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    event?: { id: number; eventType?: string | null } | null;
-}) => ({
+EventShow.layout = (props: SharedPageProps & Partial<EventShowProps>) => ({
     breadcrumbs: [
         {
             title: 'Eventos',

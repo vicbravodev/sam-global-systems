@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { ChoiceGroup } from '@/components/sam/analytics/choice-group';
@@ -12,9 +13,8 @@ import analyticsRoutes from '@/routes/analytics';
 
 type TabKey = 'indicators' | 'reports';
 
-export default function AnalyticsIndex() {
+export default function AnalyticsIndex(props: AnalyticsPageProps) {
     const page = usePage();
-    const props = page.props as unknown as AnalyticsPageProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const [tab, setTab] = useState<TabKey>('indicators');
     const [loading, setLoading] = useState(false);
@@ -127,7 +127,7 @@ export default function AnalyticsIndex() {
     );
 }
 
-AnalyticsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AnalyticsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Analítica',

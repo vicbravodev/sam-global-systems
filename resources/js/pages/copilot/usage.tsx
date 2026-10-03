@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { Bars } from '@/components/sam/charts';
@@ -21,9 +22,8 @@ const CHANNEL_LABELS: Record<string, string> = {
     bubble: 'Burbuja',
 };
 
-export default function CopilotUsage() {
+export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
     const page = usePage();
-    const { usage } = page.props as unknown as { usage: CopilotUsageReport };
     const teamSlug = page.props.currentTeam?.slug ?? '';
     const t = usage.totals;
 
@@ -419,7 +419,7 @@ function ShareRow({
     );
 }
 
-CopilotUsage.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+CopilotUsage.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'SAM Copilot',

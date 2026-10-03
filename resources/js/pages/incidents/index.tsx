@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Inbox, LayoutList, Loader2, Rows3, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -509,9 +510,8 @@ const EMPTY_OPTIONS: InboxFilterOptions = {
 
 // Coalescing window for live inbox reloads.
 const INBOX_RELOAD_DEBOUNCE_MS = 1500;
-export default function IncidentsIndex() {
+export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as IncidentsIndexProps;
     const incidents = useMemo(
         () => pageProps.incidents ?? [],
         [pageProps.incidents],
@@ -1222,7 +1222,7 @@ export default function IncidentsIndex() {
     );
 }
 
-IncidentsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+IncidentsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Incidentes',

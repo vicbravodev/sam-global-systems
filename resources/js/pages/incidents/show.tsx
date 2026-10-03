@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Activity } from '@/components/sam/incident-detail/activity';
 import { AiEvaluationCard } from '@/components/sam/incident-detail/ai-evaluation';
@@ -32,23 +33,17 @@ const DETAIL_PROPS = [
     'priorIncidents',
 ];
 
-export default function IncidentShow() {
+export default function IncidentShow({
+    incident,
+    media,
+    mediaAssessments,
+    mediaRequests,
+    mediaRetrieval,
+    communications,
+    priorIncidents,
+}: IncidentShowProps) {
     const page = usePage();
-    const {
-        incident,
-        media,
-        mediaAssessments,
-        mediaRequests,
-        mediaRetrieval,
-        communications,
-        priorIncidents,
-    } = page.props as unknown as IncidentShowProps;
-    const teamSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
 
     const reloadDetail = () => {
         router.reload({ only: DETAIL_PROPS });
@@ -133,10 +128,9 @@ export default function IncidentShow() {
     );
 }
 
-IncidentShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    incident?: { incidentId: number; id: string } | null;
-}) => ({
+IncidentShow.layout = (
+    props: SharedPageProps & Partial<IncidentShowProps>,
+) => ({
     breadcrumbs: [
         {
             title: 'Incidentes',

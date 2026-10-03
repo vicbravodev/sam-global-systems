@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Clock,
@@ -174,9 +175,8 @@ const EMPTY_FILTERS: DriverFilters = { q: null, status: null };
 
 const EMPTY_OPTIONS: DriverFilterOptions = { statuses: [] };
 
-export default function DriversIndex() {
+export default function DriversIndex(pageProps: DriversIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as DriversIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const drivers = pageProps.drivers ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -266,7 +266,7 @@ export default function DriversIndex() {
     );
 }
 
-DriversIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+DriversIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Conductores',

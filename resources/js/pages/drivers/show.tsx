@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { AssignmentsCard } from '@/components/sam/drivers/detail/assignments-card';
 import { ContactsCard } from '@/components/sam/drivers/detail/contacts-card';
@@ -11,16 +12,15 @@ import { RecentEventsCard } from '@/components/sam/recent-events-card';
 import driverRoutes from '@/routes/drivers';
 import type { DriverShowProps } from '@/types/drivers';
 
-export default function DriverShow() {
+export default function DriverShow({
+    driver,
+    assignments,
+    statusLog,
+    recentEvents,
+    incidents,
+    activity,
+}: DriverShowProps) {
     const page = usePage();
-    const {
-        driver,
-        assignments,
-        statusLog,
-        recentEvents,
-        incidents,
-        activity,
-    } = page.props as unknown as DriverShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     return (
@@ -65,10 +65,7 @@ export default function DriverShow() {
     );
 }
 
-DriverShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    driver?: { id: number; fullName: string } | null;
-}) => ({
+DriverShow.layout = (props: SharedPageProps & Partial<DriverShowProps>) => ({
     breadcrumbs: [
         {
             title: 'Conductores',

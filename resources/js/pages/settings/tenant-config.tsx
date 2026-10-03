@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { lazy, Suspense } from 'react';
 import { ReadOnlyNotice } from '@/components/sam/read-only-notice';
@@ -30,9 +31,8 @@ const EscalationSection = lazy(() =>
  * Emergencias, Respuesta de la IA, Avisos, Escalamiento, Guardias, Marca y
  * Avanzado (ajustes finos + historial de cambios).
  */
-export default function TenantConfigPage() {
+export default function TenantConfigPage(props: TenantConfigProps) {
     const page = usePage();
-    const props = page.props as unknown as TenantConfigProps;
     const sectionKey = companySectionFromUrl(page.url);
     const section =
         COMPANY_SECTIONS.find((item) => item.key === sectionKey) ??
@@ -121,9 +121,7 @@ export default function TenantConfigPage() {
     );
 }
 
-TenantConfigPage.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+TenantConfigPage.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Configuración de la empresa',

@@ -67,12 +67,7 @@ export default function TeamEdit({
 
     // Enlace a los roles de acceso sólo si se pueden abrir (permiso de roles)
     // y el equipo que se mira es el activo.
-    const currentSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const currentSlug = page.props.currentTeam?.slug ?? null;
     const rolesHref =
         page.props.nav?.roles && currentSlug === team.slug
             ? roleRoutes.index.url(team.slug)

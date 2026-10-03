@@ -24,9 +24,7 @@ export function RealtimeBootstrap() {
     const page = usePage();
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const teamId = page.props.currentTeam?.id ?? null;
-    const userId =
-        (page.props.auth as { user?: { id?: number } | null } | undefined)?.user
-            ?.id ?? null;
+    const userId = page.props.auth?.user?.id ?? null;
 
     // Inbox badge in the sidebar.
     useBroadcastReload({

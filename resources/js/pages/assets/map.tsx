@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowUpRight, RefreshCw, Search, User, X } from 'lucide-react';
 import {
@@ -179,9 +180,8 @@ function UnitCallout({
     );
 }
 
-export default function AssetsMap() {
+export default function AssetsMap(pageProps: AssetsMapProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as AssetsMapProps;
     const serverMarkers = useMemo(
         () => pageProps.assets ?? [],
         [pageProps.assets],
@@ -680,7 +680,7 @@ export default function AssetsMap() {
     );
 }
 
-AssetsMap.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AssetsMap.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Mapa en vivo',

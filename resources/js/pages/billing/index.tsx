@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { AlertTriangle, Eye, Mail, MoreHorizontal, Users } from 'lucide-react';
 import { CapMeter } from '@/components/sam/billing/cap-meter';
@@ -30,19 +31,18 @@ const SERVICE_STATE: Record<string, { tone: BillingTone; label: string }> = {
     expired: { tone: 'neutral', label: 'Servicio vencido' },
 };
 
-export default function BillingIndex() {
+export default function BillingIndex({
+    supportEmail,
+    transfer,
+    subscription,
+    features,
+    usage,
+    invoices,
+    terms,
+    estimate,
+    fleet,
+}: BillingPageProps) {
     const page = usePage();
-    const {
-        supportEmail,
-        transfer,
-        subscription,
-        features,
-        usage,
-        invoices,
-        terms,
-        estimate,
-        fleet,
-    } = page.props as unknown as BillingPageProps;
     const currentTeam = page.props.currentTeam;
     const teamSlug = currentTeam?.slug ?? null;
 
@@ -190,7 +190,7 @@ export default function BillingIndex() {
     );
 }
 
-BillingIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+BillingIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Facturación',

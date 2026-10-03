@@ -1,4 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
+import type { SharedPageProps } from '@inertiajs/core';
+import { Head } from '@inertiajs/react';
 import {
     BellOff,
     CircleAlert,
@@ -92,8 +93,7 @@ function DecisionPulse({
     );
 }
 
-export default function RulesIndex() {
-    const props = usePage().props as unknown as RulesPageProps;
+export default function RulesIndex(props: RulesPageProps) {
     const [tab, setTab] = useState<TabKey>('decision');
     const [filter, setFilter] = useState<DecisionFilter | null>(null);
     const [creatingDecision, setCreatingDecision] = useState(false);
@@ -198,7 +198,7 @@ export default function RulesIndex() {
     );
 }
 
-RulesIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+RulesIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Reglas',

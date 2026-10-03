@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
@@ -45,10 +46,14 @@ const RELOAD_DEBOUNCE_MS = 2000;
 // The KPI strip is a two-week aggregate: a live event barely moves it.
 const KPI_MIN_INTERVAL_MS = 30000;
 
-export default function Dashboard() {
+export default function Dashboard({
+    kpis,
+    incidents,
+    stream,
+    integrations,
+    usage,
+}: DashboardProps) {
     const page = usePage();
-    const { kpis, incidents, stream, integrations, usage } =
-        page.props as unknown as DashboardProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
@@ -604,7 +609,7 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
     );
 }
 
-Dashboard.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+Dashboard.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Panel',

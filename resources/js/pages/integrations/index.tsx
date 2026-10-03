@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Activity,
@@ -73,14 +74,13 @@ const FILTER_EMPTY: Record<TenantIntegrationStatus, string> = {
     inactive: 'No hay conexiones desactivadas.',
 };
 
-export default function IntegrationsIndex() {
+export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
     // Status flips from the feed (circuit opened) or another operator.
     useBroadcastReload(
         { 'integration.status_changed': RELOAD_PROPS },
         { debounceMs: 500 },
     );
     const page = usePage();
-    const pageProps = page.props as unknown as IntegrationsIndexProps;
     const integrations = useMemo(
         () => pageProps.integrations ?? [],
         [pageProps.integrations],
@@ -379,9 +379,7 @@ export default function IntegrationsIndex() {
     );
 }
 
-IntegrationsIndex.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+IntegrationsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Integraciones',

@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Activity,
@@ -75,12 +76,11 @@ const EMPTY_SUMMARY: NonNullable<AutomationPageProps['summary']> = {
     },
 };
 
-export default function AutomationIndex() {
+export default function AutomationIndex(props: AutomationPageProps) {
     useBroadcastReload({
         'action.executed': ['executions', 'runStats', 'summary'],
     });
 
-    const props = usePage().props as unknown as AutomationPageProps;
     const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const workflows = props.workflows ?? [];
     const summary = props.summary ?? EMPTY_SUMMARY;
@@ -558,9 +558,7 @@ export default function AutomationIndex() {
     );
 }
 
-AutomationIndex.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+AutomationIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Automatizaciones',
