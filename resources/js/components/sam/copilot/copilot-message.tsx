@@ -16,6 +16,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     CopilotAssetOption,
@@ -497,7 +498,7 @@ function ActivityContent({
                     <span className="size-1.5 rounded-full bg-ai-accent motion-safe:animate-pulse" />
                 </span>
             ) : activity.tone === 'done' ? (
-                <Check className="size-3 shrink-0 text-health-ok" />
+                <Check className={cn('size-3 shrink-0', TONE_TEXT.ok)} />
             ) : (
                 <AlertCircle className="size-3 shrink-0 text-fg-3" />
             )}

@@ -6,6 +6,8 @@ import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { TONE_TEXT } from '@/lib/tone';
+import { cn } from '@/lib/utils';
 import { login } from '@/routes';
 import { email } from '@/routes/password';
 
@@ -15,7 +17,12 @@ export default function ForgotPassword({ status }: { status?: string }) {
             <Head title="¿Olvidaste tu contraseña?" />
 
             {status && (
-                <div className="mb-4 text-center text-sm font-medium text-health-ok">
+                <div
+                    className={cn(
+                        'mb-4 text-center text-sm font-medium',
+                        TONE_TEXT.ok,
+                    )}
+                >
                     {status}
                 </div>
             )}

@@ -1,3 +1,4 @@
+import { TONE_DOT, TONE_SURFACE } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 export interface SwitchProps {
@@ -11,8 +12,9 @@ export interface SwitchProps {
 }
 
 /**
- * Accessible toggle switch, token-styled to match the design system .sam-switch
- * (health-ok tint when on). Dependency-free — no Radix package required.
+ * Interruptor accesible con el estilo de `.sam-switch` del design system. Encendido
+ * usa el tono `ok` de `lib/tone` (es un estado, no salud de infraestructura).
+ * Sin dependencias: no requiere Radix.
  */
 export function Switch({
     checked,
@@ -34,16 +36,14 @@ export function Switch({
             onClick={() => !disabled && onCheckedChange(!checked)}
             className={cn(
                 'relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 motion-safe:duration-[--motion-fast]',
-                checked
-                    ? 'border-health-ok/50 bg-health-ok/35'
-                    : 'border-border bg-surface-3',
+                checked ? TONE_SURFACE.ok : 'border-border bg-surface-3',
                 className,
             )}
         >
             <span
                 className={cn(
                     'absolute top-[2px] left-[2px] size-4 rounded-full transition-transform ease-(--ease-out) motion-safe:duration-[--motion-fast]',
-                    checked ? 'translate-x-4 bg-health-ok' : 'bg-fg-3',
+                    checked ? ['translate-x-4', TONE_DOT.ok] : TONE_DOT.neutral,
                 )}
             />
         </button>
