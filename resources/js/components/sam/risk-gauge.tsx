@@ -208,7 +208,7 @@ export function RiskGauge({ score, level, size = 148, className }: GaugeProps) {
                 >
                     {score.toFixed(0)}
                 </span>
-                <span className="mt-1 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                <span className="sam-caps mt-1">
                     {RISK_LEVEL_LABELS[resolved]}
                 </span>
             </div>

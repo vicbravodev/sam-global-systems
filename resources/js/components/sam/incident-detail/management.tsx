@@ -1,14 +1,8 @@
-import {
-    Check,
-    Hand,
-    Loader2,
-    RefreshCw,
-    TriangleAlert,
-    X,
-} from 'lucide-react';
+import { Check, Hand, RefreshCw, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { TERMINAL_STATUSES } from '@/components/sam';
 import { PermissionTooltip } from '@/components/sam/permission-tooltip';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -32,10 +26,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useInitials } from '@/hooks/use-initials';
+import { Spinner } from '@/components/ui/spinner';
+import { getInitials } from '@/lib/initials';
 import type { IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
-import { UserAvatar } from './user-avatar';
 
 // ---- AssigneeMenu ----
 
@@ -48,13 +42,12 @@ function AssigneeMenu({
 }) {
     const { members, currentUserId, assignTo, assignToMe, pending } =
         useIncidentActions();
-    const getInitials = useInitials();
     const busy = pending === 'assign';
 
     const trigger =
         variant === 'button' ? (
             <Button size="sm" variant="default" disabled={busy}>
-                {busy ? <Loader2 size={12} className="animate-spin" /> : null}
+                {busy ? <Spinner className="size-3" /> : null}
                 {label}
             </Button>
         ) : (
@@ -63,7 +56,7 @@ function AssigneeMenu({
                 disabled={busy}
                 className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent text-xs font-medium whitespace-nowrap text-fg-2 hover:text-fg-1 disabled:opacity-50"
             >
-                {busy ? <Loader2 size={11} className="animate-spin" /> : null}
+                {busy ? <Spinner className="size-2.75" /> : null}
                 {label}
             </button>
         );
@@ -189,9 +182,7 @@ function ResolveDialog({
                         onClick={() => void submit()}
                         disabled={busy || summary.trim() === ''}
                     >
-                        {busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
+                        {busy ? <Spinner className="size-3.25" /> : null}
                         Resolver
                     </Button>
                 </DialogFooter>
@@ -234,9 +225,7 @@ export function Management({ incident }: ManagementProps) {
 
     return (
         <section>
-            <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                Gestión
-            </h3>
+            <h3 className="sam-caps mb-2">Gestión</h3>
             <div className="rounded-lg border border-border bg-surface-1">
                 {/* Assignee */}
                 <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 p-3">
@@ -295,10 +284,7 @@ export function Management({ incident }: ManagementProps) {
                                 disabled={!can.manage || pending === 'reopen'}
                             >
                                 {pending === 'reopen' ? (
-                                    <Loader2
-                                        size={13}
-                                        className="animate-spin"
-                                    />
+                                    <Spinner className="size-3.25" />
                                 ) : (
                                     <RefreshCw size={13} />
                                 )}
@@ -318,10 +304,7 @@ export function Management({ incident }: ManagementProps) {
                                 disabled={!can.resolve || pending === 'resolve'}
                             >
                                 {pending === 'resolve' ? (
-                                    <Loader2
-                                        size={13}
-                                        className="animate-spin"
-                                    />
+                                    <Spinner className="size-3.25" />
                                 ) : null}
                                 Resolver incidente
                             </Button>
@@ -339,10 +322,7 @@ export function Management({ incident }: ManagementProps) {
                                         className={quietButton}
                                     >
                                         {pending === 'acknowledge' ? (
-                                            <Loader2
-                                                size={12}
-                                                className="animate-spin"
-                                            />
+                                            <Spinner className="size-3" />
                                         ) : (
                                             <Check size={12} />
                                         )}
@@ -373,10 +353,7 @@ export function Management({ incident }: ManagementProps) {
                                         >
                                             {pending === 'claim' ||
                                             pending === 'release' ? (
-                                                <Loader2
-                                                    size={12}
-                                                    className="animate-spin"
-                                                />
+                                                <Spinner className="size-3" />
                                             ) : (
                                                 <Hand size={12} />
                                             )}
@@ -390,10 +367,7 @@ export function Management({ incident }: ManagementProps) {
                                         className={quietButton}
                                     >
                                         {pending === 'escalate' ? (
-                                            <Loader2
-                                                size={12}
-                                                className="animate-spin"
-                                            />
+                                            <Spinner className="size-3" />
                                         ) : (
                                             <TriangleAlert size={12} />
                                         )}
@@ -409,10 +383,7 @@ export function Management({ incident }: ManagementProps) {
                                     className={quietButton}
                                 >
                                     {pending === 'discard' ? (
-                                        <Loader2
-                                            size={12}
-                                            className="animate-spin"
-                                        />
+                                        <Spinner className="size-3" />
                                     ) : (
                                         <X size={12} />
                                     )}

@@ -185,9 +185,7 @@ export default function CopilotUsage() {
                                 )}
                             </div>
                             <div>
-                                <div className="mb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                                    Canal
-                                </div>
+                                <div className="sam-caps mb-1.5">Canal</div>
                                 {Object.entries(usage.byChannel).length ===
                                     0 && <p className="text-xs text-fg-3">—</p>}
                                 {Object.entries(usage.byChannel).map(
@@ -205,7 +203,7 @@ export default function CopilotUsage() {
                                 )}
                             </div>
                             <div>
-                                <div className="mb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                <div className="sam-caps mb-1.5">
                                     Qué preguntan
                                 </div>
                                 {usage.byIntent.length === 0 && (
@@ -240,7 +238,7 @@ export default function CopilotUsage() {
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-border bg-surface-2 text-left text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                        <tr className="sam-caps border-b border-border bg-surface-2 text-left">
                                             <th className="px-4 py-2">
                                                 Usuario
                                             </th>
@@ -386,9 +384,7 @@ function Metric({
 }) {
     return (
         <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
-            <div className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                {label}
-            </div>
+            <div className="sam-caps">{label}</div>
             <div className="mt-1.5 font-mono text-xl font-semibold text-fg-1 tabular-nums">
                 {value}
             </div>

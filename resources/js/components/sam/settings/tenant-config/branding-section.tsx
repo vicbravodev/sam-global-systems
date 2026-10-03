@@ -1,8 +1,7 @@
 import { router } from '@inertiajs/react';
-import { ImageUp, Loader2 } from 'lucide-react';
+import { ImageUp } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import InputError from '@/components/input-error';
 import { Field, FormCard } from '@/components/sam/field';
 import {
     FormActions,
@@ -10,6 +9,7 @@ import {
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
 import { submit, useTeamBase } from './shared';
 import type { BrandingProp } from './types';
@@ -171,7 +171,7 @@ export function BrandingSection({
                                     className="cursor-pointer"
                                 >
                                     {uploading ? (
-                                        <Loader2 className="size-3.5 animate-spin" />
+                                        <Spinner className="size-3.5" />
                                     ) : (
                                         <ImageUp className="size-3.5" />
                                     )}
@@ -201,6 +201,7 @@ export function BrandingSection({
                 </Field>
 
                 <Field
+                    error={errors.display_name}
                     label="Nombre para mostrar"
                     help="Cómo firma SAM los avisos. Si lo dejas vacío, se usa el nombre de tu cuenta."
                     htmlFor="tc-display-name"
@@ -214,10 +215,10 @@ export function BrandingSection({
                             setForm({ ...form, display_name: e.target.value })
                         }
                     />
-                    <InputError message={errors.display_name} />
                 </Field>
 
                 <Field
+                    error={errors.primary_color}
                     label="Color principal"
                     help="Botones y encabezados de correos y reportes."
                     htmlFor="tc-primary-color"
@@ -231,10 +232,10 @@ export function BrandingSection({
                             setForm({ ...form, primary_color: value })
                         }
                     />
-                    <InputError message={errors.primary_color} />
                 </Field>
 
                 <Field
+                    error={errors.secondary_color}
                     label="Color secundario"
                     help="Fondos y detalles de apoyo."
                     htmlFor="tc-secondary-color"
@@ -248,10 +249,10 @@ export function BrandingSection({
                             setForm({ ...form, secondary_color: value })
                         }
                     />
-                    <InputError message={errors.secondary_color} />
                 </Field>
 
                 <Field
+                    error={errors.email_signature}
                     label="Firma de correo"
                     help="Se añade al final de cada correo que SAM envía."
                     htmlFor="tc-email-signature"
@@ -271,7 +272,6 @@ export function BrandingSection({
                         placeholder="Centro de monitoreo · Tel. 55 0000 0000"
                         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm text-fg-1 shadow-xs placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     />
-                    <InputError message={errors.email_signature} />
                 </Field>
 
                 {canManage ? (

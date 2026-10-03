@@ -35,7 +35,7 @@ function MediaPreviewStrip({ incident }: { incident: IncidentDetail }) {
 
     return (
         <section>
-            <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <h3 className="sam-caps mb-2">
                 Media del evento
                 <span className="ml-1.5 font-mono text-fg-2 normal-case">
                     {summary.total}

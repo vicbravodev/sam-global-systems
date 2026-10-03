@@ -1,6 +1,6 @@
 import { usePage } from '@inertiajs/react';
-import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
     Select,
@@ -9,12 +9,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useInitials } from '@/hooks/use-initials';
+import { Spinner } from '@/components/ui/spinner';
+import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import type { CommentVisibilityUi } from './incident-actions-context';
-import { UserAvatar } from './user-avatar';
 
 // ---- VisibilityChip ----
 
@@ -51,7 +51,6 @@ function VisibilityChip({ v }: { v: 'internal' | 'tenant' | 'audit' }) {
 
 function CommentComposer() {
     const page = usePage();
-    const getInitials = useInitials();
     const { addComment, pending } = useIncidentActions();
     const [comment, setComment] = useState('');
     const [visibility, setVisibility] =
@@ -114,9 +113,7 @@ function CommentComposer() {
                     onClick={() => void submit()}
                     disabled={busy || comment.trim() === ''}
                 >
-                    {busy ? (
-                        <Loader2 size={12} className="animate-spin" />
-                    ) : null}
+                    {busy ? <Spinner className="size-3" /> : null}
                     Comentar
                 </Button>
             </div>
@@ -132,7 +129,7 @@ export function CommentsSection({ incident }: { incident: IncidentDetail }) {
 
     return (
         <section>
-            <h3 className="mb-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <h3 className="sam-caps mb-3">
                 Comentarios
                 {incident.comments.length > 0 && (
                     <span className="ml-1.5 font-mono text-fg-3 normal-case">

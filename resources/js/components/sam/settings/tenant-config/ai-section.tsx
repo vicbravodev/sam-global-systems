@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
 import {
     FormActions,
     SettingsSection,
@@ -80,9 +81,8 @@ export function AiSection({
                     label="Nivel de autonomía"
                     help="Se aplica a las evaluaciones nuevas. Puedes cambiarlo cuando quieras."
                 >
-                    <div
-                        role="radiogroup"
-                        aria-label="Nivel de autonomía"
+                    <RadioCardGroup
+                        label="Nivel de autonomía"
                         className="flex flex-col gap-2"
                     >
                         {levels.map((level) => {
@@ -90,37 +90,31 @@ export function AiSection({
                                 form.automation_level === level.value;
 
                             return (
-                                <button
+                                <RadioCard
                                     key={level.value}
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={selected}
+                                    selected={selected}
                                     disabled={!canManage}
-                                    onClick={() =>
+                                    onSelect={() =>
                                         set('automation_level', level.value)
                                     }
-                                    className={cn(
-                                        'flex items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ease-(--ease-out) disabled:cursor-not-allowed motion-safe:duration-[--motion-fast]',
-                                        selected
-                                            ? 'border-primary bg-primary/5'
-                                            : 'border-border hover:bg-surface-2',
-                                    )}
-                                >
-                                    <span
-                                        className={cn(
-                                            'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border',
-                                            selected
-                                                ? 'border-primary'
-                                                : 'border-fg-3',
-                                        )}
-                                        aria-hidden
-                                    >
-                                        {selected ? (
-                                            <span className="size-2 rounded-full bg-primary" />
-                                        ) : null}
-                                    </span>
-                                    <span className="min-w-0">
-                                        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-fg-1">
+                                    className="py-2.5"
+                                    leading={
+                                        <span
+                                            className={cn(
+                                                'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border',
+                                                selected
+                                                    ? 'border-primary'
+                                                    : 'border-fg-3',
+                                            )}
+                                            aria-hidden
+                                        >
+                                            {selected ? (
+                                                <span className="size-2 rounded-full bg-primary" />
+                                            ) : null}
+                                        </span>
+                                    }
+                                    label={
+                                        <>
                                             {level.label}
                                             {level.value ===
                                             RECOMMENDED_LEVEL ? (
@@ -128,17 +122,13 @@ export function AiSection({
                                                     Recomendado
                                                 </span>
                                             ) : null}
-                                        </span>
-                                        {LEVEL_HELP[level.value] ? (
-                                            <span className="block text-xs text-fg-3">
-                                                {LEVEL_HELP[level.value]}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                </button>
+                                        </>
+                                    }
+                                    description={LEVEL_HELP[level.value]}
+                                />
                             );
                         })}
-                    </div>
+                    </RadioCardGroup>
                 </Field>
 
                 <Field

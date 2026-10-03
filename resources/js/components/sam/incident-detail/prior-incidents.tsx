@@ -34,7 +34,7 @@ export function PriorIncidents({
 }: PriorIncidentsProps) {
     return (
         <section>
-            <h3 className="mb-2 flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <h3 className="sam-caps mb-2 flex items-center gap-1.5">
                 <History size={11} strokeWidth={1.5} />
                 Historial relacionado
                 {priorIncidents.length > 0 && (

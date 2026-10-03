@@ -15,6 +15,7 @@ import {
     useRef,
     useState,
 } from 'react';
+import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 import type {
     CopilotAssetOption,
@@ -42,16 +43,6 @@ interface Props {
 
 /** Within this distance of the bottom the thread follows new content. */
 const FOLLOW_THRESHOLD = 80;
-
-function initials(name: string): string {
-    return name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((w) => w[0])
-        .join('')
-        .toUpperCase();
-}
 
 function prefersReducedMotion(): boolean {
     return (
@@ -289,7 +280,7 @@ export function CopilotChatPanel({
     const isEmpty = chat.messages.length === 0 && !chat.loading;
     const quota = catalog.quota;
     const firstName = userName.split(' ')[0] ?? userName;
-    const userInitials = initials(userName);
+    const userInitials = getInitials(userName);
     // Screen readers hear transitions, never tokens.
     const announcement = chat.busy
         ? 'SAM Copilot está respondiendo…'
@@ -518,7 +509,7 @@ function EmptyHero({
             <div className="grid w-full max-w-3xl grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                 {catalog.suggestions.map((group) => (
                     <div key={group.group} className="flex flex-col gap-1">
-                        <div className="px-1 pb-0.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                        <div className="sam-caps px-1 pb-0.5">
                             {group.group}
                         </div>
                         {group.prompts.map((prompt) => (

@@ -83,8 +83,7 @@ const SEVERITY_CLASS: Record<string, string> = {
     info: 'text-severity-info',
 };
 
-const GROUP_TITLE =
-    'border-t border-border px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase';
+const GROUP_TITLE = 'border-t border-border px-3.5 py-2.5 sam-caps';
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     const page = usePage();
@@ -293,7 +292,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     {/* Incidents group */}
                     {incidents.length > 0 && (
                         <div>
-                            <div className="px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                            <div className="sam-caps px-3.5 py-2.5">
                                 Incidentes recientes
                             </div>
                             {incidents.map((incident, idx) => (

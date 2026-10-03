@@ -4,7 +4,6 @@ import {
     ChevronDown,
     CircleDashed,
     KeyRound,
-    Loader2,
     MoreHorizontal,
     Pencil,
     PauseCircle,
@@ -14,6 +13,10 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
+import {
+    DescriptionItem,
+    DescriptionList,
+} from '@/components/sam/description-list';
 import { Button } from '@/components/ui/button';
 import {
     Collapsible,
@@ -27,6 +30,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -100,7 +104,7 @@ export function IntegrationCard({
                 disabled={testing}
             >
                 {testing ? (
-                    <Loader2 size={13} className="animate-spin" />
+                    <Spinner className="size-3.25" />
                 ) : (
                     <RefreshCw size={13} />
                 )}
@@ -320,9 +324,7 @@ function Fact({
                 className,
             )}
         >
-            <dt className="truncate text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                {label}
-            </dt>
+            <dt className="sam-caps truncate">{label}</dt>
             <dd className="truncate text-sm font-semibold text-fg-1 tabular-nums">
                 {value}
             </dd>
@@ -374,16 +376,16 @@ function TechnicalDetails({ integration }: { integration: IntegrationRow }) {
                 </span>
             </CollapsibleTrigger>
             <CollapsibleContent>
-                <dl className="flex flex-col gap-3 px-4 pb-4 text-xs">
-                    <DetailRow label="Método de acceso">
+                <DescriptionList layout="inline" className="px-4 pb-4">
+                    <DescriptionItem label="Método de acceso">
                         {integration.authTypeLabel ?? integration.authType}{' '}
                         <code className="font-mono text-2xs text-fg-3">
                             {integration.authType}
                         </code>
-                    </DetailRow>
+                    </DescriptionItem>
 
                     {webhook ? (
-                        <DetailRow
+                        <DescriptionItem
                             label="Dirección para avisos instantáneos"
                             help={`Opcional: pégala en ${integration.provider} → Ajustes → Webhooks para que las alertas lleguen al momento, sin esperar la siguiente consulta.`}
                         >
@@ -396,63 +398,37 @@ function TechnicalDetails({ integration }: { integration: IntegrationRow }) {
                                     ? ' · recepción pausada'
                                     : ''}
                             </span>
-                        </DetailRow>
+                        </DescriptionItem>
                     ) : null}
 
-                    <DetailRow label="Última sincronización del catálogo">
+                    <DescriptionItem label="Última sincronización del catálogo">
                         {formatDateTime(integration.lastSyncAt)}
-                    </DetailRow>
+                    </DescriptionItem>
 
-                    <DetailRow label="Sincronización">
+                    <DescriptionItem label="Sincronización">
                         {syncSummary(integration.config)}
-                    </DetailRow>
+                    </DescriptionItem>
 
                     {integration.lastErrorMessage ? (
-                        <DetailRow
+                        <DescriptionItem
                             label={`Último error (${formatDateTime(integration.lastErrorAt)})`}
                         >
                             <code className="rounded-sm bg-surface-2 px-2 py-1.5 font-mono text-2xs break-words whitespace-pre-wrap text-fg-2">
                                 {integration.lastErrorMessage}
                             </code>
-                        </DetailRow>
+                        </DescriptionItem>
                     ) : null}
 
-                    <DetailRow label="Identificador">
+                    <DescriptionItem label="Identificador">
                         <code className="font-mono text-2xs text-fg-3">
                             #{integration.id}
                             {integration.providerCode
                                 ? ` · ${integration.providerCode}`
                                 : ''}
                         </code>
-                    </DetailRow>
-                </dl>
+                    </DescriptionItem>
+                </DescriptionList>
             </CollapsibleContent>
         </Collapsible>
-    );
-}
-
-function DetailRow({
-    label,
-    help,
-    children,
-}: {
-    label: string;
-    help?: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <div className="grid gap-1 sm:grid-cols-[200px_1fr] sm:gap-4">
-            <dt className="flex flex-col gap-0.5 text-fg-3">
-                <span>{label}</span>
-            </dt>
-            <dd className="flex min-w-0 flex-col gap-1 text-fg-1">
-                {children}
-                {help ? (
-                    <span className="text-2xs leading-relaxed text-fg-3">
-                        {help}
-                    </span>
-                ) : null}
-            </dd>
-        </div>
     );
 }

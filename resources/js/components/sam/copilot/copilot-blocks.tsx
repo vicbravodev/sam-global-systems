@@ -1112,7 +1112,7 @@ function DriverTable({ block }: { block: DriversBlock }) {
             <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                     <thead>
-                        <tr className="border-b border-border bg-surface-3 text-left text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                        <tr className="sam-caps border-b border-border bg-surface-3 text-left">
                             <th className="px-3 py-1.5">#</th>
                             <th className="px-2 py-1.5">Conductor</th>
                             <th className="px-2 py-1.5">Score</th>
@@ -1199,7 +1199,7 @@ function RankingTable({ block }: { block: RankingBlock }) {
             <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                     <thead>
-                        <tr className="border-b border-border bg-surface-3 text-left text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                        <tr className="sam-caps border-b border-border bg-surface-3 text-left">
                             <th className="px-3 py-1.5">#</th>
                             <th className="px-2 py-1.5">Unidad</th>
                             <th className="px-3 py-1.5 text-right">

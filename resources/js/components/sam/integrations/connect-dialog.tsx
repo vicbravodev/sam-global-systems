@@ -1,7 +1,9 @@
 import { router } from '@inertiajs/react';
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import {
     Collapsible,
@@ -25,13 +27,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import type { AuthTypeOption, IntegrationProviderOption } from '@/types/sam';
 import { capabilityLabel } from './integration-state';
 import { KeyHelp } from './key-help';
 import { ProviderTile } from './provider-tile';
-import { StepSection } from './step-section';
 
 interface Props {
     open: boolean;
@@ -193,7 +195,7 @@ export function ConnectDialog({
                 </DialogHeader>
 
                 <div className="flex flex-col gap-5 py-1">
-                    <StepSection
+                    <Step
                         step={1}
                         title="¿Qué proveedor usas?"
                         done={provider !== null}
@@ -204,9 +206,8 @@ export function ConnectDialog({
                                 Contacta a soporte.
                             </p>
                         ) : (
-                            <div
-                                role="radiogroup"
-                                aria-label="Proveedor"
+                            <RadioCardGroup
+                                label="Proveedor"
                                 className="grid gap-2 sm:grid-cols-2"
                             >
                                 {providers.map((option) => {
@@ -214,25 +215,21 @@ export function ConnectDialog({
                                         String(option.id) === providerId;
 
                                     return (
-                                        <button
+                                        <RadioCard
                                             key={option.id}
-                                            type="button"
-                                            role="radio"
-                                            aria-checked={selected}
-                                            onClick={() => pickProvider(option)}
-                                            className={cn(
-                                                'flex items-start gap-2.5 rounded-md border p-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                                selected
-                                                    ? 'border-primary bg-primary/10'
-                                                    : 'border-border bg-surface-2 hover:bg-surface-3',
-                                            )}
-                                        >
-                                            <ProviderTile
-                                                name={option.name}
-                                                size="sm"
-                                            />
-                                            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                                <span className="flex items-center gap-1 text-sm font-medium text-fg-1">
+                                            selected={selected}
+                                            onSelect={() =>
+                                                pickProvider(option)
+                                            }
+                                            className="gap-2.5 p-2.5"
+                                            leading={
+                                                <ProviderTile
+                                                    name={option.name}
+                                                    size="sm"
+                                                />
+                                            }
+                                            label={
+                                                <>
                                                     {option.name}
                                                     {selected ? (
                                                         <Check
@@ -241,29 +238,31 @@ export function ConnectDialog({
                                                             aria-hidden
                                                         />
                                                     ) : null}
-                                                </span>
-                                                {option.capabilities.length >
+                                                </>
+                                            }
+                                            description={
+                                                option.capabilities.length >
                                                 0 ? (
-                                                    <span className="line-clamp-2 text-2xs text-fg-3">
+                                                    <span className="line-clamp-2 text-2xs">
                                                         {option.capabilities
                                                             .map(
                                                                 capabilityLabel,
                                                             )
                                                             .join(' · ')}
                                                     </span>
-                                                ) : null}
-                                            </span>
-                                        </button>
+                                                ) : null
+                                            }
+                                        />
                                     );
                                 })}
-                            </div>
+                            </RadioCardGroup>
                         )}
-                    </StepSection>
+                    </Step>
 
-                    <StepSection
+                    <Step
                         step={2}
                         title="Pega la clave de acceso"
-                        description="Es la llave que permite a SAM leer los datos de tu flota. Se guarda cifrada y nadie puede volver a verla."
+                        help="Es la llave que permite a SAM leer los datos de tu flota. Se guarda cifrada y nadie puede volver a verla."
                         done={credentials.trim() !== ''}
                     >
                         <KeyHelp
@@ -284,12 +283,12 @@ export function ConnectDialog({
                             placeholder="Pega aquí la clave"
                             autoComplete="off"
                         />
-                    </StepSection>
+                    </Step>
 
-                    <StepSection
+                    <Step
                         step={3}
                         title="Ponle un nombre"
-                        description="Para reconocerla en SAM, sobre todo si conectas más de una cuenta (p. ej. «Samsara — flota norte»)."
+                        help="Para reconocerla en SAM, sobre todo si conectas más de una cuenta (p. ej. «Samsara — flota norte»)."
                         done={name.trim() !== ''}
                     >
                         <Label htmlFor="connect-name" className="sr-only">
@@ -304,7 +303,7 @@ export function ConnectDialog({
                             }}
                             placeholder="Mi cuenta de Samsara"
                         />
-                    </StepSection>
+                    </Step>
 
                     <p className="rounded-md bg-surface-2 px-3 py-2 text-xs leading-relaxed text-fg-2">
                         Al conectar, SAM trae tus unidades y conductores
@@ -378,9 +377,7 @@ export function ConnectDialog({
                         Cancelar
                     </Button>
                     <Button onClick={submit} disabled={submitting}>
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
+                        {submitting ? <Spinner className="size-3.5" /> : null}
                         Conectar
                     </Button>
                 </DialogFooter>

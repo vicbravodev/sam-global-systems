@@ -1,8 +1,8 @@
 import { Check, Copy, Mail } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Panel } from '@/components/sam/panel';
 import { Button } from '@/components/ui/button';
-import { BillingPanel } from './panel';
 import type { TransferDetails } from './types';
 
 function CopyableClabe({ clabe }: { clabe: string }) {
@@ -55,7 +55,7 @@ export function HowToPay({
     ];
 
     return (
-        <BillingPanel
+        <Panel
             title="Cómo pagar"
             description="Pago por transferencia bancaria, sin tarjeta."
             bodyClassName="gap-4 px-4 py-4"
@@ -119,6 +119,6 @@ export function HowToPay({
                     </Button>
                 </div>
             )}
-        </BillingPanel>
+        </Panel>
     );
 }
