@@ -7,7 +7,9 @@ interface ErrorPageProps {
     status: number;
 }
 
-const MESSAGES: Record<number, { title: string; description: string }> = {
+type ErrorMessage = { title: string; description: string };
+
+const MESSAGES: Record<number, ErrorMessage> & { 500: ErrorMessage } = {
     403: {
         title: 'Acceso denegado',
         description:

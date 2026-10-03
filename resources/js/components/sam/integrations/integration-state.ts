@@ -236,11 +236,11 @@ export function capabilityLabel(code: string): string {
 export function providerMonogram(name: string): string {
     const words = name.trim().split(/\s+/).filter(Boolean);
 
-    if (words.length >= 2) {
-        return (words[0][0] + words[1][0]).toUpperCase();
-    }
+    const [word = '?', second] = words;
 
-    const word = words[0] ?? '?';
+    if (second !== undefined) {
+        return (word.charAt(0) + second.charAt(0)).toUpperCase();
+    }
 
     return word.charAt(0).toUpperCase() + word.slice(1, 2).toLowerCase();
 }

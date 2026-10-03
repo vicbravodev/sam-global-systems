@@ -45,7 +45,15 @@ export interface TriggerCopy {
     available: boolean;
 }
 
-export const TRIGGERS: Record<string, TriggerCopy> = {
+export type TriggerKey =
+    | 'incident_created'
+    | 'incident_escalated'
+    | 'decision_outcome'
+    | 'manual_trigger'
+    | 'priority_changed'
+    | 'media_arrived';
+
+export const TRIGGERS: Record<TriggerKey, TriggerCopy> = {
     incident_created: {
         sentence: 'Cuando se crea un incidente',
         title: 'Se crea un incidente',
@@ -90,7 +98,7 @@ export const TRIGGERS: Record<string, TriggerCopy> = {
     },
 };
 
-export const TRIGGER_ORDER = [
+export const TRIGGER_ORDER: TriggerKey[] = [
     'incident_created',
     'incident_escalated',
     'decision_outcome',
@@ -98,6 +106,15 @@ export const TRIGGER_ORDER = [
     'priority_changed',
     'media_arrived',
 ];
+
+/** Textos de un disparador por su código del backend (si lo conocemos). */
+export function triggerCopy(
+    triggerType: string | null | undefined,
+): TriggerCopy | undefined {
+    const byCode: Partial<Record<string, TriggerCopy>> = TRIGGERS;
+
+    return triggerType ? byCode[triggerType] : undefined;
+}
 
 export function triggerSentence(
     triggerType: string | null,
@@ -108,7 +125,7 @@ export function triggerSentence(
     }
 
     return (
-        TRIGGERS[triggerType]?.sentence ??
+        triggerCopy(triggerType)?.sentence ??
         `Cuando: ${options.find((o) => o.value === triggerType)?.label ?? 'otro disparador'}`
     );
 }

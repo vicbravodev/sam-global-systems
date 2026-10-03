@@ -146,8 +146,10 @@ function statusMix(statuses: AssetStatusValue[]): string {
         ([a], [b]) => STATUS_URGENCY[b] - STATUS_URGENCY[a],
     );
 
-    if (ordered.length === 1) {
-        return statusColor(ordered[0][0]);
+    const [only] = ordered;
+
+    if (ordered.length === 1 && only) {
+        return statusColor(only[0]);
     }
 
     let start = 0;
@@ -218,10 +220,12 @@ export function createPinMarker(
     return el;
 }
 
-const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'] as const;
 
 export function cardinal(heading: number): string {
-    return CARDINALS[Math.round((((heading % 360) + 360) % 360) / 45) % 8];
+    return (
+        CARDINALS[Math.round((((heading % 360) + 360) % 360) / 45) % 8] ?? 'N'
+    );
 }
 
 export function isMoving(asset: AssetMarker): boolean {

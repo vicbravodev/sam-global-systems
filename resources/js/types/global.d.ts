@@ -24,3 +24,10 @@ declare module '@inertiajs/core' {
         };
     }
 }
+
+declare global {
+    interface Window {
+        /** Safari < 14.1 sólo expone el `AudioContext` con prefijo. */
+        webkitAudioContext?: typeof AudioContext;
+    }
+}

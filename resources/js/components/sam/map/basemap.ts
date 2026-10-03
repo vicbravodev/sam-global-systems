@@ -103,7 +103,12 @@ export function resolveCssColor(value: string): string {
     probeCanvas.clearRect(0, 0, 1, 1);
     probeCanvas.fillStyle = computed;
     probeCanvas.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = probeCanvas.getImageData(0, 0, 1, 1).data;
+    const [r = 0, g = 0, b = 0, a = 0] = probeCanvas.getImageData(
+        0,
+        0,
+        1,
+        1,
+    ).data;
 
     return a === 255
         ? `rgb(${r}, ${g}, ${b})`

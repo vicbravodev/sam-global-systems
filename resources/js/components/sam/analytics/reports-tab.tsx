@@ -57,7 +57,9 @@ const FORMAT_LABEL: Record<string, string> = {
     dashboard: 'En pantalla',
 };
 
-const REPORT_KIND: Record<string, { label: string; icon: LucideIcon }> = {
+type ReportKind = { label: string; icon: LucideIcon };
+
+const REPORT_KIND: Record<string, ReportKind> & { custom: ReportKind } = {
     operational: { label: 'Operación', icon: FileBarChart2 },
     executive: { label: 'Dirección', icon: Briefcase },
     sla: { label: 'Tiempos de atención', icon: Timer },

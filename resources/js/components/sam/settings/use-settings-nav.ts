@@ -114,7 +114,7 @@ export function companySectionFromUrl(url: string): CompanySectionKey {
 }
 
 function pathOf(url: string): string {
-    const path = url.split('?')[0].split('#')[0];
+    const path = url.split(/[?#]/)[0] ?? url;
 
     return path.length > 1 ? path.replace(/\/$/, '') : path;
 }

@@ -72,10 +72,8 @@ export function useLiveAsset(
 
     const trail = useMemo(() => {
         const server = locationTrail ?? [];
-        const lastServerAt =
-            server.length > 0
-                ? Date.parse(server[server.length - 1].recordedAt)
-                : 0;
+        const lastServer = server.at(-1);
+        const lastServerAt = lastServer ? Date.parse(lastServer.recordedAt) : 0;
 
         return [
             ...server,

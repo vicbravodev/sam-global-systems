@@ -367,6 +367,10 @@ function PoliciesBlock({
     const changeType = (index: number, type: string | null) => {
         const policy = drafts[index];
 
+        if (!policy) {
+            return;
+        }
+
         patch(index, {
             notificationType: type,
             // Una regla nueva toma su código del tipo; las guardadas lo
@@ -388,6 +392,11 @@ function PoliciesBlock({
 
     const toggleChannel = (index: number, channel: string) => {
         const policy = drafts[index];
+
+        if (!policy) {
+            return;
+        }
+
         const has = policy.allowedChannels.includes(channel);
 
         patch(index, {

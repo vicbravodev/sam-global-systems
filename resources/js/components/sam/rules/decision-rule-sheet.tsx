@@ -116,13 +116,12 @@ function DecisionRuleForm({
         [rules, rule],
     );
 
+    const lastAnchor = anchors.at(-1);
     const initialPriority =
         rule?.priority ??
         priorityForPlacement(
             anchors,
-            anchors.length > 0
-                ? `after:${anchors[anchors.length - 1].id}`
-                : 'first',
+            lastAnchor ? `after:${lastAnchor.id}` : 'first',
         );
 
     const [suffix] = useState(randomSuffix);

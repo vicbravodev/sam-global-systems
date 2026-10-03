@@ -43,7 +43,11 @@ export function SparkArea({
     const line = pts
         .map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`)
         .join(' ');
-    const last = pts[pts.length - 1];
+    const last = pts.at(-1);
+
+    if (!last) {
+        return null;
+    }
 
     return (
         <svg

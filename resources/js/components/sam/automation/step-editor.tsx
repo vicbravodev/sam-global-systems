@@ -78,8 +78,9 @@ export function stepPayload(draft: StepDraft, index: number): WorkflowStep {
     const needsTarget = (copy?.targets.length ?? 1) > 0;
     const sameAction = original.action_type === draft.action_type;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { template_code, ...rest } = original;
+    // El paso sin su plantilla, para cuando la acción cambió.
+    const rest: WorkflowStep = { ...original };
+    delete rest.template_code;
 
     const originalMode =
         typeof original.execution_mode === 'string' &&

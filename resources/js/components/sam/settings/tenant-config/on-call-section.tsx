@@ -422,6 +422,10 @@ function OnCallEditor({
     const toggleDay = (index: number, day: string) => {
         const shift = draft.shifts[index];
 
+        if (!shift) {
+            return;
+        }
+
         replace(index, {
             ...shift,
             days: shift.days.includes(day)

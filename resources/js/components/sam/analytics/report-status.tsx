@@ -1,7 +1,7 @@
 import { StatusBadge } from '@/components/sam/status-badge';
 import type { ToneLabel } from '@/lib/tone';
 
-const REPORT_STATUS: Record<string, ToneLabel> = {
+const REPORT_STATUS: Record<string, ToneLabel> & { pending: ToneLabel } = {
     completed: { label: 'Listo', tone: 'ok' },
     running: { label: 'Generando', tone: 'info' },
     pending: { label: 'En cola', tone: 'info' },

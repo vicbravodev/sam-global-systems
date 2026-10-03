@@ -308,7 +308,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
     // y es más largo gana. Evita que un grupo padre (p.ej. "Flota" en
     // /assets) y un hijo con prefijo compartido (p.ej. "Mapa en vivo" en
     // /assets/map) se iluminen a la vez.
-    const path = currentUrl.split(/[?#]/)[0];
+    const path = currentUrl.split(/[?#]/)[0] ?? currentUrl;
 
     const activeHref = useMemo(() => {
         const allHrefs = navGroups.flatMap((group) =>
