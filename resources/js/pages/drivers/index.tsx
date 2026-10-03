@@ -1,169 +1,18 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
-import {
-    Clock,
-    Moon,
-    ShieldAlert,
-    Truck,
-    UserCheck,
-    UserX,
-    Users,
-} from 'lucide-react';
+import { Users } from 'lucide-react';
+import { DriversFilterBar } from '@/components/sam/drivers/drivers-filter-bar';
+import { DriversPulse } from '@/components/sam/drivers/drivers-pulse';
 import { DriversTable } from '@/components/sam/drivers/drivers-table';
-import {
-    ClearFiltersButton,
-    EMPTY_PAGINATION,
-    FilterDropdown,
-    ListFooter,
-    SearchInput,
-} from '@/components/sam/list';
+import { EMPTY_PAGINATION, ListFooter } from '@/components/sam/list';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
-import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
-import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { useServerList } from '@/hooks/use-server-list';
-import { DRIVER_STATUS } from '@/lib/labels';
-import { toneDotFor } from '@/lib/tone';
 import driverRoutes from '@/routes/drivers';
 import type {
     DriverFilterOptions,
     DriverFilters,
     DriversIndexProps,
-    DriversSummary,
 } from '@/types/drivers';
-
-// ---- Pulse strip ----
-
-function RosterPulse({
-    summary,
-    status,
-    onStatus,
-}: {
-    summary: DriversSummary;
-    status: string | null;
-    onStatus: (value: string | null) => void;
-}) {
-    const toggle = (value: string) => () =>
-        onStatus(status === value ? null : value);
-    const attention =
-        summary.statuses.under_review + summary.statuses.suspended;
-
-    return (
-        <PulseStrip>
-            <PulseStat
-                label="Roster"
-                value={summary.total}
-                icon={Users}
-                hint="conductores registrados"
-                onClick={() => onStatus(null)}
-                active={status === null}
-            />
-            <PulseStat
-                label="Activos"
-                value={summary.statuses.active}
-                icon={UserCheck}
-                tone="ok"
-                hint="en servicio"
-                onClick={toggle('active')}
-                active={status === 'active'}
-            />
-            <PulseStat
-                label="Fuera de turno"
-                value={summary.statuses.off_duty}
-                icon={Moon}
-                hint="descansando"
-                onClick={toggle('off_duty')}
-                active={status === 'off_duty'}
-            />
-            <PulseStat
-                label="Atención"
-                value={attention}
-                icon={UserX}
-                tone={attention > 0 ? 'warn' : 'neutral'}
-                hint={`${summary.statuses.under_review} en revisión · ${summary.statuses.suspended} suspendidos`}
-                onClick={toggle('under_review')}
-                active={status === 'under_review'}
-            />
-            <PulseStat
-                label="Riesgo alto"
-                value={summary.highRisk}
-                icon={ShieldAlert}
-                tone={summary.highRisk > 0 ? 'critical' : 'neutral'}
-                hint="perfil alto o crítico"
-            />
-            <PulseStat
-                label="Sin unidad"
-                value={summary.unassigned}
-                icon={Truck}
-                tone={summary.unassigned > 0 ? 'warn' : 'neutral'}
-                hint="sin vehículo asignado"
-            />
-            <PulseStat
-                label="Vistos 24 h"
-                value={summary.seenToday}
-                icon={Clock}
-                tone="info"
-                live={summary.seenToday > 0}
-                hint="con señal del proveedor"
-            />
-        </PulseStrip>
-    );
-}
-
-// ---- FilterBar ----
-
-interface FilterBarProps {
-    filters: DriverFilters;
-    options: DriverFilterOptions;
-    summary: DriversSummary | null;
-    onApply: (next: DriverFilters) => void;
-}
-
-function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
-    const hasActive = filters.q !== null || filters.status !== null;
-
-    return (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <SearchInput
-                value={filters.q}
-                onApply={(q) => onApply({ ...filters, q })}
-                placeholder="Buscar por nombre o código…"
-                className="mr-1"
-            />
-
-            {summary ? (
-                <SegmentedFilter
-                    aria-label="Filtrar por estado"
-                    value={filters.status}
-                    onChange={(status) => onApply({ ...filters, status })}
-                    allCount={summary.total}
-                    options={options.statuses.map((o) => ({
-                        value: o.value,
-                        label: o.label,
-                        count: summary.statuses[
-                            o.value as keyof DriversSummary['statuses']
-                        ],
-                        dot: toneDotFor(DRIVER_STATUS, o.value),
-                    }))}
-                />
-            ) : (
-                <FilterDropdown
-                    label="Estado"
-                    value={filters.status}
-                    options={options.statuses}
-                    onChange={(status) => onApply({ ...filters, status })}
-                />
-            )}
-
-            {hasActive && (
-                <ClearFiltersButton
-                    onClick={() => onApply({ q: null, status: null })}
-                />
-            )}
-        </div>
-    );
-}
-
-// ---- Main page ----
 
 const EMPTY_FILTERS: DriverFilters = { q: null, status: null };
 
@@ -215,7 +64,7 @@ export default function DriversIndex(pageProps: DriversIndexProps) {
                 refreshing={list.refreshing}
                 pulse={
                     summary && (
-                        <RosterPulse
+                        <DriversPulse
                             summary={summary}
                             status={list.filters.status}
                             onStatus={(status) =>
@@ -225,7 +74,7 @@ export default function DriversIndex(pageProps: DriversIndexProps) {
                     )
                 }
                 filters={
-                    <FilterBar
+                    <DriversFilterBar
                         filters={list.filters}
                         options={filterOptions}
                         summary={summary}
