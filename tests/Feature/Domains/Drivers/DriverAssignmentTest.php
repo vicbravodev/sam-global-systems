@@ -271,4 +271,42 @@ class DriverAssignmentTest extends TestCase
             'Should resolve the second driver for a timestamp within the second assignment period',
         );
     }
+
+    public function test_ending_the_previous_primary_assignment_never_touches_another_tenant(): void
+    {
+        [, $team, $asset, $driver] = $this->createSetup();
+        $otherTeam = User::factory()->create()->currentTeam;
+        $otherDriver = Driver::withoutGlobalScopes()->create([
+            'team_id' => $otherTeam->id,
+            'first_name' => 'Otro',
+            'last_name' => 'Conductor',
+            'full_name' => 'Otro Conductor',
+            'status' => 'active',
+            'first_seen_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        // Fila inconsistente a propósito: otro tenant con una asignación
+        // abierta sobre el mismo asset_id. Sin TenantContext (como en un job).
+        $foreign = DriverAssignment::withoutGlobalScopes()->create([
+            'team_id' => $otherTeam->id,
+            'driver_id' => $otherDriver->id,
+            'asset_id' => $asset->id,
+            'assignment_type' => AssignmentType::PrimaryDriver,
+            'started_at' => now()->subDay(),
+            'source' => AssignmentSource::Integration,
+        ]);
+
+        auth()->logout();
+
+        app(AssignDriverToAsset::class)->execute(
+            $team->id,
+            $driver->id,
+            $asset->id,
+            AssignmentType::PrimaryDriver,
+            AssignmentSource::Integration,
+        );
+
+        $this->assertNull($foreign->fresh()->ended_at);
+    }
 }

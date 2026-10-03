@@ -25,7 +25,7 @@ class AssignDriverToAsset
         $startedAt = $startedAt ?? now();
 
         if ($assignmentType === AssignmentType::PrimaryDriver) {
-            $this->endActivePrimaryAssignment($assetId);
+            $this->endActivePrimaryAssignment($teamId, $assetId);
         }
 
         $assignment = DriverAssignment::create([
@@ -50,9 +50,16 @@ class AssignDriverToAsset
         return $assignment;
     }
 
-    private function endActivePrimaryAssignment(int $assetId): void
+    /**
+     * Filtro de tenant explícito: el sync de conductores corre en jobs y no
+     * debe depender del TenantContext ambiente para no cerrar una asignación
+     * de otro tenant.
+     */
+    private function endActivePrimaryAssignment(int $teamId, int $assetId): void
     {
-        DriverAssignment::where('asset_id', $assetId)
+        DriverAssignment::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->where('asset_id', $assetId)
             ->where('assignment_type', AssignmentType::PrimaryDriver)
             ->whereNull('ended_at')
             ->update(['ended_at' => now()]);
