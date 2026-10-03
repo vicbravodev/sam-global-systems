@@ -11,7 +11,7 @@ Inertia v3 + React 19 (React Compiler activo) + TypeScript estricto + Tailwind v
 | `components/sam/*.tsx` (raíz) | Primitivas genéricas de producto (ver catálogo). Nada específico de una feature.                                                                                                                                                                  |
 | `components/ui/`              | shadcn vendorizado: no editar salvo los propios (`combobox`, `empty-state`, `page-header`, `pagination`, `sonner`, `switch`, `textarea`).                                                                                                         |
 | `hooks/`                      | Hooks transversales (`use-server-list`, `use-team-broadcasts`, `use-realtime-connection`…).                                                                                                                                                       |
-| `lib/`                        | Funciones puras: `format`, `time`, `labels`, `initials`, `submit`, `sam-fetch`, `utils` (`cn`).                                                                                                                                                   |
+| `lib/`                        | Funciones puras: `format`, `time`, `labels`, `tone`, `initials`, `submit`, `sam-fetch`, `utils` (`cn`).                                                                                                                                           |
 | `types/`                      | Tipos de dominio compartidos entre features (no importan de `components/`). `pagination.ts` = `ListPagination`.                                                                                                                                   |
 
 Archivos en kebab-case. Named exports en todo salvo páginas y layouts (`export default`). Props exportadas como `interface XxxProps`; subcomponentes privados con tipo inline.
@@ -21,7 +21,7 @@ Archivos en kebab-case. Named exports en todo salvo páginas y layouts (`export 
 - **Páginas de lista:** `ListPage` (shell: título, meta, acciones, `pulse`, `filters`, cuerpo, `footer`, `onRefresh`) + `ListEmptyState` (vacío vs. sin resultados) + `hooks/use-server-list` (filtros, `apply`, `goToPage`, `refresh`) + `list/*` (`SearchInput`, `FilterDropdown`, `ClearFiltersButton`, `ListFooter`) + `data-table/*` + `PulseStrip`.
 - **Páginas de detalle:** `DetailHeader` (volver, título, chips, meta, acciones), `Panel` (bloque con encabezado), `DescriptionList`/`DescriptionItem`, `TabBar` (con `actions`).
 - **Formularios:** Inertia `<Form>`/`useForm` con `FormField` (apilado: label, control, ayuda, error) o `Field` (dos columnas en ajustes, con `error`), `RadioCardGroup`/`RadioCard`, `Step` (secciones numeradas), `ReadOnlyNotice`, `ConfirmDialog` (descripción `ReactNode`, `processing`).
-- **Estado y datos:** `SeverityBadge`, `StatusPill`, `MetaChip`, `Meter`, `KpiStrip`, `RelativeTime`, `SlaCountdown`, `RealtimeStatus`, `UserAvatar`/`EntityAvatar` (+ `lib/initials`), `ui/spinner` (no `Loader2` suelto), `ui/skeleton`.
+- **Estado y datos:** `StatusBadge` (cualquier estado: `tone` + `label`, `dot`/`icon`, `size="sm"` compacto), `SeverityBadge` (escala de severidad), `StatusPill` (estado de incidente), `MetaChip` (metadato neutro), `Meter`, `KpiStrip`, `RelativeTime`, `SlaCountdown`, `RealtimeStatus`, `UserAvatar`/`EntityAvatar` (+ `lib/initials`), `ui/spinner` (no `Loader2` suelto), `ui/skeleton`.
 
 Si necesitas una variante, extiende la primitiva con una prop; no copies su markup en la página.
 
@@ -37,7 +37,8 @@ Si necesitas una variante, extiende la primitiva con una prop; no copies su mark
 ## Textos y formato
 
 - Copy en es-MX. Códigos del backend → etiqueta con `lib/labels.ts` (`priorityLabel`, `actionLabel`, `humanizeCode`…); si es propio de una feature, en su `copy.ts`. No declares mapas `*_LABELS` sueltos en páginas.
-- Números, moneda y fechas sólo vía `lib/format.ts` y `lib/time.ts` (nada de `toLocaleString`/`Intl` directo).
+- Estados con color: mapa `valor → { label, tone }` (`ToneLabel` de `lib/tone.ts`; en `lib/labels.ts` si lo usan varias features, como `ASSET_STATUS`/`DRIVER_STATUS`, si no en el `copy.ts` de la feature) pintado con `<StatusBadge {...MAPA[valor]} />`. Para puntos, texto, superficies o mapas usa `TONE_DOT`/`TONE_TEXT`/`TONE_SURFACE`/`TONE_VAR`; severidad con `SEVERITY_DOT`/`SEVERITY_TEXT`/`SEVERITY_BORDER` de `event-severity.ts`. Nunca clases `bg-severity-*`/`text-health-*` sueltas para un estado ni un tipo `XxxTone` nuevo.
+- Números, moneda y fechas sólo vía `lib/format.ts` (`formatNumber`, `formatPercent`, `formatCurrency`, `formatDate`, `formatDateTime`, `formatShortDate`, `formatMonthYear`, `formatDateWith`) y `lib/time.ts` (`relativeLabel`/`ageLabel` con estilo `short` "hace 3 min" o `long` "hace 3 minutos", `durationLabel`, `formatClock`, `dayLabel`). Nada de `toLocaleString`/`Intl` directo ni un "hace N…" propio.
 
 ## Estilo
 
