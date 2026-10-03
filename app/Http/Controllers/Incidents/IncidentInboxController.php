@@ -101,9 +101,12 @@ class IncidentInboxController extends Controller
                 ->map(fn (Incident $incident) => $this->presenter->toRow($incident, $users))
                 ->all(),
             'filters' => $filters,
-            'filterOptions' => fn () => $this->filterOptions($current_team),
-            'members' => fn () => $this->members($current_team),
-            'reclassifyOptions' => fn () => $this->reclassifyOptions(),
+            // Catalogs for the filter dropdowns and the detail panel's
+            // assign/reclassify menus: not needed to paint the rows, so they
+            // arrive in one deferred request right after.
+            'filterOptions' => Inertia::defer(fn () => $this->filterOptions($current_team), 'meta'),
+            'members' => Inertia::defer(fn () => $this->members($current_team), 'meta'),
+            'reclassifyOptions' => Inertia::defer(fn () => $this->reclassifyOptions(), 'meta'),
             'can' => $this->abilities($user, $current_team),
         ]);
     }

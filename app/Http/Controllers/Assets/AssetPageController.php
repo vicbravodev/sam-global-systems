@@ -170,8 +170,11 @@ class AssetPageController extends Controller
             ],
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
-            'summary' => fn () => $this->summary($current_team),
-            'monitoring' => fn () => $this->monitoring($current_team, $resolveAssetLimit),
+            // Fleet pulse + monitoring quota: several EXISTS over the snapshot
+            // tables, not needed to paint the list. Deferred in one group;
+            // partial reloads that name them still resolve them.
+            'summary' => Inertia::defer(fn () => $this->summary($current_team), 'pulse'),
+            'monitoring' => Inertia::defer(fn () => $this->monitoring($current_team, $resolveAssetLimit), 'pulse'),
         ]);
     }
 

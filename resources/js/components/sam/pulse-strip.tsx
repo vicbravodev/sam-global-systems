@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { Skeleton } from '@/components/ui/skeleton';
 import { TONE_DOT, TONE_TEXT } from '@/lib/tone';
 import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
@@ -12,7 +13,7 @@ function valueTone(tone: Tone): string {
 
 export interface PulseStatProps {
     label: string;
-    value: number | string;
+    value: ReactNode;
     /** Secondary line under the value (e.g. "de 42"). */
     hint?: ReactNode;
     tone?: Tone;
@@ -125,5 +126,36 @@ export function PulseStrip({ children, className }: PulseStripProps) {
                 {children}
             </div>
         </div>
+    );
+}
+
+export interface PulseStripSkeletonProps {
+    /** Labels of the tiles that will load, so the strip keeps its layout. */
+    labels: readonly string[];
+    className?: string;
+}
+
+/**
+ * Placeholder for a deferred pulse strip: the same tiles and labels, with
+ * pulsing bars where the value and the hint go, so the list below does not
+ * jump when the figures arrive.
+ */
+export function PulseStripSkeleton({
+    labels,
+    className,
+}: PulseStripSkeletonProps) {
+    return (
+        <PulseStrip className={className}>
+            {labels.map((label) => (
+                <PulseStat
+                    key={label}
+                    label={label}
+                    value={
+                        <Skeleton className="inline-block h-5 w-10 align-middle" />
+                    }
+                    hint={<Skeleton className="inline-block h-3 w-20" />}
+                />
+            ))}
+        </PulseStrip>
     );
 }

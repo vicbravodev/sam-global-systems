@@ -60,7 +60,8 @@ class DashboardTest extends TestCase
 
         $response->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
             ->component('dashboard')
-            ->has('usage', 0));
+            ->missing('usage')
+            ->loadDeferredProps('panels', fn (AssertableInertia $reload) => $reload->has('usage', 0)));
     }
 
     public function test_dashboard_renders_all_real_data_props(): void
@@ -89,15 +90,21 @@ class DashboardTest extends TestCase
 
         $response->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
             ->component('dashboard')
-            ->has('kpis', fn (AssertableInertia $kpis) => $kpis
-                ->has('openIncidents', fn (AssertableInertia $kpi) => $kpi
-                    ->where('value', 1)
-                    ->has('series', 7)
-                    ->etc()
+            // Aggregates are deferred: not in the first response.
+            ->missing('kpis')
+            ->missing('integrations')
+            ->missing('usage')
+            ->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
+                ->has('kpis', fn (AssertableInertia $kpis) => $kpis
+                    ->has('openIncidents', fn (AssertableInertia $kpi) => $kpi
+                        ->where('value', 1)
+                        ->has('series', 7)
+                        ->etc()
+                    )
+                    ->has('criticalOpen')
+                    ->has('slaCompliance')
+                    ->has('aiPrecision')
                 )
-                ->has('criticalOpen')
-                ->has('slaCompliance')
-                ->has('aiPrecision')
             )
             ->has('incidents', 1, fn (AssertableInertia $incident) => $incident
                 ->has('incidentId')
@@ -115,17 +122,19 @@ class DashboardTest extends TestCase
                 ->has('decision')
                 ->etc()
             )
-            ->has('integrations', 1, fn (AssertableInertia $integration) => $integration
-                ->where('health', 'ok')
-                ->where('events24h', 0)
-                ->has('name')
-                ->etc()
-            )
-            ->has('usage', 1, fn (AssertableInertia $counter) => $counter
-                ->where('consumed', 10)
-                ->where('included', 100)
-                ->where('percentUsed', 10)
-                ->etc()
+            ->loadDeferredProps('panels', fn (AssertableInertia $reload) => $reload
+                ->has('integrations', 1, fn (AssertableInertia $integration) => $integration
+                    ->where('health', 'ok')
+                    ->where('events24h', 0)
+                    ->has('name')
+                    ->etc()
+                )
+                ->has('usage', 1, fn (AssertableInertia $counter) => $counter
+                    ->where('consumed', 10)
+                    ->where('included', 100)
+                    ->where('percentUsed', 10)
+                    ->etc()
+                )
             )
         );
     }
@@ -156,10 +165,10 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
             ->where('kpis.openIncidents.value', 2)
             ->where('kpis.criticalOpen.value', 1)
-        );
+        ));
     }
 
     public function test_open_incident_sparklines_track_the_open_backlog_per_day(): void
@@ -202,13 +211,13 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
             ->where('kpis.openIncidents.value', 2)
             ->where('kpis.openIncidents.series', [1, 2, 2, 2, 1, 1, 2])
             ->where('kpis.openIncidents.deltaPct', 100)
             ->where('kpis.criticalOpen.value', 0)
             ->where('kpis.criticalOpen.series', [0, 1, 1, 1, 0, 0, 0])
-        );
+        ));
     }
 
     public function test_sla_compliance_is_percentage_of_incidents_resolved_within_sla(): void
@@ -232,9 +241,9 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
             ->where('kpis.slaCompliance.value', 50)
-        );
+        ));
     }
 
     public function test_sla_compliance_is_null_without_resolved_incidents(): void
@@ -246,9 +255,9 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
             ->where('kpis.slaCompliance.value', null)
-        );
+        ));
     }
 
     public function test_ai_precision_derives_from_decisions_and_overrides(): void
@@ -273,9 +282,9 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('kpis', fn (AssertableInertia $reload) => $reload
             ->where('kpis.aiPrecision.value', 75)
-        );
+        ));
     }
 
     public function test_open_incidents_panel_limits_to_five_and_excludes_terminal(): void
@@ -434,11 +443,11 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('panels', fn (AssertableInertia $reload) => $reload
             ->has('integrations', 1)
             ->where('integrations.0.events24h', 2)
             ->where('integrations.0.health', 'ok')
-        );
+        ));
     }
 
     /**
@@ -461,11 +470,11 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('panels', fn (AssertableInertia $reload) => $reload
             ->has('integrations', 1)
             ->where('integrations.0.name', '0')
             ->where('integrations.0.provider', 'Samsara')
-        );
+        ));
     }
 
     public function test_usage_only_includes_counters_of_current_period(): void
@@ -494,12 +503,12 @@ class DashboardTest extends TestCase
             ->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
-        $response->assertInertia(fn (AssertableInertia $page) => $page
+        $response->assertInertia(fn (AssertableInertia $page) => $page->loadDeferredProps('panels', fn (AssertableInertia $reload) => $reload
             ->has('usage', 1)
             ->where('usage.0.consumed', 120)
             ->where('usage.0.overage', 20)
             ->where('usage.0.percentUsed', 120)
-        );
+        ));
     }
 
     private function eventFor(TenantIntegration $integration, \DateTimeInterface $occurredAt): NormalizedEvent
@@ -546,11 +555,13 @@ class DashboardTest extends TestCase
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
         $response->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('kpis.openIncidents.value', 0)
             ->has('incidents', 0)
             ->has('stream', 0)
-            ->has('integrations', 0)
-            ->has('usage', 0)
+            ->loadDeferredProps(fn (AssertableInertia $reload) => $reload
+                ->where('kpis.openIncidents.value', 0)
+                ->has('integrations', 0)
+                ->has('usage', 0)
+            )
         );
     }
 }

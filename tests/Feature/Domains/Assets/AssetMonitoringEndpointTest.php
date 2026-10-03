@@ -55,9 +55,10 @@ class AssetMonitoringEndpointTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('assets/index')
                 ->where('assets.0.monitoringState', 'monitored')
-                ->where('monitoring.monitored', 1)
-                ->where('monitoring.pending', 0)
-                ->has('filterOptions.monitoring', 3));
+                ->has('filterOptions.monitoring', 3)
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload
+                    ->where('monitoring.monitored', 1)
+                    ->where('monitoring.pending', 0)));
     }
 
     public function test_bulk_switches_only_the_units_of_the_current_team(): void
@@ -165,8 +166,9 @@ class AssetMonitoringEndpointTest extends TestCase
                 ->has('assets', 1)
                 ->where('assets.0.name', 'Pendiente')
                 ->where('filters.monitoring', 'pending')
-                ->where('monitoring.pending', 1)
-                ->where('monitoring.monitored', 1));
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload
+                    ->where('monitoring.pending', 1)
+                    ->where('monitoring.monitored', 1)));
     }
 
     public function test_switching_on_requires_an_admin_with_verified_phone_and_email(): void

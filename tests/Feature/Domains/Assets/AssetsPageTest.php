@@ -475,16 +475,17 @@ class AssetsPageTest extends TestCase
         $response->assertInertia(
             fn (Assert $page) => $page
                 ->has('assets', 1)
-                ->where('summary.total', 4)
-                ->where('summary.statuses.active', 2)
-                ->where('summary.statuses.alert', 1)
-                ->where('summary.statuses.maintenance', 1)
-                ->where('summary.reporting', 2)
-                ->where('summary.moving', 1)
-                ->where('summary.silent', 2)
-                ->where('summary.alerting', 1)
-                ->where('summary.maintenance', 1)
-                ->where('summary.withCamera', 1),
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload
+                    ->where('summary.total', 4)
+                    ->where('summary.statuses.active', 2)
+                    ->where('summary.statuses.alert', 1)
+                    ->where('summary.statuses.maintenance', 1)
+                    ->where('summary.reporting', 2)
+                    ->where('summary.moving', 1)
+                    ->where('summary.silent', 2)
+                    ->where('summary.alerting', 1)
+                    ->where('summary.maintenance', 1)
+                    ->where('summary.withCamera', 1)),
         );
     }
 }

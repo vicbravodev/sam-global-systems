@@ -481,7 +481,12 @@ async function postIncidentAction(
 interface IncidentsIndexProps {
     incidents: MockIncident[];
     filters: InboxFilters;
-    filterOptions: InboxFilterOptions;
+    /**
+     * Deferred (with `members` and `reclassifyOptions`, read by the detail
+     * panel): until it lands the filter triggers render as usual over empty
+     * menus, so no skeleton is needed.
+     */
+    filterOptions?: InboxFilterOptions;
     can?: IncidentAbilities;
 }
 

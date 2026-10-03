@@ -1,5 +1,5 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
     Eye,
@@ -23,7 +23,11 @@ import {
     SearchInput,
 } from '@/components/sam/list';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
-import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import {
+    PulseStat,
+    PulseStrip,
+    PulseStripSkeleton,
+} from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { Button } from '@/components/ui/button';
 import { useServerList } from '@/hooks/use-server-list';
@@ -170,6 +174,19 @@ function PendingBanner({
 }
 
 // ---- Pulse strip ----
+
+// Tiles of `FleetPulse`, for its skeleton while the deferred figures load.
+const PULSE_LABELS = [
+    'Flota',
+    'Vigiladas',
+    'Sin vigilar',
+    'Reportando',
+    'En ruta',
+    'Sin señal',
+    'Alerta o crítico',
+    'Mantenimiento',
+    'Con cámara',
+] as const;
 
 function FleetPulse({
     summary,
@@ -607,20 +624,27 @@ export default function AssetsIndex(pageProps: AssetsIndexProps) {
                                 onMonitorAll={monitorAllPending}
                             />
                         )}
-                        {summary && (
-                            <FleetPulse
-                                summary={summary}
-                                monitoring={monitoring}
-                                status={list.filters.status}
-                                monitoringFilter={list.filters.monitoring}
-                                onStatus={(status) =>
-                                    list.setFilter('status', status)
-                                }
-                                onMonitoring={(value) =>
-                                    list.setFilter('monitoring', value)
-                                }
-                            />
-                        )}
+                        <Deferred
+                            data={['summary', 'monitoring']}
+                            fallback={
+                                <PulseStripSkeleton labels={PULSE_LABELS} />
+                            }
+                        >
+                            {summary && (
+                                <FleetPulse
+                                    summary={summary}
+                                    monitoring={monitoring}
+                                    status={list.filters.status}
+                                    monitoringFilter={list.filters.monitoring}
+                                    onStatus={(status) =>
+                                        list.setFilter('status', status)
+                                    }
+                                    onMonitoring={(value) =>
+                                        list.setFilter('monitoring', value)
+                                    }
+                                />
+                            )}
+                        </Deferred>
                     </>
                 }
                 filters={

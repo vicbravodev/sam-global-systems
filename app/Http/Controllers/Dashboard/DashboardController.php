@@ -53,17 +53,21 @@ class DashboardController extends Controller
         $canViewBilling = (bool) $request->user()?->can('viewAny', Subscription::class);
 
         return Inertia::render('dashboard', [
+            // Deferred: the first paint is the open-incident list and the live
+            // stream; the aggregates arrive right after in their own requests
+            // (one per group, in parallel). Partial reloads that name these
+            // keys (`only: ['kpis']`) still resolve them.
             // Two-week aggregates, reloaded by every open dashboard on live
             // events: shared per tenant for a few seconds.
-            'kpis' => fn () => Cache::remember(
+            'kpis' => Inertia::defer(fn () => Cache::remember(
                 "dashboard:kpis:{$current_team->id}",
                 self::KPI_CACHE_SECONDS,
                 fn () => $this->kpis($current_team),
-            ),
+            ), 'kpis'),
             'incidents' => fn () => $this->openIncidents($current_team),
             'stream' => fn () => $this->stream($current_team),
-            'integrations' => fn () => $this->integrations($current_team),
-            'usage' => fn () => $this->usage($current_team, $canViewBilling),
+            'integrations' => Inertia::defer(fn () => $this->integrations($current_team), 'panels'),
+            'usage' => Inertia::defer(fn () => $this->usage($current_team, $canViewBilling), 'panels'),
         ]);
     }
 

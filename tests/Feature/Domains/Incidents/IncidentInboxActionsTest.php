@@ -410,10 +410,12 @@ class IncidentInboxActionsTest extends TestCase
                 ->component('incidents/index')
                 ->has('incidents', 1)
                 ->where('filters.severity', 'critical')
-                ->has('filterOptions.severities')
-                ->has('filterOptions.statuses')
-                ->has('members')
-                ->has('reclassifyOptions.types'),
+                ->missing('filterOptions')
+                ->loadDeferredProps('meta', fn (Assert $reload) => $reload
+                    ->has('filterOptions.severities')
+                    ->has('filterOptions.statuses')
+                    ->has('members')
+                    ->has('reclassifyOptions.types')),
         );
     }
 }

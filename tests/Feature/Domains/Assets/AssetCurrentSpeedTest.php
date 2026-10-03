@@ -39,8 +39,9 @@ class AssetCurrentSpeedTest extends TestCase
                 ->where('assets.0.currentSpeed.kph', 83)
                 ->where('assets.0.currentSpeed.stale', true)
                 ->where('assets.0.currentSpeed.source', 'location')
-                ->where('summary.moving', 0)
-                ->where('summary.reporting', 0),
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload
+                    ->where('summary.moving', 0)
+                    ->where('summary.reporting', 0)),
         );
     }
 
@@ -66,7 +67,7 @@ class AssetCurrentSpeedTest extends TestCase
                 ->where('assets.0.currentSpeed.kph', 75.6)
                 ->where('assets.0.currentSpeed.source', 'telemetry')
                 ->where('assets.0.currentSpeed.stale', false)
-                ->where('summary.moving', 1),
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload->where('summary.moving', 1)),
         );
     }
 
@@ -131,7 +132,7 @@ class AssetCurrentSpeedTest extends TestCase
             fn (Assert $page) => $page
                 ->has('assets', 1)
                 ->where('assets.0.id', $own->id)
-                ->where('summary.moving', 0),
+                ->loadDeferredProps('pulse', fn (Assert $reload) => $reload->where('summary.moving', 0)),
         );
     }
 
