@@ -1,11 +1,11 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import PhoneVerificationController from '@/actions/App/Http/Controllers/Settings/PhoneVerificationController';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/delete-user';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Field, FormCard } from '@/components/sam/field';
+import { PhoneVerification } from '@/components/sam/settings/phone-verification';
 import {
     FormActions,
     SettingsPage,
@@ -188,104 +188,6 @@ export default function Profile({
                 </div>
             </SettingsPage>
         </>
-    );
-}
-
-function PhoneVerification({
-    phone,
-    verified,
-    status,
-}: {
-    phone: string;
-    verified: boolean;
-    status?: string;
-}) {
-    if (verified) {
-        return (
-            <SettingsSection
-                title="Teléfono verificado"
-                description={`${phone} recibe las llamadas, SMS y WhatsApp de emergencia.`}
-            >
-                {null}
-            </SettingsSection>
-        );
-    }
-
-    const codeSent = status === 'phone-otp-sent';
-
-    return (
-        <SettingsSection
-            title="Verifica tu teléfono"
-            description={`Te enviamos un código por SMS a ${phone}.`}
-        >
-            <FormCard>
-                <Form
-                    {...PhoneVerificationController.send.form()}
-                    options={{ preserveScroll: true }}
-                >
-                    {({ processing, errors }) => (
-                        <div className="grid gap-2">
-                            <div>
-                                <Button
-                                    type="submit"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={processing}
-                                    data-test="send-phone-code-button"
-                                >
-                                    {codeSent
-                                        ? 'Reenviar código'
-                                        : 'Enviar código'}
-                                </Button>
-                            </div>
-                            <InputError message={errors.phone} />
-                            {codeSent && (
-                                <p className="text-xs font-medium text-health-ok">
-                                    Código enviado. Revisa tus SMS.
-                                </p>
-                            )}
-                        </div>
-                    )}
-                </Form>
-
-                {codeSent && (
-                    <Form
-                        {...PhoneVerificationController.verify.form()}
-                        options={{ preserveScroll: true }}
-                    >
-                        {({ processing, errors }) => (
-                            <>
-                                <Field
-                                    label="Código de 6 dígitos"
-                                    htmlFor="code"
-                                >
-                                    <Input
-                                        id="code"
-                                        name="code"
-                                        inputMode="numeric"
-                                        autoComplete="one-time-code"
-                                        maxLength={6}
-                                        required
-                                        className="w-40"
-                                        placeholder="123456"
-                                    />
-                                    <InputError message={errors.code} />
-                                </Field>
-                                <FormActions>
-                                    <Button
-                                        size="sm"
-                                        disabled={processing}
-                                        data-test="verify-phone-button"
-                                    >
-                                        Verificar
-                                    </Button>
-                                </FormActions>
-                            </>
-                        )}
-                    </Form>
-                )}
-            </FormCard>
-        </SettingsSection>
     );
 }
 
