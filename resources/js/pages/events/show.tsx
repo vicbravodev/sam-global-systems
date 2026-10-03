@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { DecisionCard } from '@/components/sam/events/detail/decision-card';
 import { EvaluationCard } from '@/components/sam/events/detail/evaluation-card';
@@ -7,12 +8,17 @@ import { IncidentCard } from '@/components/sam/events/detail/incident-card';
 import { JsonBlock } from '@/components/sam/events/detail/json-block';
 import { MediaCard } from '@/components/sam/events/detail/media-card';
 import { PipelineStepper } from '@/components/sam/events/detail/pipeline-stepper';
+import eventRoutes from '@/routes/events';
 import type { EventShowProps } from '@/types/events';
 
-export default function EventShow() {
+export default function EventShow({
+    event,
+    evaluation,
+    decision,
+    incident,
+    media,
+}: EventShowProps) {
     const page = usePage();
-    const { event, evaluation, decision, incident, media } =
-        page.props as unknown as EventShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     const unmapped = event.status === 'unmapped';
@@ -66,16 +72,13 @@ export default function EventShow() {
     );
 }
 
-EventShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    event?: { id: number; eventType?: string | null } | null;
-}) => ({
+EventShow.layout = (props: SharedPageProps & Partial<EventShowProps>) => ({
     breadcrumbs: [
         {
             title: 'Eventos',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/events`
-                : '/events',
+                ? eventRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.event
             ? [
@@ -83,7 +86,10 @@ EventShow.layout = (props: {
                       title: props.event.eventType ?? `#${props.event.id}`,
                       href:
                           props.currentTeam && props.event
-                              ? `/${props.currentTeam.slug}/events/${props.event.id}`
+                              ? eventRoutes.show.url([
+                                    props.currentTeam.slug,
+                                    props.event.id,
+                                ])
                               : '#',
                   },
               ]

@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
 import { minutesSince } from '@/lib/time';
+import assetRoutes from '@/routes/assets';
+import driverRoutes from '@/routes/drivers';
+import eventRoutes from '@/routes/events';
 
 export interface RecentEventEntry {
     id: number;
@@ -46,7 +49,7 @@ export function RecentEventsCard({
                 </CardTitle>
                 {teamSlug && events.length > 0 && (
                     <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/${teamSlug}/events`}>
+                        <Link href={eventRoutes.index(teamSlug)}>
                             Todos los eventos
                             <ChevronRight />
                         </Link>
@@ -67,8 +70,14 @@ export function RecentEventsCard({
                             const counterpartHref =
                                 teamSlug && counterpart
                                     ? event.asset
-                                        ? `/${teamSlug}/assets/${event.asset.id}`
-                                        : `/${teamSlug}/drivers/${event.driver!.id}`
+                                        ? assetRoutes.show.url([
+                                              teamSlug,
+                                              event.asset.id,
+                                          ])
+                                        : driverRoutes.show.url([
+                                              teamSlug,
+                                              event.driver!.id,
+                                          ])
                                     : null;
 
                             return (
@@ -83,7 +92,10 @@ export function RecentEventsCard({
                                         <Link
                                             href={
                                                 teamSlug
-                                                    ? `/${teamSlug}/events/${event.id}`
+                                                    ? eventRoutes.show([
+                                                          teamSlug,
+                                                          event.id,
+                                                      ])
                                                     : '#'
                                             }
                                             className="truncate text-sm text-fg-1 hover:text-primary hover:underline"

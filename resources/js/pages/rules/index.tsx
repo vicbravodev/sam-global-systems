@@ -1,4 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
+import type { SharedPageProps } from '@inertiajs/core';
+import { Head } from '@inertiajs/react';
 import {
     BellOff,
     CircleAlert,
@@ -19,6 +20,7 @@ import type {
 import { TabBar } from '@/components/sam/tab-bar';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import rulesRoutes from '@/routes/rules';
 
 // La pestaña de ajustes por cuenta (TenantRuleOverride) sigue fuera de la
 // navegación: se guardan pero nada los aplica al evaluar (ver
@@ -91,8 +93,7 @@ function DecisionPulse({
     );
 }
 
-export default function RulesIndex() {
-    const props = usePage().props as unknown as RulesPageProps;
+export default function RulesIndex(props: RulesPageProps) {
     const [tab, setTab] = useState<TabKey>('decision');
     const [filter, setFilter] = useState<DecisionFilter | null>(null);
     const [creatingDecision, setCreatingDecision] = useState(false);
@@ -197,13 +198,13 @@ export default function RulesIndex() {
     );
 }
 
-RulesIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+RulesIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Reglas',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/rules`
-                : '/rules',
+                ? rulesRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

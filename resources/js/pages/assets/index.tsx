@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
@@ -28,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import assetRoutes from '@/routes/assets';
 import type {
     AssetFilterOptions,
     AssetFilters,
@@ -36,10 +38,7 @@ import type {
     AssetsSummary,
     MonitoringSummary,
 } from '@/types/assets';
-import type {
-    FleetPosition,
-    FleetPositionsUpdatedPayload,
-} from '@/types/realtime';
+import type { FleetPosition } from '@/types/realtime';
 
 // Props each broadcast refreshes (debounced below). Feed positions
 // (`fleet.positions_updated`) are applied to the rows in memory instead. A
@@ -392,9 +391,8 @@ const EMPTY_OPTIONS: AssetFilterOptions = {
     monitoring: [],
 };
 
-export default function AssetsIndex() {
+export default function AssetsIndex(pageProps: AssetsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as AssetsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const [livePositions, setLivePositions] = useState<
         Map<number, FleetPosition>
@@ -428,7 +426,7 @@ export default function AssetsIndex() {
             data: { monitoring: 'pending', page: undefined },
             onSuccess: (page) => {
                 const pending = (
-                    (page.props as unknown as AssetsIndexProps).assets ?? []
+                    (page.props.assets as AssetsIndexProps['assets']) ?? []
                 ).map((asset) => asset.id);
 
                 if (pending.length === 0) {
@@ -438,7 +436,7 @@ export default function AssetsIndex() {
                 }
 
                 router.put(
-                    `/${teamSlug}/assets/monitoring`,
+                    assetRoutes.monitoring.bulk.url(teamSlug),
                     { state: 'monitored', asset_ids: pending },
                     {
                         preserveScroll: true,
@@ -508,8 +506,7 @@ export default function AssetsIndex() {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
             if (detail?.event === 'fleet.positions_updated') {
-                const { positions } =
-                    detail.payload as unknown as FleetPositionsUpdatedPayload;
+                const { positions } = detail.payload;
 
                 setLivePositions((prev) => {
                     const next = new Map(prev);
@@ -567,7 +564,7 @@ export default function AssetsIndex() {
 
     const handleSelect = (id: number) => {
         if (teamSlug !== null) {
-            router.visit(`/${teamSlug}/assets/${id}`);
+            router.visit(assetRoutes.show([teamSlug, id]));
         }
     };
 
@@ -595,7 +592,7 @@ export default function AssetsIndex() {
                 actions={
                     teamSlug && (
                         <Button variant="outline" size="sm" asChild>
-                            <Link href={`/${teamSlug}/assets/map`}>
+                            <Link href={assetRoutes.map(teamSlug)}>
                                 <MapIcon size={13} />
                                 Mapa en vivo
                             </Link>
@@ -669,13 +666,13 @@ export default function AssetsIndex() {
     );
 }
 
-AssetsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AssetsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Flota',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets`
-                : '/assets',
+                ? assetRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

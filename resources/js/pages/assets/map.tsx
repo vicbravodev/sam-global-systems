@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowUpRight, RefreshCw, Search, User, X } from 'lucide-react';
 import {
@@ -25,6 +26,7 @@ import { useTeamBroadcast } from '@/hooks/use-team-broadcasts';
 import { formatDateTime } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
 import type {
     AssetMarker,
     AssetsMapProps,
@@ -167,7 +169,7 @@ function UnitCallout({
                 </span>
                 {teamSlug && (
                     <Button size="sm" asChild>
-                        <Link href={`/${teamSlug}/assets/${asset.id}`}>
+                        <Link href={assetRoutes.show([teamSlug, asset.id])}>
                             Ver unidad
                             <ArrowUpRight className="size-3.5" />
                         </Link>
@@ -178,9 +180,8 @@ function UnitCallout({
     );
 }
 
-export default function AssetsMap() {
+export default function AssetsMap(pageProps: AssetsMapProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as AssetsMapProps;
     const serverMarkers = useMemo(
         () => pageProps.assets ?? [],
         [pageProps.assets],
@@ -679,13 +680,13 @@ export default function AssetsMap() {
     );
 }
 
-AssetsMap.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AssetsMap.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Mapa en vivo',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets/map`
-                : '/assets/map',
+                ? assetRoutes.map.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

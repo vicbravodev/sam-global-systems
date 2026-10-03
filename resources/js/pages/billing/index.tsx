@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { AlertTriangle, Eye, Mail, MoreHorizontal, Users } from 'lucide-react';
 import { CapMeter } from '@/components/sam/billing/cap-meter';
@@ -16,6 +17,9 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/ui/page-header';
+import assetRoutes from '@/routes/assets';
+import billingRoutes from '@/routes/billing';
+import { edit as editTeam } from '@/routes/teams';
 
 /** Estado del servicio en palabras del cliente (el plan no se muestra:
  *  los planes sólo son plantillas de topes, el cobro es por tracto-día). */
@@ -27,19 +31,18 @@ const SERVICE_STATE: Record<string, { tone: BillingTone; label: string }> = {
     expired: { tone: 'neutral', label: 'Servicio vencido' },
 };
 
-export default function BillingIndex() {
+export default function BillingIndex({
+    supportEmail,
+    transfer,
+    subscription,
+    features,
+    usage,
+    invoices,
+    terms,
+    estimate,
+    fleet,
+}: BillingPageProps) {
     const page = usePage();
-    const {
-        supportEmail,
-        transfer,
-        subscription,
-        features,
-        usage,
-        invoices,
-        terms,
-        estimate,
-        fleet,
-    } = page.props as unknown as BillingPageProps;
     const currentTeam = page.props.currentTeam;
     const teamSlug = currentTeam?.slug ?? null;
 
@@ -78,7 +81,7 @@ export default function BillingIndex() {
                         <>
                             {teamSlug && (
                                 <Button size="sm" asChild>
-                                    <Link href={`/${teamSlug}/assets`}>
+                                    <Link href={assetRoutes.index(teamSlug)}>
                                         <Eye size={13} />
                                         Elegir qué unidades vigilar
                                     </Link>
@@ -107,7 +110,9 @@ export default function BillingIndex() {
                                     {currentTeam && (
                                         <DropdownMenuItem asChild>
                                             <Link
-                                                href={`/settings/teams/${currentTeam.id}`}
+                                                href={editTeam(
+                                                    currentTeam.slug,
+                                                )}
                                             >
                                                 <Users size={13} /> Administrar
                                                 mi equipo
@@ -185,13 +190,13 @@ export default function BillingIndex() {
     );
 }
 
-BillingIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+BillingIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Facturación',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/billing`
-                : '/billing',
+                ? billingRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

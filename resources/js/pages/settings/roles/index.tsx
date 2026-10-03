@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -13,6 +14,7 @@ import {
     SettingsSection,
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
+import roleRoutes from '@/routes/access/roles';
 import type { RoleRow, TeamMemberRow } from '@/types/sam';
 
 interface RolesIndexProps {
@@ -21,9 +23,8 @@ interface RolesIndexProps {
     members: TeamMemberRow[];
 }
 
-export default function RolesIndex() {
+export default function RolesIndex(pageProps: RolesIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as RolesIndexProps;
     const roles = useMemo(
         () => (pageProps.roles ?? []).map(humanizeRole),
         [pageProps.roles],
@@ -125,13 +126,13 @@ export default function RolesIndex() {
     );
 }
 
-RolesIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+RolesIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Equipo y roles',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/roles`
-                : '/settings/roles',
+                ? roleRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

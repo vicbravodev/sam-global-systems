@@ -17,7 +17,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard, home } from '@/routes';
 import { index as adminAuditIndex } from '@/routes/admin/audit';
 import { index as adminChannelsIndex } from '@/routes/admin/channels';
 import { index as adminOperatorsIndex } from '@/routes/admin/operators';
@@ -112,7 +112,9 @@ export function AdminSidebar({
     const currentUrl = page.url;
     const badges = page.props.adminBadges;
     const currentTeam = page.props.currentTeam;
-    const backToAppHref = currentTeam ? dashboard(currentTeam.slug).url : '/';
+    const backToAppHref = currentTeam
+        ? dashboard(currentTeam.slug).url
+        : home.url();
 
     const navGroups: NavGroup[] = [
         {

@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -19,6 +20,7 @@ import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { useServerList } from '@/hooks/use-server-list';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { cn } from '@/lib/utils';
+import notificationRoutes from '@/routes/notifications';
 import type {
     NotificationFilterOptions,
     NotificationFilters,
@@ -171,13 +173,12 @@ const EMPTY_OPTIONS: NotificationFilterOptions = {
     priorities: [],
 };
 
-export default function NotificationsIndex() {
+export default function NotificationsIndex(pageProps: NotificationsIndexProps) {
     // A notification addressed to me landed: refresh the list and counters.
     useBroadcastReload({
         'notification.pushed': ['notifications', 'pagination', 'summary'],
     });
     const page = usePage();
-    const pageProps = page.props as unknown as NotificationsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const notifications = pageProps.notifications ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -194,7 +195,7 @@ export default function NotificationsIndex() {
     const markRead = (id: number) => {
         if (teamSlug !== null) {
             router.post(
-                `/${teamSlug}/notifications/${id}/read`,
+                notificationRoutes.read.url([teamSlug, id]),
                 {},
                 {
                     preserveScroll: true,
@@ -277,15 +278,13 @@ export default function NotificationsIndex() {
     );
 }
 
-NotificationsIndex.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+NotificationsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Notificaciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/notifications`
-                : '/notifications',
+                ? notificationRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

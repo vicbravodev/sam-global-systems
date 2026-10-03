@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { Plus, Scale, X } from 'lucide-react';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
@@ -5,8 +6,10 @@ import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import rulesRoutes from '@/routes/rules';
 import { DecisionRuleCard } from './decision-rule-card';
-import { outcomeGroup, submitRuleChange, useRulesBase } from './lib';
+import { outcomeGroup, RULE_SUBMIT } from './lib';
 import { RuleTestDialog } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
 
@@ -132,7 +135,7 @@ export function DecisionRulesTab({
     creating,
     onCreatingChange,
 }: DecisionRulesTabProps) {
-    const base = useRulesBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [openRuleId, setOpenRuleId] = useState<number | null>(null);
     const [testRule, setTestRule] = useState<DecisionRuleRow | null>(null);
     const [deleteRule, setDeleteRule] = useState<DecisionRuleRow | null>(null);
@@ -174,26 +177,32 @@ export function DecisionRulesTab({
     }
 
     const toggle = async (rule: DecisionRuleRow, active: boolean) => {
-        if (base === null || togglingId !== null) {
+        if (teamSlug === null || togglingId !== null) {
             return;
         }
 
         setTogglingId(rule.id);
-        await submitRuleChange(
-            putJson(`${base}/decision/${rule.id}`, { is_active: active }),
+        await submit(
+            putJson(rulesRoutes.decision.update.url([teamSlug, rule.id]), {
+                is_active: active,
+            }),
             active ? 'Regla encendida.' : 'Regla apagada.',
+            RULE_SUBMIT,
         );
         setTogglingId(null);
     };
 
     const remove = async () => {
-        if (base === null || deleteRule === null) {
+        if (teamSlug === null || deleteRule === null) {
             return;
         }
 
-        const result = await submitRuleChange(
-            deleteJson(`${base}/decision/${deleteRule.id}`),
+        const result = await submit(
+            deleteJson(
+                rulesRoutes.decision.destroy.url([teamSlug, deleteRule.id]),
+            ),
             'Regla eliminada.',
+            RULE_SUBMIT,
         );
 
         if (result.ok) {
@@ -297,12 +306,12 @@ export function DecisionRulesTab({
                 </Suspense>
             )}
 
-            {base !== null && (
+            {teamSlug !== null && (
                 <RuleTestDialog
                     open={testRule !== null}
                     onOpenChange={(open) => !open && setTestRule(null)}
                     title={testRule?.name ?? ''}
-                    endpoint={`${base}/test-decision`}
+                    endpoint={rulesRoutes.test.decision.url(teamSlug)}
                     payload={() => ({
                         conditions_json: testRule?.conditions ?? {},
                     })}

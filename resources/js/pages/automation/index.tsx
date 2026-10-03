@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Activity,
@@ -10,7 +11,6 @@ import {
     X,
 } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
-import { submit, useAutomationBase } from '@/components/sam/automation/api';
 import { isRunning } from '@/components/sam/automation/copy';
 import { ExecutionsList } from '@/components/sam/automation/executions-list';
 import type {
@@ -29,6 +29,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
 import { deleteJson, postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import automationRoutes from '@/routes/automation';
 
 // The editor (condition builder, step editor, comboboxes) loads on its first
 // opening.
@@ -74,13 +76,12 @@ const EMPTY_SUMMARY: NonNullable<AutomationPageProps['summary']> = {
     },
 };
 
-export default function AutomationIndex() {
+export default function AutomationIndex(props: AutomationPageProps) {
     useBroadcastReload({
         'action.executed': ['executions', 'runStats', 'summary'],
     });
 
-    const props = usePage().props as unknown as AutomationPageProps;
-    const base = useAutomationBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const workflows = props.workflows ?? [];
     const summary = props.summary ?? EMPTY_SUMMARY;
     const serverFilters: ExecutionFilters = props.executionFilters ?? {
@@ -137,7 +138,7 @@ export default function AutomationIndex() {
     };
 
     const toggle = async (workflow: WorkflowRow, next: boolean) => {
-        if (base === null || toggling !== null) {
+        if (teamSlug === null || toggling !== null) {
             return;
         }
 
@@ -145,35 +146,43 @@ export default function AutomationIndex() {
         // `status` y `is_active` van juntos: el motor sólo corre las que
         // tienen ambos en activo (un borrador encendido no hacía nada).
         await submit(
-            putJson(`${base}/workflows/${workflow.id}`, {
-                is_active: next,
-                status: next ? 'active' : 'inactive',
-            }),
+            putJson(
+                automationRoutes.workflows.update.url([teamSlug, workflow.id]),
+                {
+                    is_active: next,
+                    status: next ? 'active' : 'inactive',
+                },
+            ),
             next ? 'Automatización encendida.' : 'Automatización apagada.',
         );
         setToggling(null);
     };
 
     const runNow = (workflow: WorkflowRow) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         void submit(
-            postJson(`${base}/workflows/${workflow.id}/trigger`, {
-                source_reference_id: `manual-${Date.now()}`,
-            }),
+            postJson(
+                automationRoutes.workflows.trigger.url([teamSlug, workflow.id]),
+                {
+                    source_reference_id: `manual-${Date.now()}`,
+                },
+            ),
             'Automatización en marcha. Sigue su avance en Ejecuciones.',
         );
     };
 
     const remove = async (workflow: WorkflowRow) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         const result = await submit(
-            deleteJson(`${base}/workflows/${workflow.id}`),
+            deleteJson(
+                automationRoutes.workflows.destroy.url([teamSlug, workflow.id]),
+            ),
             'Automatización eliminada.',
         );
 
@@ -549,15 +558,13 @@ export default function AutomationIndex() {
     );
 }
 
-AutomationIndex.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+AutomationIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Automatizaciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/automation`
-                : '/automation',
+                ? automationRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

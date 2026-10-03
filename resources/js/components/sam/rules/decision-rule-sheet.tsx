@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
@@ -27,10 +28,12 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { decisionOutcomeEffectLabel } from '@/lib/labels';
+import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
+import rulesRoutes from '@/routes/rules';
 import {
-    codeFromName,
     ordinal,
     OUTCOME_HELP,
     OUTCOME_ORDER,
@@ -40,8 +43,7 @@ import {
     priorityForPlacement,
     randomSuffix,
     scopeForConditions,
-    submitRuleChange,
-    useRulesBase,
+    RULE_SUBMIT,
 } from './lib';
 import { RuleSentence } from './rule-sentence';
 import { RuleTester } from './rule-tester';
@@ -94,7 +96,7 @@ function DecisionRuleForm({
     rulesets,
     canManage,
 }: DecisionRuleSheetProps) {
-    const base = useRulesBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const isNew = rule === null;
     const editable = canManage && (isNew || !rule.isGlobal);
 
@@ -158,7 +160,7 @@ function DecisionRuleForm({
     ];
 
     const save = async () => {
-        if (base === null || saving || !editable) {
+        if (teamSlug === null || saving || !editable) {
             return;
         }
 
@@ -214,20 +216,25 @@ function DecisionRuleForm({
                 return;
             }
 
-            result = await submitRuleChange(
-                postJson(`${base}/decision`, {
+            result = await submit(
+                postJson(rulesRoutes.decision.store.url(teamSlug), {
                     ...body,
                     ruleset_id: ruleset.id,
-                    code: codeFromName(name, suffix),
+                    code: codeFromName(name, 'regla', suffix),
                     scope: scopeForConditions(conditions),
                     is_active: true,
                 }),
                 'Regla creada y encendida.',
+                RULE_SUBMIT,
             );
         } else {
-            result = await submitRuleChange(
-                putJson(`${base}/decision/${rule.id}`, body),
+            result = await submit(
+                putJson(
+                    rulesRoutes.decision.update.url([teamSlug, rule.id]),
+                    body,
+                ),
                 'Regla guardada.',
+                RULE_SUBMIT,
             );
         }
 
@@ -449,14 +456,14 @@ function DecisionRuleForm({
                     </div>
                 </Step>
 
-                {base !== null && (
+                {teamSlug !== null && (
                     <Step
                         step={5}
                         title="Pruébala"
                         help="Comprueba si la regla se habría cumplido con el último evento que evaluó SAM. No cambia nada."
                     >
                         <RuleTester
-                            endpoint={`${base}/test-decision`}
+                            endpoint={rulesRoutes.test.decision.url(teamSlug)}
                             payload={() => ({ conditions_json: conditions })}
                             fields={fields}
                             outcomeCode={outcomeCode}
@@ -471,8 +478,7 @@ function DecisionRuleForm({
                     <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                         <dt>Identificador</dt>
                         <dd className="font-mono break-all text-fg-2">
-                            {rule?.code ??
-                                codeFromName(name || 'regla', suffix)}
+                            {rule?.code ?? codeFromName(name, 'regla', suffix)}
                         </dd>
                         <dt>Prioridad numérica</dt>
                         <dd className="font-mono text-fg-2">

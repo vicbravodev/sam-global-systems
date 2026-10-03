@@ -6,6 +6,7 @@ import { StatusPill } from '@/components/sam/status-pill';
 import type { IncidentStatus } from '@/components/sam/status-pill';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
+import incidentRoutes from '@/routes/incidents';
 import type { EventIncident } from '@/types/events';
 
 function asUiStatus(value: string | undefined): IncidentStatus {
@@ -48,7 +49,7 @@ export function IncidentCard({
                     <Link
                         href={
                             teamSlug
-                                ? `/${teamSlug}/incidents/${incident.id}`
+                                ? incidentRoutes.show([teamSlug, incident.id])
                                 : '#'
                         }
                         className="flex items-center gap-3 rounded-md border border-border bg-surface-2 p-3 transition-colors hover:border-primary/40"

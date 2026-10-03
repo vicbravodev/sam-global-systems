@@ -8,6 +8,8 @@ import { DetailHeader } from '@/components/sam/detail-header';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { Button } from '@/components/ui/button';
 import { assetTypeLabel } from '@/lib/labels';
+import assetRoutes from '@/routes/assets';
+import driverRoutes from '@/routes/drivers';
 import type { AssetShowProps } from '@/types/assets';
 
 export function AssetHero({
@@ -21,7 +23,7 @@ export function AssetHero({
 
     return (
         <DetailHeader
-            backHref={teamSlug ? `/${teamSlug}/assets` : '#'}
+            backHref={teamSlug ? assetRoutes.index.url(teamSlug) : '#'}
             backLabel="Volver a la flota"
             media={
                 <EntityAvatar
@@ -84,7 +86,7 @@ export function AssetHero({
                     <div className="flex flex-wrap items-center gap-2">
                         {teamSlug && asset.lastLocation && (
                             <Button variant="outline" size="sm" asChild>
-                                <Link href={`/${teamSlug}/assets/map`}>
+                                <Link href={assetRoutes.map(teamSlug)}>
                                     <MapIcon size={13} />
                                     Ver en el mapa
                                 </Link>
@@ -93,7 +95,10 @@ export function AssetHero({
                         {teamSlug && asset.driver && (
                             <Button variant="outline" size="sm" asChild>
                                 <Link
-                                    href={`/${teamSlug}/drivers/${asset.driver.id}`}
+                                    href={driverRoutes.show([
+                                        teamSlug,
+                                        asset.driver.id,
+                                    ])}
                                 >
                                     <User size={13} />
                                     Ver conductor

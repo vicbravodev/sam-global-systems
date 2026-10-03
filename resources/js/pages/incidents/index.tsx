@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Inbox, LayoutList, Loader2, Rows3, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -26,8 +27,9 @@ import {
 import { hasActiveFilters, useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
-import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { getJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
+import incidentRoutes from '@/routes/incidents';
 import type {
     InboxDensity,
     InboxFilterOptions,
@@ -508,9 +510,8 @@ const EMPTY_OPTIONS: InboxFilterOptions = {
 
 // Coalescing window for live inbox reloads.
 const INBOX_RELOAD_DEBOUNCE_MS = 1500;
-export default function IncidentsIndex() {
+export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as IncidentsIndexProps;
     const incidents = useMemo(
         () => pageProps.incidents ?? [],
         [pageProps.incidents],
@@ -614,11 +615,10 @@ export default function IncidentsIndex() {
 
         const controller = new AbortController();
 
-        fetch(`/${teamSlug}/incidents/${selectedRow.incidentId}`, {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-            signal: controller.signal,
-        })
+        getJson(
+            incidentRoutes.show.url([teamSlug, selectedRow.incidentId]),
+            controller.signal,
+        )
             .then((res) =>
                 res.ok
                     ? (res.json() as Promise<IncidentDetail>)
@@ -763,7 +763,7 @@ export default function IncidentsIndex() {
         }
 
         const result = await postIncidentAction(
-            `/${teamSlug}/incidents/${incident.incidentId}/assign`,
+            incidentRoutes.assign.url([teamSlug, incident.incidentId]),
             { assigned_to_type: 'user', assigned_to_id: currentUserId },
         );
 
@@ -790,12 +790,12 @@ export default function IncidentsIndex() {
         const mine =
             incident.claimedBy !== null &&
             incident.claimedBy.id === currentUserId;
-        const action = mine ? 'release' : 'claim';
+        const action = mine ? incidentRoutes.release : incidentRoutes.claim;
 
         setClaimPendingId(incident.incidentId);
 
         const result = await postIncidentAction(
-            `/${teamSlug}/incidents/${incident.incidentId}/${action}`,
+            action.url([teamSlug, incident.incidentId]),
             {},
         );
 
@@ -846,7 +846,7 @@ export default function IncidentsIndex() {
     const runBulk = async (
         key: string,
         buildBody: (incident: MockIncident) => Record<string, unknown>,
-        path: string,
+        action: typeof incidentRoutes.assign,
         verb: string,
     ) => {
         if (teamSlug === null) {
@@ -866,7 +866,7 @@ export default function IncidentsIndex() {
         const results = await Promise.allSettled(
             targets.map((incident) =>
                 postJson(
-                    `/${teamSlug}/incidents/${incident.incidentId}/${path}`,
+                    action.url([teamSlug, incident.incidentId]),
                     buildBody(incident),
                 ),
             ),
@@ -901,13 +901,18 @@ export default function IncidentsIndex() {
         void runBulk(
             'assign',
             () => ({ assigned_to_type: 'user', assigned_to_id: currentUserId }),
-            'assign',
+            incidentRoutes.assign,
             'asignados',
         );
     };
 
     const bulkEscalate = () =>
-        void runBulk('escalate', () => ({}), 'escalate', 'escalados');
+        void runBulk(
+            'escalate',
+            () => ({}),
+            incidentRoutes.escalate,
+            'escalados',
+        );
 
     const bulkDiscard = () =>
         void runBulk(
@@ -916,7 +921,7 @@ export default function IncidentsIndex() {
                 resolution_code: 'false_positive',
                 summary: 'Descartado por el operador.',
             }),
-            'resolve',
+            incidentRoutes.resolve,
             'descartados',
         );
 
@@ -950,7 +955,7 @@ export default function IncidentsIndex() {
         setAssigningOldest(true);
 
         const result = await postIncidentAction(
-            `/${teamSlug}/incidents/${oldest.incidentId}/assign`,
+            incidentRoutes.assign.url([teamSlug, oldest.incidentId]),
             { assigned_to_type: 'user', assigned_to_id: currentUserId },
         );
 
@@ -1028,7 +1033,9 @@ export default function IncidentsIndex() {
                 const row = rows.find((r) => r.id === selectedId);
 
                 if (row && teamSlug !== null) {
-                    router.visit(`/${teamSlug}/incidents/${row.incidentId}`);
+                    router.visit(
+                        incidentRoutes.show([teamSlug, row.incidentId]),
+                    );
                 }
             }
         };
@@ -1195,7 +1202,10 @@ export default function IncidentsIndex() {
                                 onMutated={handlePanelMutated}
                                 detailHref={
                                     teamSlug
-                                        ? `/${teamSlug}/incidents/${selectedDetail.incidentId}`
+                                        ? incidentRoutes.show.url([
+                                              teamSlug,
+                                              selectedDetail.incidentId,
+                                          ])
                                         : undefined
                                 }
                             />
@@ -1212,13 +1222,13 @@ export default function IncidentsIndex() {
     );
 }
 
-IncidentsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+IncidentsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Incidentes',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/incidents`
-                : '/incidents',
+                ? incidentRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

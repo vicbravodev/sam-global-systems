@@ -1,62 +1,11 @@
-import { router, usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
-import { readErrorPayload } from '@/lib/sam-fetch';
+import type { SubmitOptions } from '@/lib/submit';
 
-/** URL base de los endpoints de configuración del equipo activo. */
-export function useTeamBase(): string | null {
-    const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
-
-    return slug ? `/${slug}/settings/tenant-config` : null;
-}
-
-export interface SubmitResult {
-    ok: boolean;
-    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
-    fieldErrors: Record<string, string>;
-}
-
-/** Envía un guardado JSON, muestra el resultado y recarga las props. */
-export async function submit(
-    promise: Promise<Response>,
-    successMessage: string,
-): Promise<SubmitResult> {
-    try {
-        const response = await promise;
-
-        if (response.ok || response.status === 201) {
-            toast.success(successMessage);
-            router.reload();
-
-            return { ok: true, fieldErrors: {} };
-        }
-
-        if (response.status === 403) {
-            toast.error('No tienes permisos para editar la configuración.');
-
-            return { ok: false, fieldErrors: {} };
-        }
-
-        const { message, fieldErrors } = await readErrorPayload(response);
-
-        toast.error(
-            Object.values(fieldErrors)[0] ??
-                message ??
-                'No se pudo guardar la configuración.',
-        );
-
-        return { ok: false, fieldErrors };
-    } catch {
-        toast.error('Error de red. Vuelve a intentarlo.');
-    }
-
-    return { ok: false, fieldErrors: {} };
-}
+/** Mensajes de `submit` para los guardados de configuración. */
+export const CONFIG_SUBMIT: SubmitOptions = {
+    forbiddenMessage: 'No tienes permisos para editar la configuración.',
+    errorMessage: 'No se pudo guardar la configuración.',
+};
 
 /** Filtra una lista de canales deseados a los que SAM entrega. */
 export function providedOr(

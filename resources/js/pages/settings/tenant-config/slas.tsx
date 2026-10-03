@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { Timer } from 'lucide-react';
 import { useMemo } from 'react';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { priorityLabel } from '@/lib/labels';
+import tenantConfigRoutes from '@/routes/tenant-config';
 
 interface PriorityRow {
     id: number;
@@ -32,12 +34,9 @@ function toMinutes(seconds: number | null): number | null {
     return seconds === null ? null : Math.round(seconds / 60);
 }
 
-export default function TenantConfigSlas() {
+export default function TenantConfigSlas({ priorities }: SlasPageProps) {
     const page = usePage();
-    const { priorities } = page.props as unknown as SlasPageProps;
-    const currentTeam = (
-        page.props as unknown as { currentTeam?: { slug?: string } | null }
-    ).currentTeam;
+    const currentTeam = page.props.currentTeam;
 
     const form = useForm<{
         slas: { incident_priority_id: number; sla_seconds: number | null }[];
@@ -216,20 +215,18 @@ export default function TenantConfigSlas() {
     );
 }
 
-TenantConfigSlas.layout = (props: {
-    currentTeam?: { slug: string } | null;
-}) => ({
+TenantConfigSlas.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Configuración de la empresa',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/tenant-config`
+                ? tenantConfigRoutes.show.url(props.currentTeam.slug)
                 : '#',
         },
         {
             title: 'Tiempos de respuesta',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/tenant-config/slas`
+                ? tenantConfigRoutes.slas.index.url(props.currentTeam.slug)
                 : '#',
         },
     ],

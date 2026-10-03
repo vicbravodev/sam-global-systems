@@ -19,7 +19,7 @@ import { MonitorInbox } from '@/components/landing/monitor-inbox';
 import { NightWatch } from '@/components/landing/night-watch';
 import { TheftGuard } from '@/components/landing/theft-guard';
 import { cn } from '@/lib/utils';
-import { dashboard, login } from '@/routes';
+import { dashboard, home, login } from '@/routes';
 
 const CONTACT_EMAIL = 'contacto@samglobaltechnologies.com';
 const CONTACT_PHONE = '+52 81 1765 8890';
@@ -108,7 +108,7 @@ const QUESTIONS = [
 
 export default function Welcome() {
     const { auth, currentTeam } = usePage().props;
-    const dashboardUrl = currentTeam ? dashboard(currentTeam.slug) : '/';
+    const dashboardUrl = currentTeam ? dashboard(currentTeam.slug) : home();
 
     return (
         <>

@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
 import { AssetHero } from '@/components/sam/assets/detail/asset-hero';
 import { DriverCard } from '@/components/sam/assets/detail/driver-card';
@@ -9,19 +10,19 @@ import { useLiveAsset } from '@/components/sam/assets/detail/use-live-asset';
 import { VehicleCard } from '@/components/sam/assets/detail/vehicle-card';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
+import assetRoutes from '@/routes/assets';
 import type { AssetShowProps } from '@/types/assets';
 
-export default function AssetShow() {
+export default function AssetShow({
+    asset: serverAsset,
+    telemetry,
+    locationHistory,
+    locationTrail,
+    trailWindowHours,
+    incidents,
+    recentEvents,
+}: AssetShowProps) {
     const page = usePage();
-    const {
-        asset: serverAsset,
-        telemetry,
-        locationHistory,
-        locationTrail,
-        trailWindowHours,
-        incidents,
-        recentEvents,
-    } = page.props as unknown as AssetShowProps;
 
     const { asset, trail } = useLiveAsset(
         serverAsset,
@@ -70,23 +71,23 @@ export default function AssetShow() {
     );
 }
 
-AssetShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    asset?: { id: number; name: string } | null;
-}) => ({
+AssetShow.layout = (props: SharedPageProps & Partial<AssetShowProps>) => ({
     breadcrumbs: [
         {
             title: 'Flota',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets`
-                : '/assets',
+                ? assetRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.asset
             ? [
                   {
                       title: props.asset.name,
                       href: props.currentTeam
-                          ? `/${props.currentTeam.slug}/assets/${props.asset.id}`
+                          ? assetRoutes.show.url([
+                                props.currentTeam.slug,
+                                props.asset.id,
+                            ])
                           : '#',
                   },
               ]

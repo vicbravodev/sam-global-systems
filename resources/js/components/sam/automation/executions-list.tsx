@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { Check, History, RotateCcw, X, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime } from '@/lib/format';
 import { postJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { submit, useAutomationBase, useTeamSlug } from './api';
+import automationRoutes from '@/routes/automation';
+import incidentRoutes from '@/routes/incidents';
 import { ACTIONS, executionStatus, stepPhrase } from './copy';
 import type { ExecutionRow, Option } from './types';
 
@@ -40,19 +42,24 @@ export function ExecutionsList({
     canManage,
     filtered,
 }: ExecutionsListProps) {
-    const base = useAutomationBase();
-    const slug = useTeamSlug();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [busy, setBusy] = useState<number | null>(null);
     const [cancelling, setCancelling] = useState<ExecutionRow | null>(null);
 
     const act = async (execution: ExecutionRow, action: ExecutionAction) => {
-        if (base === null || busy !== null) {
+        if (teamSlug === null || busy !== null) {
             return;
         }
 
         setBusy(execution.id);
         await submit(
-            postJson(`${base}/executions/${execution.id}/${action}`, {}),
+            postJson(
+                automationRoutes.executions[action].url([
+                    teamSlug,
+                    execution.id,
+                ]),
+                {},
+            ),
             SUCCESS[action],
         );
         setBusy(null);
@@ -152,9 +159,12 @@ export function ExecutionsList({
                                     {execution.incidentId !== null && (
                                         <>
                                             <span aria-hidden="true">·</span>
-                                            {slug ? (
+                                            {teamSlug ? (
                                                 <Link
-                                                    href={`/${slug}/incidents/${execution.incidentId}`}
+                                                    href={incidentRoutes.show([
+                                                        teamSlug,
+                                                        execution.incidentId,
+                                                    ])}
                                                     className="min-w-0 truncate text-fg-2 underline-offset-2 hover:text-primary hover:underline"
                                                 >
                                                     {execution.incidentReference ??

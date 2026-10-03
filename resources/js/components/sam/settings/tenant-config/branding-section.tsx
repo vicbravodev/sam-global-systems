@@ -1,7 +1,6 @@
-import { router } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { ImageUp } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { Field, FormCard } from '@/components/sam/field';
 import {
     FormActions,
@@ -10,8 +9,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { putJson, readErrorMessage } from '@/lib/sam-fetch';
-import { submit, useTeamBase } from './shared';
+import { postFormData, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT } from './shared';
 import type { BrandingProp } from './types';
 
 function ColorInput({
@@ -57,7 +58,7 @@ export function BrandingSection({
     branding: BrandingProp;
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [form, setForm] = useState({
         display_name: branding.displayName ?? '',
         primary_color: branding.primaryColor ?? '#2563eb',
@@ -69,7 +70,7 @@ export function BrandingSection({
     const [errors, setErrors] = useState<Record<string, string>>({});
 
     const save = async () => {
-        if (base === null || saving) {
+        if (teamSlug === null || saving) {
             return;
         }
 
@@ -77,7 +78,7 @@ export function BrandingSection({
         setSaving(true);
 
         const result = await submit(
-            putJson(`${base}/branding`, {
+            putJson(tenantConfigRoutes.branding.update.url(teamSlug), {
                 display_name:
                     form.display_name === '' ? null : form.display_name,
                 primary_color: form.primary_color,
@@ -86,6 +87,7 @@ export function BrandingSection({
                     form.email_signature === '' ? null : form.email_signature,
             }),
             'Marca guardada.',
+            CONFIG_SUBMIT,
         );
 
         if (!result.ok) {
@@ -96,41 +98,28 @@ export function BrandingSection({
     };
 
     const uploadLogo = async (file: File) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         setUploading(true);
 
+        const body = new FormData();
+        body.append('logo', file);
+
         try {
-            const body = new FormData();
-            body.append('logo', file);
-
-            const token =
-                document
-                    .querySelector('meta[name=csrf-token]')
-                    ?.getAttribute('content') ?? '';
-
-            const response = await fetch(`${base}/branding/logo`, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-TOKEN': token, Accept: 'application/json' },
-                body,
-            });
-
-            if (response.ok || response.status === 201) {
-                toast.success('Logo actualizado.');
-                router.reload();
-            } else if (response.status === 403) {
-                toast.error('No tienes permisos para cambiar la marca.');
-            } else {
-                toast.error(
-                    (await readErrorMessage(response)) ??
-                        'No se pudo subir el logo.',
-                );
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
+            await submit(
+                postFormData(
+                    tenantConfigRoutes.branding.logo.url(teamSlug),
+                    body,
+                ),
+                'Logo actualizado.',
+                {
+                    forbiddenMessage:
+                        'No tienes permisos para cambiar la marca.',
+                    errorMessage: 'No se pudo subir el logo.',
+                },
+            );
         } finally {
             setUploading(false);
         }

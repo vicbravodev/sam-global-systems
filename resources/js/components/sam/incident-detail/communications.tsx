@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { Bell, PhoneCall } from 'lucide-react';
 import { formatDateTime } from '@/lib/format';
+import notificationRoutes from '@/routes/notifications';
 import type { IncidentCommunications } from '@/types/sam';
 
 const CALL_STATUS_LABEL: Record<string, string> = {
@@ -96,7 +97,10 @@ export function Communications({
                         <div className="min-w-0 flex-1">
                             {teamSlug ? (
                                 <Link
-                                    href={`/${teamSlug}/notifications/${notification.id}`}
+                                    href={notificationRoutes.show([
+                                        teamSlug,
+                                        notification.id,
+                                    ])}
                                     className="block truncate font-medium text-fg-1 hover:underline"
                                 >
                                     {notification.subject}

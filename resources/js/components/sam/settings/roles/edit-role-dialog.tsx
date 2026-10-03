@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
+import roleRoutes from '@/routes/access/roles';
 import type { RoleRow } from '@/types/sam';
 
 interface EditRoleDialogProps {
@@ -78,7 +79,7 @@ export function EditRoleDialog({
         setSubmitting(true);
 
         const response = await putJson(
-            `/${teamSlug}/settings/roles/${role.id}`,
+            roleRoutes.update.url([teamSlug, role.id]),
             body,
         );
 

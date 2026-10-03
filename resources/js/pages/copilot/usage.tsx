@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { Bars } from '@/components/sam/charts';
@@ -11,6 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import copilotRoutes from '@/routes/copilot';
 import type { CopilotUsageReport } from '@/types/copilot';
 
 const RANGES = [7, 30, 90] as const;
@@ -20,15 +22,14 @@ const CHANNEL_LABELS: Record<string, string> = {
     bubble: 'Burbuja',
 };
 
-export default function CopilotUsage() {
+export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
     const page = usePage();
-    const { usage } = page.props as unknown as { usage: CopilotUsageReport };
     const teamSlug = page.props.currentTeam?.slug ?? '';
     const t = usage.totals;
 
     const setRange = (days: number) =>
         router.get(
-            `/${teamSlug}/copilot/usage`,
+            copilotRoutes.usage.url(teamSlug),
             { days },
             { preserveScroll: true, preserveState: true },
         );
@@ -75,7 +76,7 @@ export default function CopilotUsage() {
                                 ))}
                             </div>
                             <Link
-                                href={`/${teamSlug}/copilot`}
+                                href={copilotRoutes.index(teamSlug)}
                                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-fg-2 hover:bg-surface-2"
                             >
                                 <ArrowLeft className="size-4" /> Volver al chat
@@ -418,19 +419,19 @@ function ShareRow({
     );
 }
 
-CopilotUsage.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+CopilotUsage.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'SAM Copilot',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/copilot`
-                : '/copilot',
+                ? copilotRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         {
             title: 'Uso',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/copilot/usage`
-                : '/copilot/usage',
+                ? copilotRoutes.usage.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

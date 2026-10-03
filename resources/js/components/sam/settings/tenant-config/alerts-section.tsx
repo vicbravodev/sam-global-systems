@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { BellRing, Plus, Radio, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -20,8 +21,10 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { channelLabel } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import tenantConfigRoutes from '@/routes/tenant-config';
 import { MIN_SEVERITY_KEY } from './settings-catalog';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT } from './shared';
 import type {
     ChannelRow,
     NotificationPolicyRow,
@@ -97,24 +100,28 @@ function ChannelsBlock({
     channels: ChannelRow[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     // Apagar SMS o voz deja sin aviso al botón de pánico: se confirma antes.
     const [confirming, setConfirming] = useState<ChannelRow | null>(null);
     const [pending, setPending] = useState<number | null>(null);
 
     const toggle = async (channel: ChannelRow) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         setPending(channel.id);
         await submit(
-            postJson(`${base}/channels/${channel.id}/toggle`, {
-                enabled: !channel.enabledForTeam,
-            }),
+            postJson(
+                tenantConfigRoutes.channels.toggle.url([teamSlug, channel.id]),
+                {
+                    enabled: !channel.enabledForTeam,
+                },
+            ),
             channel.enabledForTeam
                 ? `${channelLabel(channel.channelType)} apagado para tu equipo.`
                 : `${channelLabel(channel.channelType)} encendido para tu equipo.`,
+            CONFIG_SUBMIT,
         );
         setPending(null);
     };
@@ -230,7 +237,7 @@ function MinSeverityBlock({
     settings: SettingRow[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const initial = String(
         settings.find((s) => s.key === MIN_SEVERITY_KEY)?.value ?? 'medium',
     );
@@ -238,13 +245,13 @@ function MinSeverityBlock({
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
-        if (base === null || saving) {
+        if (teamSlug === null || saving) {
             return;
         }
 
         setSaving(true);
         await submit(
-            putJson(`${base}/settings`, {
+            putJson(tenantConfigRoutes.settings.update.url(teamSlug), {
                 settings: [
                     {
                         setting_key: MIN_SEVERITY_KEY,
@@ -255,6 +262,7 @@ function MinSeverityBlock({
                 ],
             }),
             'Nivel de aviso guardado.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };
@@ -339,7 +347,7 @@ function PoliciesBlock({
     typeOptions: Option[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [drafts, setDrafts] = useState<NotificationPolicyRow[]>(policies);
     const [saving, setSaving] = useState(false);
 
@@ -390,7 +398,7 @@ function PoliciesBlock({
     };
 
     const save = async () => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
@@ -406,7 +414,7 @@ function PoliciesBlock({
 
         setSaving(true);
         await submit(
-            putJson(`${base}/notifications`, {
+            putJson(tenantConfigRoutes.notifications.update.url(teamSlug), {
                 policies: drafts.map((d) => ({
                     policy_code: d.policyCode,
                     notification_type: d.notificationType,
@@ -417,6 +425,7 @@ function PoliciesBlock({
                 })),
             }),
             'Reglas de aviso guardadas.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

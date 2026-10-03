@@ -5,7 +5,9 @@ import {
     postStream,
     putJson,
     readErrorMessage,
+    getJson,
 } from '@/lib/sam-fetch';
+import copilotRoutes from '@/routes/copilot';
 import type {
     CopilotChannel,
     CopilotConversation,
@@ -80,8 +82,6 @@ export function useCopilotChat({
         content: string;
         hints: CopilotSendHints;
     } | null>(null);
-
-    const base = `/${teamSlug}/copilot`;
 
     const setConversationId = useCallback((id: number | null) => {
         conversationRef.current = id;
@@ -169,7 +169,7 @@ export function useCopilotChat({
 
             try {
                 const response = await postStream(
-                    `${base}/stream`,
+                    copilotRoutes.stream.url(teamSlug),
                     {
                         content: text,
                         conversation_id: conversationRef.current,
@@ -339,7 +339,7 @@ export function useCopilotChat({
                 }
             }
         },
-        [base, channel, onConversationSaved, onQuota, setConversationId],
+        [teamSlug, channel, onConversationSaved, onQuota, setConversationId],
     );
 
     const stop = useCallback(() => abortRef.current?.abort(), []);
@@ -359,11 +359,10 @@ export function useCopilotChat({
             setRetryMode(null);
 
             try {
-                const response = await fetch(`${base}/conversations/${id}`, {
-                    credentials: 'same-origin',
-                    headers: { Accept: 'application/json' },
-                    signal: controller.signal,
-                });
+                const response = await getJson(
+                    copilotRoutes.conversations.show.url([teamSlug, id]),
+                    controller.signal,
+                );
 
                 // A newer load/reset owns the thread: this reply is stale.
                 if (loadAbortRef.current !== controller) {
@@ -398,7 +397,7 @@ export function useCopilotChat({
                 }
             }
         },
-        [abandonTurn, base, setConversationId],
+        [abandonTurn, teamSlug, setConversationId],
     );
 
     /**
@@ -446,28 +445,36 @@ export function useCopilotChat({
                     m.id === messageId ? { ...m, feedback: rating } : m,
                 ),
             );
-            await putJson(`${base}/messages/${messageId}/feedback`, {
-                rating,
-            });
+            await putJson(
+                copilotRoutes.messages.feedback.url([teamSlug, messageId]),
+                {
+                    rating,
+                },
+            );
         },
-        [base],
+        [teamSlug],
     );
 
     const remove = useCallback(
         async (id: number) => {
-            await deleteJson(`${base}/conversations/${id}`);
+            await deleteJson(
+                copilotRoutes.conversations.destroy.url([teamSlug, id]),
+            );
 
             if (id === conversationRef.current) {
                 reset();
             }
         },
-        [base, reset],
+        [teamSlug, reset],
     );
 
     const togglePin = useCallback(
         async (conversation: CopilotConversation) => {
             const response = await patchJson(
-                `${base}/conversations/${conversation.id}`,
+                copilotRoutes.conversations.update.url([
+                    teamSlug,
+                    conversation.id,
+                ]),
                 { is_pinned: !conversation.isPinned },
             );
 
@@ -478,7 +485,7 @@ export function useCopilotChat({
                 onConversationSaved?.(data.conversation);
             }
         },
-        [base, onConversationSaved],
+        [teamSlug, onConversationSaved],
     );
 
     return {

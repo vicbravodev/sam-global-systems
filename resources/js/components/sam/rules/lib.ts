@@ -1,66 +1,14 @@
-import { router, usePage } from '@inertiajs/react';
-import { toast } from 'sonner';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { humanizeCode } from '@/lib/labels';
-import { readErrorPayload } from '@/lib/sam-fetch';
+import type { SubmitOptions } from '@/lib/submit';
 import type { DecisionRuleRow, MappingRuleRow, OutcomeGroup } from './types';
 
-// ---- Rutas y envío ----
+// ---- Envío ----
 
-export function useRulesBase(): string | null {
-    const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
-
-    return slug ? `/${slug}/rules` : null;
-}
-
-export interface SubmitResult {
-    ok: boolean;
-    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
-    fieldErrors: Record<string, string>;
-}
-
-/** Envía la mutación, avisa con toast y recarga la página si salió bien. */
-export async function submitRuleChange(
-    promise: Promise<Response>,
-    successMessage: string,
-): Promise<SubmitResult> {
-    try {
-        const response = await promise;
-
-        if (response.ok) {
-            toast.success(successMessage);
-            router.reload();
-
-            return { ok: true, fieldErrors: {} };
-        }
-
-        if (response.status === 403) {
-            toast.error('No tienes permisos para esta acción.');
-
-            return { ok: false, fieldErrors: {} };
-        }
-
-        const { message, fieldErrors } = await readErrorPayload(response);
-
-        toast.error(
-            Object.values(fieldErrors)[0] ??
-                message ??
-                'No se pudo guardar la regla.',
-        );
-
-        return { ok: false, fieldErrors };
-    } catch {
-        toast.error('Error de red. Vuelve a intentarlo.');
-    }
-
-    return { ok: false, fieldErrors: {} };
-}
+/** Mensajes de `submit` para las reglas. */
+export const RULE_SUBMIT: SubmitOptions = {
+    errorMessage: 'No se pudo guardar la regla.',
+};
 
 // ---- Orden de revisión ----
 
@@ -383,19 +331,6 @@ export function conditionsToSentence(
 }
 
 // ---- Alta de reglas ----
-
-/** Identificador interno a partir del nombre (el usuario no lo escribe). */
-export function codeFromName(name: string, suffix: string): string {
-    const slug = name
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 60);
-
-    return `${slug || 'regla'}-${suffix}`;
-}
 
 export function randomSuffix(): string {
     return Math.random().toString(36).slice(2, 6);

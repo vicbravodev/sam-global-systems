@@ -29,6 +29,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
+import integrationRoutes from '@/routes/integrations';
 import type { IntegrationRow } from '@/types/sam';
 import { KeyHelp } from './key-help';
 
@@ -159,7 +160,7 @@ export function EditDialog({ target, onClose, teamSlug }: Props) {
         setSubmitting(true);
 
         const response = await putJson(
-            `/${teamSlug}/integrations/${integration.id}`,
+            integrationRoutes.update.url([teamSlug, integration.id]),
             body,
         );
 

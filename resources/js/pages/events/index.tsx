@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Activity,
@@ -33,6 +34,7 @@ import { formatDateTime } from '@/lib/format';
 import { priorityLabel, providerDescriptionLabel } from '@/lib/labels';
 import { formatClock, dayLabel, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import eventRoutes from '@/routes/events';
 import type {
     EventFilterOptions,
     EventFilters,
@@ -473,9 +475,8 @@ function FilterBar({
 
 // ---- Page ----
 
-export default function EventsIndex() {
+export default function EventsIndex(pageProps: EventsIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as EventsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const events = pageProps.events ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -577,7 +578,9 @@ export default function EventsIndex() {
                     rowKey={(event) => event.id}
                     onRowClick={(event) => {
                         if (teamSlug) {
-                            router.visit(`/${teamSlug}/events/${event.id}`);
+                            router.visit(
+                                eventRoutes.show([teamSlug, event.id]),
+                            );
                         }
                     }}
                     empty={
@@ -596,13 +599,13 @@ export default function EventsIndex() {
     );
 }
 
-EventsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+EventsIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Eventos',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/events`
-                : '/events',
+                ? eventRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

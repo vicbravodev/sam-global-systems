@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
 import type { AssetMonitoringState } from '@/types/assets';
 
 const MONITORING_LABEL: Record<AssetMonitoringState, string> = {
@@ -43,7 +44,7 @@ export function MonitoringSwitch({
 
         setBusy(true);
         router.put(
-            `/${teamSlug}/assets/${assetId}/monitoring`,
+            assetRoutes.monitoring.update.url([teamSlug, assetId]),
             { state: next ? 'monitored' : 'excluded' },
             {
                 preserveScroll: true,
