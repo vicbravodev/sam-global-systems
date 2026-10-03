@@ -6,39 +6,10 @@ import {
     TERMINAL_STATUSES,
 } from '@/components/sam';
 import type { IncidentStatus } from '@/components/sam';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { cn } from '@/lib/utils';
 import type { InboxDensity, MockAssignee, MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
-
-// ---- UserAvatar ----
-
-function UserAvatar({
-    initials,
-    size = 24,
-    isPrimary = false,
-}: {
-    initials: string;
-    size?: number;
-    isPrimary?: boolean;
-}) {
-    return (
-        <span
-            className={cn(
-                'inline-grid shrink-0 place-items-center rounded-full border border-border font-semibold',
-                isPrimary
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-surface-3 text-fg-2',
-            )}
-            style={{
-                width: size,
-                height: size,
-                fontSize: Math.max(9, size * 0.42),
-            }}
-        >
-            {initials}
-        </span>
-    );
-}
 
 // ---- LiveSlaCell ----
 

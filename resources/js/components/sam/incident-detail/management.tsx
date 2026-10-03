@@ -9,6 +9,7 @@ import {
 import { useState } from 'react';
 import { TERMINAL_STATUSES } from '@/components/sam';
 import { PermissionTooltip } from '@/components/sam/permission-tooltip';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -32,10 +33,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useInitials } from '@/hooks/use-initials';
+import { getInitials } from '@/lib/initials';
 import type { IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
-import { UserAvatar } from './user-avatar';
 
 // ---- AssigneeMenu ----
 
@@ -48,7 +48,6 @@ function AssigneeMenu({
 }) {
     const { members, currentUserId, assignTo, assignToMe, pending } =
         useIncidentActions();
-    const getInitials = useInitials();
     const busy = pending === 'assign';
 
     const trigger =

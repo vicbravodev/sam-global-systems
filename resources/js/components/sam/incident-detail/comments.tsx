@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
     Select,
@@ -9,12 +10,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useInitials } from '@/hooks/use-initials';
+import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import type { CommentVisibilityUi } from './incident-actions-context';
-import { UserAvatar } from './user-avatar';
 
 // ---- VisibilityChip ----
 
@@ -51,7 +51,6 @@ function VisibilityChip({ v }: { v: 'internal' | 'tenant' | 'audit' }) {
 
 function CommentComposer() {
     const page = usePage();
-    const getInitials = useInitials();
     const { addComment, pending } = useIncidentActions();
     const [comment, setComment] = useState('');
     const [visibility, setVisibility] =
