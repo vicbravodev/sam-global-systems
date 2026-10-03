@@ -16,6 +16,8 @@ import { Management } from '@/components/sam/incident-detail/management';
 import { MediaStrip } from '@/components/sam/incident-detail/media-strip';
 import { PriorIncidents } from '@/components/sam/incident-detail/prior-incidents';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
+import { home } from '@/routes';
+import incidentRoutes from '@/routes/incidents';
 import type { IncidentShowProps } from '@/types/sam';
 
 const RELOAD_DEBOUNCE_MS = 1500;
@@ -79,9 +81,11 @@ export default function IncidentShow() {
                     <DetailHeader
                         incident={incident}
                         onClose={() =>
-                            teamSlug
-                                ? router.visit(`/${teamSlug}/incidents`)
-                                : router.visit('/')
+                            router.visit(
+                                teamSlug
+                                    ? incidentRoutes.index(teamSlug)
+                                    : home(),
+                            )
                         }
                     />
 
@@ -137,8 +141,8 @@ IncidentShow.layout = (props: {
         {
             title: 'Incidentes',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/incidents`
-                : '/incidents',
+                ? incidentRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.incident
             ? [
@@ -146,7 +150,10 @@ IncidentShow.layout = (props: {
                       title: props.incident.id,
                       href:
                           props.currentTeam && props.incident
-                              ? `/${props.currentTeam.slug}/incidents/${props.incident.incidentId}`
+                              ? incidentRoutes.show.url([
+                                    props.currentTeam.slug,
+                                    props.incident.incidentId,
+                                ])
                               : '#',
                   },
               ]

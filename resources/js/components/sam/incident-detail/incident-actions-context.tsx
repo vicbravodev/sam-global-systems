@@ -9,6 +9,8 @@ import {
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { reevaluate } from '@/routes/ai/evaluations';
+import incidentRoutes from '@/routes/incidents';
 import type {
     IncidentAbilities,
     IncidentDetail,
@@ -105,10 +107,6 @@ export function IncidentActionsProvider({
     const can = props.can ?? NO_ABILITIES;
     const [pending, setPending] = useState<string | null>(null);
 
-    const base = teamSlug
-        ? `/${teamSlug}/incidents/${incident.incidentId}`
-        : null;
-
     const run = useCallback(
         async (
             key: string,
@@ -163,10 +161,12 @@ export function IncidentActionsProvider({
     );
 
     const value = useMemo<IncidentActionsValue>(() => {
+        const at = (action: typeof incidentRoutes.assign) =>
+            teamSlug ? action.url([teamSlug, incident.incidentId]) : null;
         const assignTo = (userId: number) =>
             run(
                 'assign',
-                base ? `${base}/assign` : null,
+                at(incidentRoutes.assign),
                 { assigned_to_type: 'user', assigned_to_id: userId },
                 'Incidente asignado.',
             );
@@ -191,14 +191,14 @@ export function IncidentActionsProvider({
             addComment: (body, visibility) =>
                 run(
                     'comment',
-                    base ? `${base}/comments` : null,
+                    at(incidentRoutes.comments.store),
                     { comment: body, visibility: VISIBILITY_API[visibility] },
                     'Comentario agregado.',
                 ),
             resolve: (payload) =>
                 run(
                     'resolve',
-                    base ? `${base}/resolve` : null,
+                    at(incidentRoutes.resolve),
                     {
                         resolution_code: payload.resolutionCode,
                         summary: payload.summary,
@@ -211,21 +211,21 @@ export function IncidentActionsProvider({
             closeIncident: (summary) =>
                 run(
                     'close',
-                    base ? `${base}/close` : null,
+                    at(incidentRoutes.close),
                     summary ? { summary } : {},
                     'Incidente cerrado.',
                 ),
             reopen: () =>
                 run(
                     'reopen',
-                    base ? `${base}/reopen` : null,
+                    at(incidentRoutes.reopen),
                     {},
                     'Incidente reabierto.',
                 ),
             reclassify: (typeId, priorityId) =>
                 run(
                     'reclassify',
-                    base ? `${base}/reclassify` : null,
+                    at(incidentRoutes.reclassify),
                     {
                         incident_type_id: typeId,
                         incident_priority_id: priorityId,
@@ -235,35 +235,30 @@ export function IncidentActionsProvider({
             acknowledge: () =>
                 run(
                     'acknowledge',
-                    base ? `${base}/acknowledge` : null,
+                    at(incidentRoutes.acknowledge),
                     {},
                     'Incidente atendido (ACK).',
                 ),
             claim: () =>
-                run(
-                    'claim',
-                    base ? `${base}/claim` : null,
-                    {},
-                    'Incidente tomado.',
-                ),
+                run('claim', at(incidentRoutes.claim), {}, 'Incidente tomado.'),
             release: () =>
                 run(
                     'release',
-                    base ? `${base}/release` : null,
+                    at(incidentRoutes.release),
                     {},
                     'Incidente liberado.',
                 ),
             escalate: (reason) =>
                 run(
                     'escalate',
-                    base ? `${base}/escalate` : null,
+                    at(incidentRoutes.escalate),
                     reason ? { reason } : {},
                     'Incidente escalado.',
                 ),
             discard: (summary) =>
                 run(
                     'discard',
-                    base ? `${base}/resolve` : null,
+                    at(incidentRoutes.resolve),
                     {
                         resolution_code: 'false_positive',
                         summary: summary ?? 'Descartado por el operador.',
@@ -273,7 +268,7 @@ export function IncidentActionsProvider({
             confirmAi: () =>
                 run(
                     'confirm-ai',
-                    base ? `${base}/ai-verdict` : null,
+                    at(incidentRoutes.aiVerdict),
                     { verdict: 'confirmed' },
                     'Evaluación IA confirmada.',
                 ),
@@ -287,7 +282,7 @@ export function IncidentActionsProvider({
                 return run(
                     'feedback-ai',
                     teamSlug
-                        ? `/${teamSlug}/ai/evaluations/${incident.aiEvaluationId}/reevaluate`
+                        ? reevaluate.url([teamSlug, incident.aiEvaluationId])
                         : null,
                     { reason },
                     'Reevaluación solicitada.',
@@ -295,7 +290,6 @@ export function IncidentActionsProvider({
             },
         };
     }, [
-        base,
         can,
         currentUserId,
         incident,

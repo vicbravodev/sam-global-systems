@@ -4,6 +4,7 @@ import { SeverityBadge } from '@/components/sam';
 import type { Severity } from '@/components/sam/severity-badge';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime } from '@/lib/format';
+import incidentRoutes from '@/routes/incidents';
 import type { PriorIncidentSummary } from '@/types/sam';
 
 const RELATION_LABEL: Record<string, string> = {
@@ -76,7 +77,10 @@ export function PriorIncidents({
                             </div>
                             {teamSlug ? (
                                 <Link
-                                    href={`/${teamSlug}/incidents/${prior.incidentId}`}
+                                    href={incidentRoutes.show([
+                                        teamSlug,
+                                        prior.incidentId,
+                                    ])}
                                     className="text-xs font-medium text-fg-1 hover:underline"
                                 >
                                     {prior.title}
