@@ -70,6 +70,7 @@ export function PriorIncidents({
                             </div>
                             {teamSlug ? (
                                 <Link
+                                    prefetch
                                     href={incidentRoutes.show([
                                         teamSlug,
                                         prior.incidentId,

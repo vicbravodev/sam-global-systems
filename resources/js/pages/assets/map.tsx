@@ -169,7 +169,10 @@ function UnitCallout({
                 </span>
                 {teamSlug && (
                     <Button size="sm" asChild>
-                        <Link href={assetRoutes.show([teamSlug, asset.id])}>
+                        <Link
+                            href={assetRoutes.show([teamSlug, asset.id])}
+                            prefetch
+                        >
                             Ver unidad
                             <ArrowUpRight className="size-3.5" />
                         </Link>

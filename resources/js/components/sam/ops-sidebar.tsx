@@ -1,4 +1,4 @@
-import { router, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import {
     BarChart3,
     Bell,
@@ -45,6 +45,13 @@ import rulesRoutes from '@/routes/rules';
 import tenantConfigRoutes from '@/routes/tenant-config';
 import type { NavBadges, NavPermissions } from '@/types/sam';
 
+/**
+ * Hover-prefetched pages: served as-is for 10 s, then (up to 30 s) served
+ * from cache while revalidating in the background, so a live ops page is
+ * never shown 30 s stale without a refresh behind it.
+ */
+const NAV_PREFETCH_CACHE = ['10s', '30s'];
+
 interface NavItemConfig {
     label: string;
     icon: React.ElementType;
@@ -81,23 +88,26 @@ function NavItemButton({
 }) {
     const Icon = item.icon;
 
+    // A real link: cmd/middle-click opens a new tab, and hovering prefetches
+    // the page (kept 30 s) so the click paints from cache. The mobile sheet
+    // closes on Inertia's `navigate` event (ops-layout), as before.
     const button = (
-        <button
-            type="button"
+        <Link
+            href={item.href}
+            prefetch
+            cacheFor={NAV_PREFETCH_CACHE}
+            aria-current={isActive ? 'page' : undefined}
+            aria-label={collapsed ? item.label : undefined}
             className={cn(
                 'flex w-full cursor-pointer items-center gap-2.5 rounded-md border-none bg-transparent px-2.5 py-[7px]',
                 'text-sm font-medium text-fg-2',
                 'hover:bg-sidebar-accent hover:text-fg-1',
                 'transition-colors duration-100',
+                'outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 isActive &&
                     'bg-primary/20 text-fg-1 shadow-[inset_2px_0_0_theme(colors.primary)]',
                 collapsed && 'justify-center px-0',
             )}
-            onClick={() => {
-                if (item.href !== '#') {
-                    router.visit(item.href);
-                }
-            }}
         >
             <Icon className="size-4 shrink-0" />
             {!collapsed && (
@@ -121,7 +131,7 @@ function NavItemButton({
                     )}
                 </>
             )}
-        </button>
+        </Link>
     );
 
     if (collapsed) {
