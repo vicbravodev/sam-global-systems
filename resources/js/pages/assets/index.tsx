@@ -118,6 +118,45 @@ function withLivePosition(
     };
 }
 
+/**
+ * Live positions for the rows on the current page: entries for units no
+ * longer on the page are dropped, a position is replaced only by a newer
+ * one, and `prev` itself is returned when nothing changed so React skips
+ * the re-render.
+ */
+function mergeLivePositions(
+    prev: Map<number, FleetPosition>,
+    visible: readonly FleetPosition[],
+    onPage: ReadonlySet<number>,
+): Map<number, FleetPosition> {
+    let changed = false;
+    const next = new Map<number, FleetPosition>();
+
+    prev.forEach((position, id) => {
+        if (onPage.has(id)) {
+            next.set(id, position);
+        } else {
+            changed = true;
+        }
+    });
+
+    visible.forEach((position) => {
+        const current = next.get(position.asset_id);
+
+        if (
+            current !== undefined &&
+            Date.parse(position.recorded_at) <= Date.parse(current.recorded_at)
+        ) {
+            return;
+        }
+
+        next.set(position.asset_id, position);
+        changed = true;
+    });
+
+    return changed ? next : prev;
+}
+
 // ---- Pending banner ----
 
 function PendingBanner({
@@ -493,14 +532,17 @@ export default function AssetsIndex(pageProps: AssetsIndexProps) {
                 return;
             }
 
-            const { positions } = detail.payload;
+            // Only the rows on this page use live positions: a fleet-wide
+            // batch for units on other pages must neither grow the map nor
+            // re-render the table.
+            const onPage = new Set((pageProps.assets ?? []).map((a) => a.id));
+            const visible = detail.payload.positions.filter((p) =>
+                onPage.has(p.asset_id),
+            );
 
-            setLivePositions((prev) => {
-                const next = new Map(prev);
-                positions.forEach((p) => next.set(p.asset_id, p));
-
-                return next;
-            });
+            setLivePositions((prev) =>
+                mergeLivePositions(prev, visible, onPage),
+            );
 
             if (Date.now() - lastSummaryRefresh.current > SUMMARY_REFRESH_MS) {
                 lastSummaryRefresh.current = Date.now();
