@@ -34,13 +34,13 @@ function EmptyState({
             {...props}
         >
             {Icon ? (
-                <div className="bg-surface-2 text-fg-3 mb-3 grid size-10 place-items-center rounded-lg">
+                <div className="mb-3 grid size-10 place-items-center rounded-lg bg-surface-2 text-fg-3">
                     <Icon className="size-5" aria-hidden />
                 </div>
             ) : null}
-            <p className="text-fg-1 text-sm font-medium">{title}</p>
+            <p className="text-sm font-medium text-fg-1">{title}</p>
             {description ? (
-                <p className="text-fg-3 max-w-sm text-sm">{description}</p>
+                <p className="max-w-sm text-sm text-fg-3">{description}</p>
             ) : null}
             {action ? <div className="mt-4">{action}</div> : null}
         </div>

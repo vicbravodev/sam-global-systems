@@ -9,7 +9,10 @@ import { cn } from '@/lib/utils';
  * un callback. Renderiza primera/última, vecinas y elipsis; labels en español.
  */
 
-interface PaginationProps extends Omit<React.ComponentProps<'nav'>, 'onChange'> {
+interface PaginationProps extends Omit<
+    React.ComponentProps<'nav'>,
+    'onChange'
+> {
     page: number;
     totalPages: number;
     onPageChange: (page: number) => void;
@@ -33,12 +36,15 @@ function pageItems(
     if (start > 2) {
         items.push('ellipsis');
     }
+
     for (let i = start; i <= end; i++) {
         items.push(i);
     }
+
     if (end < totalPages - 1) {
         items.push('ellipsis');
     }
+
     items.push(totalPages);
 
     return items;
@@ -80,7 +86,7 @@ function Pagination({
                     <span
                         key={`ellipsis-${idx}`}
                         aria-hidden
-                        className="text-fg-3 flex size-8 items-end justify-center pb-1"
+                        className="flex size-8 items-end justify-center pb-1 text-fg-3"
                     >
                         <MoreHorizontal className="size-4" />
                     </span>

@@ -14,7 +14,14 @@ export interface SwitchProps {
  * Accessible toggle switch, token-styled to match the design system .sam-switch
  * (health-ok tint when on). Dependency-free — no Radix package required.
  */
-export function Switch({ checked, onCheckedChange, disabled, id, className, ...aria }: SwitchProps) {
+export function Switch({
+    checked,
+    onCheckedChange,
+    disabled,
+    id,
+    className,
+    ...aria
+}: SwitchProps) {
     return (
         <button
             id={id}
@@ -26,14 +33,16 @@ export function Switch({ checked, onCheckedChange, disabled, id, className, ...a
             disabled={disabled}
             onClick={() => !disabled && onCheckedChange(!checked)}
             className={cn(
-                'relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors motion-safe:duration-[--motion-fast] ease-(--ease-out) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-                checked ? 'border-health-ok/50 bg-health-ok/35' : 'border-border bg-surface-3',
+                'relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 motion-safe:duration-[--motion-fast]',
+                checked
+                    ? 'border-health-ok/50 bg-health-ok/35'
+                    : 'border-border bg-surface-3',
                 className,
             )}
         >
             <span
                 className={cn(
-                    'absolute top-[2px] left-[2px] size-4 rounded-full transition-transform motion-safe:duration-[--motion-fast] ease-(--ease-out)',
+                    'absolute top-[2px] left-[2px] size-4 rounded-full transition-transform ease-(--ease-out) motion-safe:duration-[--motion-fast]',
                     checked ? 'translate-x-4 bg-health-ok' : 'bg-fg-3',
                 )}
             />
