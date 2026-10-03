@@ -23,6 +23,7 @@ import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatDateTime } from '@/lib/format';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { relativeLabel } from '@/lib/time';
+import analyticsRoutes from '@/routes/analytics';
 import type { Choice } from './choice-group';
 import { ChoiceGroup } from './choice-group';
 import { ReportStatus } from './report-status';
@@ -234,7 +235,10 @@ function ExecutionItem({
                 {execution.downloadable && teamSlug && (
                     <Button size="sm" variant="outline" asChild>
                         <a
-                            href={`/${teamSlug}/analytics/executions/${execution.id}/download`}
+                            href={analyticsRoutes.executions.download.url([
+                                teamSlug,
+                                execution.id,
+                            ])}
                         >
                             <Download size={13} />
                             Descargar
@@ -292,7 +296,7 @@ export function ReportsTab({
 
         try {
             const response = await postJson(
-                `/${teamSlug}/analytics/reports/${report.id}/generate`,
+                analyticsRoutes.reports.generate.url([teamSlug, report.id]),
                 { format },
             );
 

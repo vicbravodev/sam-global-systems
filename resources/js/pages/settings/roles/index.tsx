@@ -13,6 +13,7 @@ import {
     SettingsSection,
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
+import roleRoutes from '@/routes/access/roles';
 import type { RoleRow, TeamMemberRow } from '@/types/sam';
 
 interface RolesIndexProps {
@@ -130,8 +131,8 @@ RolesIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Equipo y roles',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/roles`
-                : '/settings/roles',
+                ? roleRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

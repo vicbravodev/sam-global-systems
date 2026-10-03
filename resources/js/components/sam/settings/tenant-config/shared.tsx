@@ -1,19 +1,5 @@
-import { usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import type { SubmitOptions } from '@/lib/submit';
-
-/** URL base de los endpoints de configuración del equipo activo. */
-export function useTeamBase(): string | null {
-    const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
-
-    return slug ? `/${slug}/settings/tenant-config` : null;
-}
 
 /** Mensajes de `submit` para los guardados de configuración. */
 export const CONFIG_SUBMIT: SubmitOptions = {

@@ -14,6 +14,7 @@ import { timeAgo } from '@/components/sam/copilot/copilot-format';
 import { useCopilotChat } from '@/components/sam/copilot/use-copilot-chat';
 import { Meter } from '@/components/sam/meter';
 import { cn } from '@/lib/utils';
+import copilotRoutes from '@/routes/copilot';
 import type {
     CopilotCatalog,
     CopilotConversation,
@@ -201,7 +202,7 @@ export default function CopilotIndex() {
                     <QuotaMeter quota={quota} />
                     {props.canViewUsage && (
                         <Link
-                            href={`/${teamSlug}/copilot/usage`}
+                            href={copilotRoutes.usage(teamSlug)}
                             className="mx-3 mb-3 flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-fg-2 hover:bg-surface-2 hover:text-fg-1"
                         >
                             <BarChart3 className="size-3.5" /> Uso y consumo
@@ -306,8 +307,8 @@ CopilotIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'SAM Copilot',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/copilot`
-                : '/copilot',
+                ? copilotRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

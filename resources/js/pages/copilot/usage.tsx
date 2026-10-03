@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import copilotRoutes from '@/routes/copilot';
 import type { CopilotUsageReport } from '@/types/copilot';
 
 const RANGES = [7, 30, 90] as const;
@@ -28,7 +29,7 @@ export default function CopilotUsage() {
 
     const setRange = (days: number) =>
         router.get(
-            `/${teamSlug}/copilot/usage`,
+            copilotRoutes.usage.url(teamSlug),
             { days },
             { preserveScroll: true, preserveState: true },
         );
@@ -75,7 +76,7 @@ export default function CopilotUsage() {
                                 ))}
                             </div>
                             <Link
-                                href={`/${teamSlug}/copilot`}
+                                href={copilotRoutes.index(teamSlug)}
                                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-fg-2 hover:bg-surface-2"
                             >
                                 <ArrowLeft className="size-4" /> Volver al chat
@@ -423,14 +424,14 @@ CopilotUsage.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'SAM Copilot',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/copilot`
-                : '/copilot',
+                ? copilotRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         {
             title: 'Uso',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/copilot/usage`
-                : '/copilot/usage',
+                ? copilotRoutes.usage.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

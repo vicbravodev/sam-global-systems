@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { Plus, TrendingUp, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -12,13 +13,8 @@ import { Input } from '@/components/ui/input';
 import { humanizeCode } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
-import {
-    CONFIG_SUBMIT,
-    JsonField,
-    parseJson,
-    providedOr,
-    useTeamBase,
-} from './shared';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT, JsonField, parseJson, providedOr } from './shared';
 import type { EscalationConfigRow, Option } from './types';
 
 const ESCALATION_TYPE_LABELS: Record<string, string> = {
@@ -43,7 +39,7 @@ export function EscalationSection({
     channelTypes: Option[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [saving, setSaving] = useState(false);
 
     const saveExisting = async (
@@ -51,16 +47,19 @@ export function EscalationSection({
         steps: unknown[],
         conditions: Record<string, unknown>,
     ) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         setSaving(true);
         await submit(
-            putJson(`${base}/escalation/${config.id}`, {
-                steps,
-                trigger_conditions: conditions,
-            }),
+            putJson(
+                tenantConfigRoutes.escalation.update.url([teamSlug, config.id]),
+                {
+                    steps,
+                    trigger_conditions: conditions,
+                },
+            ),
             'Escalamiento guardado.',
             CONFIG_SUBMIT,
         );
@@ -68,13 +67,13 @@ export function EscalationSection({
     };
 
     const createDefault = async () => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         setSaving(true);
         await submit(
-            postJson(`${base}/escalation`, {
+            postJson(tenantConfigRoutes.escalation.store.url(teamSlug), {
                 escalation_type: 'incident_critical',
                 trigger_conditions: { priority: 'critical' },
                 steps: [

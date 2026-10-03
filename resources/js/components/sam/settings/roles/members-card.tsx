@@ -14,6 +14,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { teamRoleLabel } from '@/lib/labels';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
+import { update as updateMemberRole } from '@/routes/access/members/role';
 import type { RoleRow, TeamMemberRow } from '@/types/sam';
 
 interface MembersCardProps {
@@ -42,7 +43,7 @@ export function MembersCard({
             setUpdatingId(member.id);
 
             const response = await putJson(
-                `/${teamSlug}/settings/members/${member.id}/role`,
+                updateMemberRole.url([teamSlug, member.id]),
                 { role_code: roleCode },
             );
 

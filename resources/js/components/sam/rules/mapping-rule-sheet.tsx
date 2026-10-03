@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
@@ -24,7 +25,8 @@ import {
 import { priorityLabel } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
-import { RULE_SUBMIT, useRulesBase } from './lib';
+import rulesRoutes from '@/routes/rules';
+import { RULE_SUBMIT } from './lib';
 import { RuleTester } from './rule-tester';
 import type { MappingOptions, MappingRuleRow } from './types';
 
@@ -59,7 +61,7 @@ function MappingRuleForm({
     rule,
     options,
 }: MappingRuleSheetProps) {
-    const base = useRulesBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const isNew = rule === null;
 
     const [providerId, setProviderId] = useState(
@@ -86,7 +88,7 @@ function MappingRuleForm({
     const hasConditions = Object.keys(conditions).length > 0;
 
     const save = async () => {
-        if (base === null || saving) {
+        if (teamSlug === null || saving) {
             return;
         }
 
@@ -124,7 +126,7 @@ function MappingRuleForm({
 
         const result = isNew
             ? await submit(
-                  postJson(`${base}/mapping`, {
+                  postJson(rulesRoutes.mapping.store.url(teamSlug), {
                       ...body,
                       provider_id: Number(providerId),
                       is_active: true,
@@ -133,7 +135,10 @@ function MappingRuleForm({
                   RULE_SUBMIT,
               )
             : await submit(
-                  putJson(`${base}/mapping/${rule.id}`, body),
+                  putJson(
+                      rulesRoutes.mapping.update.url([teamSlug, rule.id]),
+                      body,
+                  ),
                   'Traducción guardada.',
                   RULE_SUBMIT,
               );
@@ -306,14 +311,14 @@ function MappingRuleForm({
                     </FormField>
                 </Step>
 
-                {base !== null && hasConditions && (
+                {teamSlug !== null && hasConditions && (
                     <Step
                         step={3}
                         title="Pruébala"
                         help="Comprueba si la última alerta que recibió tu cuenta trae esos datos."
                     >
                         <RuleTester
-                            endpoint={`${base}/test-mapping`}
+                            endpoint={rulesRoutes.test.mapping.url(teamSlug)}
                             payload={() => ({
                                 external_conditions_json: conditions,
                             })}

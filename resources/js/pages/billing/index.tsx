@@ -16,6 +16,9 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/ui/page-header';
+import assetRoutes from '@/routes/assets';
+import billingRoutes from '@/routes/billing';
+import { edit as editTeam } from '@/routes/teams';
 
 /** Estado del servicio en palabras del cliente (el plan no se muestra:
  *  los planes sólo son plantillas de topes, el cobro es por tracto-día). */
@@ -78,7 +81,7 @@ export default function BillingIndex() {
                         <>
                             {teamSlug && (
                                 <Button size="sm" asChild>
-                                    <Link href={`/${teamSlug}/assets`}>
+                                    <Link href={assetRoutes.index(teamSlug)}>
                                         <Eye size={13} />
                                         Elegir qué unidades vigilar
                                     </Link>
@@ -107,7 +110,9 @@ export default function BillingIndex() {
                                     {currentTeam && (
                                         <DropdownMenuItem asChild>
                                             <Link
-                                                href={`/settings/teams/${currentTeam.id}`}
+                                                href={editTeam(
+                                                    currentTeam.slug,
+                                                )}
                                             >
                                                 <Users size={13} /> Administrar
                                                 mi equipo
@@ -190,8 +195,8 @@ BillingIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Facturación',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/billing`
-                : '/billing',
+                ? billingRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

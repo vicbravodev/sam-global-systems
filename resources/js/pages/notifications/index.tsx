@@ -19,6 +19,7 @@ import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { useServerList } from '@/hooks/use-server-list';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { cn } from '@/lib/utils';
+import notificationRoutes from '@/routes/notifications';
 import type {
     NotificationFilterOptions,
     NotificationFilters,
@@ -194,7 +195,7 @@ export default function NotificationsIndex() {
     const markRead = (id: number) => {
         if (teamSlug !== null) {
             router.post(
-                `/${teamSlug}/notifications/${id}/read`,
+                notificationRoutes.read.url([teamSlug, id]),
                 {},
                 {
                     preserveScroll: true,
@@ -284,8 +285,8 @@ NotificationsIndex.layout = (props: {
         {
             title: 'Notificaciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/notifications`
-                : '/notifications',
+                ? notificationRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

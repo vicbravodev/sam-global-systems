@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
@@ -17,7 +18,8 @@ import {
 import { humanizeCode } from '@/lib/labels';
 import { putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
-import { CONFIG_SUBMIT, JsonField, parseJson, useTeamBase } from './shared';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT, JsonField, parseJson } from './shared';
 import type { RecipientOptions, ScheduleProfileRow } from './types';
 
 const WEEKDAYS = [
@@ -173,7 +175,7 @@ export function OnCallSection({
     users: RecipientOptions['users'];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [saving, setSaving] = useState(false);
 
     if (profiles.length === 0) {
@@ -199,16 +201,19 @@ export function OnCallSection({
         shiftRules: Record<string, unknown> | unknown[] | null,
         timezone: string,
     ) => {
-        if (base === null || shiftRules === null) {
+        if (teamSlug === null || shiftRules === null) {
             return;
         }
 
         setSaving(true);
         await submit(
-            putJson(`${base}/schedule/${profile.id}`, {
-                timezone,
-                shift_rules: shiftRules,
-            }),
+            putJson(
+                tenantConfigRoutes.schedule.update.url([teamSlug, profile.id]),
+                {
+                    timezone,
+                    shift_rules: shiftRules,
+                },
+            ),
             'Guardias guardadas.',
             CONFIG_SUBMIT,
         );

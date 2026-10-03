@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { History, SlidersHorizontal } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
@@ -20,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
 import { putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
+import tenantConfigRoutes from '@/routes/tenant-config';
 import {
     DEDICATED_KEYS,
     describeSetting,
@@ -28,7 +30,7 @@ import {
     unitLabel,
 } from './settings-catalog';
 import type { SettingTopic } from './settings-catalog';
-import { CONFIG_SUBMIT, useTeamBase } from './shared';
+import { CONFIG_SUBMIT } from './shared';
 import type { SettingRow, VersionRow } from './types';
 
 export function AdvancedSection({
@@ -105,7 +107,7 @@ function TopicBlock({
     settings: SettingRow[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const initial = useMemo(
         () =>
             Object.fromEntries(
@@ -125,7 +127,7 @@ function TopicBlock({
     );
 
     const save = async () => {
-        if (base === null || saving || changed.length === 0) {
+        if (teamSlug === null || saving || changed.length === 0) {
             return;
         }
 
@@ -165,7 +167,9 @@ function TopicBlock({
 
         setSaving(true);
         const result = await submit(
-            putJson(`${base}/settings`, { settings: payload }),
+            putJson(tenantConfigRoutes.settings.update.url(teamSlug), {
+                settings: payload,
+            }),
             `${title}: cambios guardados.`,
             CONFIG_SUBMIT,
         );

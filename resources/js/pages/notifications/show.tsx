@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import notificationRoutes from '@/routes/notifications';
 import type {
     DeliveryTone,
     NotificationDeliveryRow,
@@ -213,7 +214,11 @@ export default function NotificationShow() {
                             )}
                             {teamSlug !== null && (
                                 <Button variant="outline" size="sm" asChild>
-                                    <Link href={`/${teamSlug}/notifications`}>
+                                    <Link
+                                        href={notificationRoutes.index(
+                                            teamSlug,
+                                        )}
+                                    >
                                         <ChevronLeft size={13} />
                                         Notificaciones
                                     </Link>
@@ -273,14 +278,17 @@ NotificationShow.layout = (props: {
         {
             title: 'Notificaciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/notifications`
-                : '/notifications',
+                ? notificationRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.notification && props.currentTeam
             ? [
                   {
                       title: `Entregas #${props.notification.id}`,
-                      href: `/${props.currentTeam.slug}/notifications/${props.notification.id}`,
+                      href: notificationRoutes.show.url([
+                          props.currentTeam.slug,
+                          props.notification.id,
+                      ]),
                   },
               ]
             : []),

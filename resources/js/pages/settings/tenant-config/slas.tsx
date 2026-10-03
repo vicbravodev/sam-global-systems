@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { priorityLabel } from '@/lib/labels';
+import tenantConfigRoutes from '@/routes/tenant-config';
 
 interface PriorityRow {
     id: number;
@@ -223,13 +224,13 @@ TenantConfigSlas.layout = (props: {
         {
             title: 'Configuración de la empresa',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/tenant-config`
+                ? tenantConfigRoutes.show.url(props.currentTeam.slug)
                 : '#',
         },
         {
             title: 'Tiempos de respuesta',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/tenant-config/slas`
+                ? tenantConfigRoutes.slas.index.url(props.currentTeam.slug)
                 : '#',
         },
     ],

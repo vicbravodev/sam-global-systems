@@ -14,6 +14,7 @@ import {
     companySectionFromUrl,
 } from '@/components/sam/settings/use-settings-nav';
 import { Skeleton } from '@/components/ui/skeleton';
+import tenantConfigRoutes from '@/routes/tenant-config';
 
 // Only the Escalamiento section uses the condition builder (and its
 // comboboxes): it loads when that section is shown.
@@ -127,7 +128,7 @@ TenantConfigPage.layout = (props: {
         {
             title: 'Configuración de la empresa',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/settings/tenant-config`
+                ? tenantConfigRoutes.show.url(props.currentTeam.slug)
                 : '#',
         },
     ],

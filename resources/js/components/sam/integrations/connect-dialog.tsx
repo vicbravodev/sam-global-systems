@@ -30,6 +30,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
+import integrationRoutes from '@/routes/integrations';
 import type { AuthTypeOption, IntegrationProviderOption } from '@/types/sam';
 import { capabilityLabel } from './integration-state';
 import { KeyHelp } from './key-help';
@@ -140,7 +141,7 @@ export function ConnectDialog({
 
         setSubmitting(true);
 
-        const response = await postJson(`/${teamSlug}/integrations`, {
+        const response = await postJson(integrationRoutes.store.url(teamSlug), {
             provider_id: Number(providerId),
             name: name.trim(),
             auth_type: authType,

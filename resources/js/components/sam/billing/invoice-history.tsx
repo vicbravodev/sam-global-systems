@@ -8,6 +8,7 @@ import { meterLabel } from '@/lib/labels';
 import { postFormData } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
+import billingRoutes from '@/routes/billing';
 import type { BillingTone } from './panel';
 import { BillingPill, money } from './panel';
 import type { InvoiceLine, InvoiceRow } from './types';
@@ -138,7 +139,7 @@ function ReceiptButton({
         try {
             await submit(
                 postFormData(
-                    `/${teamSlug}/billing/invoices/${invoice.id}/receipt`,
+                    billingRoutes.invoices.receipt.url([teamSlug, invoice.id]),
                     body,
                 ),
                 'Comprobante enviado. El equipo de SAM lo verificará.',

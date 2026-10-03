@@ -8,6 +8,7 @@ import { TabBar } from '@/components/sam/tab-bar';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import analyticsRoutes from '@/routes/analytics';
 
 type TabKey = 'indicators' | 'reports';
 
@@ -131,8 +132,8 @@ AnalyticsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Analítica',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/analytics`
-                : '/analytics',
+                ? analyticsRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

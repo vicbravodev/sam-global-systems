@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useServerList } from '@/hooks/use-server-list';
 import { formatDateTime } from '@/lib/format';
+import auditRoutes from '@/routes/audit';
 import type { ListPagination } from '@/types/pagination';
 
 // Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
@@ -395,8 +396,8 @@ AuditIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Auditoría',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/audit`
-                : '/audit',
+                ? auditRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
@@ -31,6 +32,7 @@ import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
+import rulesRoutes from '@/routes/rules';
 import {
     ordinal,
     OUTCOME_HELP,
@@ -42,7 +44,6 @@ import {
     randomSuffix,
     scopeForConditions,
     RULE_SUBMIT,
-    useRulesBase,
 } from './lib';
 import { RuleSentence } from './rule-sentence';
 import { RuleTester } from './rule-tester';
@@ -95,7 +96,7 @@ function DecisionRuleForm({
     rulesets,
     canManage,
 }: DecisionRuleSheetProps) {
-    const base = useRulesBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const isNew = rule === null;
     const editable = canManage && (isNew || !rule.isGlobal);
 
@@ -159,7 +160,7 @@ function DecisionRuleForm({
     ];
 
     const save = async () => {
-        if (base === null || saving || !editable) {
+        if (teamSlug === null || saving || !editable) {
             return;
         }
 
@@ -216,7 +217,7 @@ function DecisionRuleForm({
             }
 
             result = await submit(
-                postJson(`${base}/decision`, {
+                postJson(rulesRoutes.decision.store.url(teamSlug), {
                     ...body,
                     ruleset_id: ruleset.id,
                     code: codeFromName(name, 'regla', suffix),
@@ -228,7 +229,10 @@ function DecisionRuleForm({
             );
         } else {
             result = await submit(
-                putJson(`${base}/decision/${rule.id}`, body),
+                putJson(
+                    rulesRoutes.decision.update.url([teamSlug, rule.id]),
+                    body,
+                ),
                 'Regla guardada.',
                 RULE_SUBMIT,
             );
@@ -452,14 +456,14 @@ function DecisionRuleForm({
                     </div>
                 </Step>
 
-                {base !== null && (
+                {teamSlug !== null && (
                     <Step
                         step={5}
                         title="Pruébala"
                         help="Comprueba si la regla se habría cumplido con el último evento que evaluó SAM. No cambia nada."
                     >
                         <RuleTester
-                            endpoint={`${base}/test-decision`}
+                            endpoint={rulesRoutes.test.decision.url(teamSlug)}
                             payload={() => ({ conditions_json: conditions })}
                             fields={fields}
                             outcomeCode={outcomeCode}

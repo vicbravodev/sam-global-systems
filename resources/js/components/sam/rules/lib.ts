@@ -1,22 +1,9 @@
-import { usePage } from '@inertiajs/react';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { humanizeCode } from '@/lib/labels';
 import type { SubmitOptions } from '@/lib/submit';
 import type { DecisionRuleRow, MappingRuleRow, OutcomeGroup } from './types';
 
-// ---- Rutas y envío ----
-
-export function useRulesBase(): string | null {
-    const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
-
-    return slug ? `/${slug}/rules` : null;
-}
+// ---- Envío ----
 
 /** Mensajes de `submit` para las reglas. */
 export const RULE_SUBMIT: SubmitOptions = {

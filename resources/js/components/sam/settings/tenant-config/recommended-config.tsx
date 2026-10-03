@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { CheckCircle2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,8 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { postJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
-import { CONFIG_SUBMIT, useTeamBase } from './shared';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT } from './shared';
 
 const INCLUDES = [
     'Protocolo de botón de pánico: todo pánico abre un incidente y se verifica con una llamada.',
@@ -27,18 +29,18 @@ const INCLUDES = [
  * pide confirmación antes de aplicarlo. Nunca pisa lo ya configurado.
  */
 export function RecommendedConfigCard() {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [open, setOpen] = useState(false);
     const [applying, setApplying] = useState(false);
 
     const apply = async () => {
-        if (base === null || applying) {
+        if (teamSlug === null || applying) {
             return;
         }
 
         setApplying(true);
         const result = await submit(
-            postJson(`${base}/apply-sam-defaults`, {}),
+            postJson(tenantConfigRoutes.applySamDefaults.url(teamSlug), {}),
             'Configuración recomendada aplicada.',
             CONFIG_SUBMIT,
         );

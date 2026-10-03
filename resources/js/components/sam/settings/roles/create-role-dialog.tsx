@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import roleRoutes from '@/routes/access/roles';
 
 interface CreateRoleDialogProps {
     open: boolean;
@@ -84,7 +85,7 @@ export function CreateRoleDialog({
 
         setSubmitting(true);
 
-        const response = await postJson(`/${teamSlug}/settings/roles`, {
+        const response = await postJson(roleRoutes.store.url(teamSlug), {
             name: name.trim(),
             code: code.trim(),
             description: description.trim() || null,

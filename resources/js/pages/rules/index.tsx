@@ -19,6 +19,7 @@ import type {
 import { TabBar } from '@/components/sam/tab-bar';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import rulesRoutes from '@/routes/rules';
 
 // La pestaña de ajustes por cuenta (TenantRuleOverride) sigue fuera de la
 // navegación: se guardan pero nada los aplica al evaluar (ver
@@ -202,8 +203,8 @@ RulesIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Reglas',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/rules`
-                : '/rules',
+                ? rulesRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

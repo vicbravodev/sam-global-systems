@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
 import { deleteJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
+import integrationRoutes from '@/routes/integrations';
 import type {
     AuthTypeOption,
     IntegrationProviderOption,
@@ -128,7 +129,7 @@ export default function IntegrationsIndex() {
             setTestingId(integration.id);
 
             const response = await postJson(
-                `/${teamSlug}/integrations/${integration.id}/test`,
+                integrationRoutes.test.url([teamSlug, integration.id]),
             );
 
             setTestingId(null);
@@ -174,7 +175,7 @@ export default function IntegrationsIndex() {
         }
 
         const response = await deleteJson(
-            `/${teamSlug}/integrations/${disconnecting.id}`,
+            integrationRoutes.destroy.url([teamSlug, disconnecting.id]),
         );
 
         if (response.ok) {
@@ -385,8 +386,8 @@ IntegrationsIndex.layout = (props: {
         {
             title: 'Integraciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/integrations`
-                : '/integrations',
+                ? integrationRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

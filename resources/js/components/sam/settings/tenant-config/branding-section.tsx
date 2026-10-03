@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { ImageUp } from 'lucide-react';
 import { useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
@@ -10,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { postFormData, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
-import { CONFIG_SUBMIT, useTeamBase } from './shared';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT } from './shared';
 import type { BrandingProp } from './types';
 
 function ColorInput({
@@ -56,7 +58,7 @@ export function BrandingSection({
     branding: BrandingProp;
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [form, setForm] = useState({
         display_name: branding.displayName ?? '',
         primary_color: branding.primaryColor ?? '#2563eb',
@@ -68,7 +70,7 @@ export function BrandingSection({
     const [errors, setErrors] = useState<Record<string, string>>({});
 
     const save = async () => {
-        if (base === null || saving) {
+        if (teamSlug === null || saving) {
             return;
         }
 
@@ -76,7 +78,7 @@ export function BrandingSection({
         setSaving(true);
 
         const result = await submit(
-            putJson(`${base}/branding`, {
+            putJson(tenantConfigRoutes.branding.update.url(teamSlug), {
                 display_name:
                     form.display_name === '' ? null : form.display_name,
                 primary_color: form.primary_color,
@@ -96,7 +98,7 @@ export function BrandingSection({
     };
 
     const uploadLogo = async (file: File) => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
@@ -107,7 +109,10 @@ export function BrandingSection({
 
         try {
             await submit(
-                postFormData(`${base}/branding/logo`, body),
+                postFormData(
+                    tenantConfigRoutes.branding.logo.url(teamSlug),
+                    body,
+                ),
                 'Logo actualizado.',
                 {
                     forbiddenMessage:
