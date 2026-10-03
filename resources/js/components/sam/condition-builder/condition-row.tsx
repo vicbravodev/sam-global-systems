@@ -38,7 +38,7 @@ export function ConditionRow({
         const next = fields.find((field) => field.key === key) ?? null;
         const operator =
             next && !next.operators.includes(leaf.operator)
-                ? next.operators[0]
+                ? (next.operators[0] ?? leaf.operator)
                 : leaf.operator;
 
         onChange({

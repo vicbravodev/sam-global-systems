@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 // Eight muted hues (OKLCH-ish via tailwind tokens would need per-name tokens;
 // we use inline oklch so any name gets a stable, legible tint in both modes).
-const HUES = [250, 160, 52, 320, 90, 200, 20, 285];
+const HUES = [250, 160, 52, 320, 90, 200, 20, 285] as const;
 
 function hueFor(seed: string): number {
     let hash = 0;
@@ -14,7 +14,7 @@ function hueFor(seed: string): number {
         hash = (hash * 31 + seed.charCodeAt(i)) | 0;
     }
 
-    return HUES[Math.abs(hash) % HUES.length];
+    return HUES[Math.abs(hash) % HUES.length] ?? HUES[0];
 }
 
 interface Props {

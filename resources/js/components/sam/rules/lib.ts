@@ -61,21 +61,25 @@ export function priorityForPlacement(
     anchors: DecisionRuleRow[],
     placement: string,
 ): number {
-    if (anchors.length === 0) {
+    const [first] = anchors;
+    const last = anchors.at(-1);
+
+    if (!first || !last) {
         return 100;
     }
 
     if (placement === 'first') {
-        return Math.min(255, anchors[0].priority + 1);
+        return Math.min(255, first.priority + 1);
     }
 
     const index = anchors.findIndex((rule) => `after:${rule.id}` === placement);
+    const anchor = anchors[index];
 
-    if (index === -1) {
-        return anchors[anchors.length - 1].priority;
+    if (!anchor) {
+        return last.priority;
     }
 
-    const current = anchors[index].priority;
+    const current = anchor.priority;
     const next = anchors[index + 1];
 
     if (!next) {
@@ -356,13 +360,16 @@ export function mappingSource(rule: MappingRuleRow): MappingSource {
 
     // Alertas configuradas en Samsara (AlertIncident): el nombre real de la
     // alerta viaja en una condición ("Panic Button").
+    const [only] = entries;
+
     if (
         entries.length === 1 &&
-        NAME_KEYS.test(entries[0][0]) &&
-        typeof entries[0][1] === 'string'
+        only &&
+        NAME_KEYS.test(only[0]) &&
+        typeof only[1] === 'string'
     ) {
         return {
-            title: entries[0][1] as string,
+            title: only[1],
             detail: `Alerta configurada (${base})`,
         };
     }

@@ -11,7 +11,8 @@ type ActiveAlert = {
 
 const TERMINAL_STATUSES = ['resolved', 'closed', 'false_positive', 'cancelled'];
 
-const ORIGINAL_TITLE_KEY = '__samOriginalTitle';
+/** Título de la pestaña antes de empezar a parpadear (para restaurarlo). */
+let originalTitle: string | undefined;
 
 /**
  * Alerta de pánico/crítico que no se puede ignorar (decisión 2026-09-28):
@@ -54,16 +55,12 @@ export function CriticalIncidentAlert() {
 
     const beep = useCallback(() => {
         try {
-            const ctx =
-                audioRef.current ??
-                new (
-                    window.AudioContext ||
-                    (
-                        window as unknown as {
-                            webkitAudioContext: typeof AudioContext;
-                        }
-                    ).webkitAudioContext
-                )();
+            const ctx = audioRef.current ?? createAudioContext();
+
+            if (!ctx) {
+                return;
+            }
+
             audioRef.current = ctx;
 
             [0, 0.25].forEach((offset) => {
@@ -186,21 +183,25 @@ function notifyBrowser(id: number, title: string, teamSlug: string | null) {
     }
 }
 
+/** `AudioContext` con el prefijo de Safari viejo; null si no hay audio. */
+function createAudioContext(): AudioContext | null {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+    return AudioContextClass ? new AudioContextClass() : null;
+}
+
 function setFlashingTitle(text: string | null) {
-    const store = window as unknown as Record<string, string | undefined>;
-    store[ORIGINAL_TITLE_KEY] ??= document.title;
-    document.title = text ?? store[ORIGINAL_TITLE_KEY] ?? document.title;
+    originalTitle ??= document.title;
+    document.title = text ?? originalTitle;
 }
 
 function restoreTitle() {
-    if (typeof window === 'undefined') {
+    if (typeof document === 'undefined') {
         return;
     }
 
-    const store = window as unknown as Record<string, string | undefined>;
-
-    if (store[ORIGINAL_TITLE_KEY] !== undefined) {
-        document.title = store[ORIGINAL_TITLE_KEY];
-        store[ORIGINAL_TITLE_KEY] = undefined;
+    if (originalTitle !== undefined) {
+        document.title = originalTitle;
+        originalTitle = undefined;
     }
 }

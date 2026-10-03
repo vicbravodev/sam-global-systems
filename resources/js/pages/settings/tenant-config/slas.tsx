@@ -59,9 +59,12 @@ export default function TenantConfigSlas({ priorities }: SlasPageProps) {
     );
 
     const setSeconds = (index: number, seconds: number | null) => {
-        const next = [...form.data.slas];
-        next[index] = { ...next[index], sla_seconds: seconds };
-        form.setData('slas', next);
+        form.setData(
+            'slas',
+            form.data.slas.map((row, i) =>
+                i === index ? { ...row, sla_seconds: seconds } : row,
+            ),
+        );
     };
 
     const setMinutes = (index: number, raw: string) =>
@@ -105,10 +108,12 @@ export default function TenantConfigSlas({ priorities }: SlasPageProps) {
                         <form onSubmit={submit}>
                             <FormCard>
                                 {priorities.map((priority, index) => {
-                                    const row = form.data.slas[index];
+                                    const slaSeconds =
+                                        form.data.slas[index]?.sla_seconds ??
+                                        null;
                                     const defaultSeconds =
                                         defaults.get(priority.id) ?? null;
-                                    const customized = row.sla_seconds !== null;
+                                    const customized = slaSeconds !== null;
                                     const fieldError =
                                         form.errors[
                                             `slas.${index}.sla_seconds` as keyof typeof form.errors
@@ -144,11 +149,11 @@ export default function TenantConfigSlas({ priorities }: SlasPageProps) {
                                                             : 'Sin límite'
                                                     }
                                                     value={
-                                                        row.sla_seconds === null
+                                                        slaSeconds === null
                                                             ? ''
                                                             : String(
                                                                   toMinutes(
-                                                                      row.sla_seconds,
+                                                                      slaSeconds,
                                                                   ),
                                                               )
                                                     }

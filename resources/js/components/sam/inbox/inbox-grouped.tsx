@@ -86,10 +86,8 @@ export function InboxGrouped({
                 );
                 const minSla =
                     liveItems.length > 0
-                        ? liveItems.reduce(
-                              (min, r) =>
-                                  r.slaSeconds < min.slaSeconds ? r : min,
-                              liveItems[0],
+                        ? liveItems.reduce((min, r) =>
+                              r.slaSeconds < min.slaSeconds ? r : min,
                           )
                         : null;
 

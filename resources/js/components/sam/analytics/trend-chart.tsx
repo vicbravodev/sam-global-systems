@@ -16,9 +16,11 @@ function useElementWidth<T extends HTMLElement>() {
             return;
         }
 
-        const observer = new ResizeObserver(([entry]) =>
-            setWidth(Math.floor(entry.contentRect.width)),
-        );
+        const observer = new ResizeObserver(([entry]) => {
+            if (entry) {
+                setWidth(Math.floor(entry.contentRect.width));
+            }
+        });
         observer.observe(node);
 
         return () => observer.disconnect();

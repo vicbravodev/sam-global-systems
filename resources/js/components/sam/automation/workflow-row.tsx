@@ -30,7 +30,7 @@ import {
     stepDelay,
     stepPhrase,
     stepRecipient,
-    TRIGGERS,
+    triggerCopy,
     triggerSentence,
 } from './copy';
 import type { AutomationOptions, WorkflowRow, WorkflowRunStat } from './types';
@@ -68,7 +68,7 @@ export function WorkflowListRow({
     onDelete,
 }: WorkflowRowProps) {
     const running = isRunning(workflow);
-    const TriggerIcon = TRIGGERS[workflow.triggerType ?? '']?.icon ?? Zap;
+    const TriggerIcon = triggerCopy(workflow.triggerType)?.icon ?? Zap;
     const conditions = conditionPhrases(
         workflow.triggerConditions,
         conditionFields,

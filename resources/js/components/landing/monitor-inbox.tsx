@@ -25,7 +25,7 @@ type Case = {
 };
 
 /* Casos de ejemplo de la misma noche que cuenta el resto del landing. */
-const CASES: Case[] = [
+const CASES: [Case, ...Case[]] = [
     {
         id: 'panic',
         title: 'Botón de pánico',

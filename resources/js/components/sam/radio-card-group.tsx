@@ -41,12 +41,13 @@ export function RadioCardGroup({
             document.activeElement as HTMLButtonElement,
         );
 
-        if (current === -1 || radios.length === 0) {
+        const next = radios[(current + step + radios.length) % radios.length];
+
+        if (current === -1 || !next) {
             return;
         }
 
         event.preventDefault();
-        const next = radios[(current + step + radios.length) % radios.length];
         next.focus();
         next.click();
     };

@@ -58,19 +58,12 @@ function prefersReducedMotion(): boolean {
 function lastSettledAnswer(
     messages: CopilotMessage[],
 ): CopilotMessage | undefined {
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i];
-
-        if (
+    return messages.findLast(
+        (m) =>
             m.role === 'assistant' &&
             !m.streaming &&
-            !(m.partial && !m.context?.resolved)
-        ) {
-            return m;
-        }
-    }
-
-    return undefined;
+            !(m.partial && !m.context?.resolved),
+    );
 }
 
 export function CopilotChatPanel({
@@ -221,13 +214,9 @@ export function CopilotChatPanel({
 
     // Sending is an explicit jump: always go down to the new question.
     const lastQuestionKey = useMemo(() => {
-        for (let i = chat.messages.length - 1; i >= 0; i--) {
-            if (chat.messages[i].role === 'user') {
-                return chat.messages[i].clientKey ?? null;
-            }
-        }
-
-        return null;
+        return (
+            chat.messages.findLast((m) => m.role === 'user')?.clientKey ?? null
+        );
     }, [chat.messages]);
 
     useLayoutEffect(() => {
