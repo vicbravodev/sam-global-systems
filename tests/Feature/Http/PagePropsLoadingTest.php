@@ -10,6 +10,7 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Inertia\Support\Header;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -150,6 +151,106 @@ class PagePropsLoadingTest extends TestCase
                 ->missing('incidents')));
     }
 
+    public function test_fleet_pulse_reload_does_not_run_the_paginated_asset_query(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        Asset::factory()->count(3)->create(['team_id' => $team->id]);
+
+        $url = route('assets.index', ['current_team' => $team->slug]);
+        $initial = $this->actingAs($user)->get($url);
+
+        $queries = $this->queriesDuring(fn () => $this
+            ->partialReload($initial, $url, 'assets/index', ['summary', 'monitoring'])
+            ->assertOk()
+            ->assertJsonMissingPath('props.assets')
+            ->assertJsonMissingPath('props.pagination'));
+
+        // The page query eager-loads attached devices and pages by 50: neither
+        // may run when only the pulse is asked for.
+        $this->assertNoQueryMatches($queries, '/^select \* from "asset_devices"/');
+        $this->assertNoQueryMatches($queries, '/limit 50/');
+
+        // A page change still builds the page once for both props.
+        $pageQueries = $this->queriesDuring(fn () => $this
+            ->partialReload($initial, $url, 'assets/index', ['assets', 'pagination'])
+            ->assertOk()
+            ->assertJsonCount(3, 'props.assets')
+            ->assertJsonPath('props.pagination.total', 3));
+
+        $this->assertCount(1, array_filter($pageQueries, fn (string $sql) => preg_match('/limit 50/', $sql) === 1));
+    }
+
+    public function test_map_reload_of_other_props_does_not_load_the_fleet(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        Asset::factory()->count(2)->create(['team_id' => $team->id]);
+
+        $url = route('assets.map', ['current_team' => $team->slug]);
+        $initial = $this->actingAs($user)->get($url)->assertOk();
+
+        $queries = $this->queriesDuring(fn () => $this
+            ->partialReload($initial, $url, 'assets/map', ['statusLabels'])
+            ->assertOk()
+            ->assertJsonMissingPath('props.assets'));
+
+        $this->assertNoQueryMatches($queries, '/from "assets"/');
+
+        // Both fleet props share one load of the fleet.
+        $fleetQueries = $this->queriesDuring(fn () => $this
+            ->partialReload($initial, $url, 'assets/map', ['assets', 'unpositionedCount'])
+            ->assertOk()
+            ->assertJsonPath('props.unpositionedCount', 2));
+
+        $this->assertCount(1, array_filter($fleetQueries, fn (string $sql) => preg_match('/^select \* from "assets"/', $sql) === 1));
+    }
+
+    public function test_inbox_catalog_reload_does_not_run_the_incident_query(): void
+    {
+        $this->seed(AccessSeeder::class);
+        $this->seed(IncidentsSeeder::class);
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        Incident::factory()->count(2)->create(['team_id' => $team->id]);
+
+        $url = route('incidents.index', ['current_team' => $team->slug]);
+        $initial = $this->actingAs($user)->get($url);
+
+        $queries = $this->queriesDuring(fn () => $this
+            ->partialReload($initial, $url, 'incidents/index', ['filterOptions', 'members', 'reclassifyOptions'])
+            ->assertOk()
+            ->assertJsonMissingPath('props.incidents'));
+
+        $this->assertNoQueryMatches($queries, '/from "incidents" where .* limit 200/');
+    }
+
+    /**
+     * @param  \Closure(): mixed  $callback
+     * @return list<string>
+     */
+    private function queriesDuring(\Closure $callback): array
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $callback();
+        $queries = array_map(fn (array $entry): string => (string) $entry['query'], DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $queries;
+    }
+
+    /**
+     * @param  list<string>  $queries
+     */
+    private function assertNoQueryMatches(array $queries, string $pattern): void
+    {
+        $matches = array_values(array_filter($queries, fn (string $sql) => preg_match($pattern, $sql) === 1));
+
+        $this->assertSame([], $matches, "A partial reload ran a query it does not need ({$pattern}).");
+    }
+
     /**
      * Same request the Inertia client sends for `router.reload({ only })`.
      *
@@ -159,11 +260,15 @@ class PagePropsLoadingTest extends TestCase
      */
     private function partialReload(TestResponse $initial, string $url, string $component, array $only): TestResponse
     {
-        return $this->withHeaders([
+        $response = $this->withHeaders([
             Header::INERTIA => 'true',
             Header::VERSION => (string) $initial->viewData('page')['version'],
             Header::PARTIAL_COMPONENT => $component,
             Header::PARTIAL_ONLY => implode(',', $only),
         ])->get($url);
+
+        $this->flushHeaders();
+
+        return $response;
     }
 }

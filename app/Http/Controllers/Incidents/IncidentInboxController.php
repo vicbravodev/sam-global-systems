@@ -63,6 +63,30 @@ class IncidentInboxController extends Controller
 
         $filters = $this->filters($request);
 
+        return Inertia::render('incidents/index', [
+            // Closures: a partial reload that does not name `incidents` (the
+            // deferred catalogs, `filters`) never runs the 200-row query.
+            'incidents' => fn () => $this->inboxRows($current_team, $filters),
+            'filters' => $filters,
+            // Catalogs for the filter dropdowns and the detail panel's
+            // assign/reclassify menus: not needed to paint the rows, so they
+            // arrive in one deferred request right after.
+            'filterOptions' => Inertia::defer(fn () => $this->filterOptions($current_team), 'meta'),
+            'members' => Inertia::defer(fn () => $this->members($current_team), 'meta'),
+            'reclassifyOptions' => Inertia::defer(fn () => $this->reclassifyOptions(), 'meta'),
+            'can' => fn () => $this->abilities($user, $current_team),
+        ]);
+    }
+
+    /**
+     * The inbox rows: newest first, at most INBOX_LIMIT, with assignee and
+     * claimer names resolved in one query.
+     *
+     * @param  array{q: string|null, severity: string|null, status: string|null, provider: string|null, shift: string|null}  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function inboxRows(Team $current_team, array $filters): array
+    {
         $query = Incident::query()
             ->where('team_id', $current_team->id)
             ->with([
@@ -96,19 +120,9 @@ class IncidentInboxController extends Controller
             $current_team->id,
         );
 
-        return Inertia::render('incidents/index', [
-            'incidents' => $incidents
-                ->map(fn (Incident $incident) => $this->presenter->toRow($incident, $users))
-                ->all(),
-            'filters' => $filters,
-            // Catalogs for the filter dropdowns and the detail panel's
-            // assign/reclassify menus: not needed to paint the rows, so they
-            // arrive in one deferred request right after.
-            'filterOptions' => Inertia::defer(fn () => $this->filterOptions($current_team), 'meta'),
-            'members' => Inertia::defer(fn () => $this->members($current_team), 'meta'),
-            'reclassifyOptions' => Inertia::defer(fn () => $this->reclassifyOptions(), 'meta'),
-            'can' => $this->abilities($user, $current_team),
-        ]);
+        return array_values($incidents
+            ->map(fn (Incident $incident) => $this->presenter->toRow($incident, $users))
+            ->all());
     }
 
     /**
