@@ -333,17 +333,19 @@ export function NightWatch() {
                     ))}
 
                     {points.length > 0 &&
-                        EVENTS.map((e, i) =>
-                            i < passed ? (
+                        EVENTS.map((e, i) => {
+                            const point = points[i];
+
+                            return i < passed && point ? (
                                 <EventMark
                                     key={e.title + e.at}
-                                    x={points[i].x}
-                                    y={points[i].y}
+                                    x={point.x}
+                                    y={point.y}
                                     kind={e.kind}
                                     reduce={reduce}
                                 />
-                            ) : null,
-                        )}
+                            ) : null;
+                        })}
                 </svg>
 
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-5 py-3 text-sm text-night-muted">

@@ -176,17 +176,13 @@ export function PointMap({
             properties: {},
             geometry: { type: 'LineString', coordinates },
         };
-        const startData: GeoJSON.Feature<GeoJSON.Point> = {
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'Point', coordinates: coordinates[0] },
-        };
+        const [start] = coordinates;
         const hasTrail = coordinates.length > 1;
         const source = map.getSource(TRAIL_SOURCE) as
             | maplibregl.GeoJSONSource
             | undefined;
 
-        if (!hasTrail) {
+        if (!hasTrail || start === undefined) {
             [TRAIL_START, TRAIL_LINE, TRAIL_CASING].forEach((id) => {
                 if (map.getLayer(id)) {
                     map.removeLayer(id);
@@ -200,6 +196,12 @@ export function PointMap({
 
             return;
         }
+
+        const startData: GeoJSON.Feature<GeoJSON.Point> = {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: start },
+        };
 
         if (source) {
             source.setData(data);

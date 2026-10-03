@@ -106,7 +106,7 @@ export default function AnalyticsIndex(props: AnalyticsPageProps) {
                                 metrics={props.metrics}
                                 fleet={props.fleet}
                                 period={props.period}
-                                longestPeriod={periods[periods.length - 1]}
+                                longestPeriod={periods.at(-1) ?? props.period}
                                 onPeriod={changePeriod}
                                 hasReports={props.reports.length > 0}
                                 onShowReports={() => setTab('reports')}

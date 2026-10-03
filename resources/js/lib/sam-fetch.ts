@@ -19,7 +19,9 @@ function readCookie(name: string): string | null {
         new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'),
     );
 
-    return match ? decodeURIComponent(match[1]) : null;
+    const value = match?.[1];
+
+    return value === undefined ? null : decodeURIComponent(value);
 }
 
 /**
@@ -180,8 +182,12 @@ export async function readErrorPayload(
         const fieldErrors: Record<string, string> = {};
 
         for (const [field, messages] of Object.entries(data.errors ?? {})) {
-            if (Array.isArray(messages) && messages.length > 0) {
-                fieldErrors[field] = messages[0];
+            const first: unknown = Array.isArray(messages)
+                ? messages[0]
+                : undefined;
+
+            if (typeof first === 'string') {
+                fieldErrors[field] = first;
             }
         }
 

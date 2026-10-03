@@ -17,7 +17,7 @@ type Frame = {
 };
 
 /* Las seis fotos que SAM pide alrededor del pánico de la T-214. */
-const FRAMES: Frame[] = [
+const FRAMES: [Frame, ...Frame[]] = [
     { at: '-15 s', camera: 'Frontal', speed: 64, scene: 'road' },
     { at: '-10 s', camera: 'Frontal', speed: 31, scene: 'road' },
     { at: '-5 s', camera: 'Frontal', speed: 0, scene: 'shoulder' },
@@ -82,7 +82,7 @@ export function CabinVision() {
                             transition={{ duration: 0.35 }}
                         >
                             <FrameArt
-                                frame={FRAMES[active]}
+                                frame={FRAMES[active] ?? FRAMES[0]}
                                 showBoxes={done || active < scanned}
                                 reduce={reduce}
                             />

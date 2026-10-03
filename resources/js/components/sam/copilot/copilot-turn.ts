@@ -327,7 +327,8 @@ export function reconcileBlocks(
         const at = previous.findIndex(
             (old, i) => !used.has(i) && old.type === block.type,
         );
-        const inherited = at === -1 ? undefined : blockKeys.get(previous[at]);
+        const prior = at === -1 ? undefined : previous[at];
+        const inherited = prior ? blockKeys.get(prior) : undefined;
 
         if (at !== -1) {
             used.add(at);

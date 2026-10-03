@@ -126,7 +126,7 @@ function EditorBody({
     const knownTriggers = new Set(options.triggerTypes.map((o) => o.value));
     const triggers = TRIGGER_ORDER.filter(
         (value) =>
-            (knownTriggers.has(value) && TRIGGERS[value]?.available) ||
+            (knownTriggers.has(value) && TRIGGERS[value].available) ||
             value === state.triggerType,
     );
 

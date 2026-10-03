@@ -37,9 +37,11 @@ const TYPE_ICON: Record<TimelineEntryType, LucideIcon> = {
     resolved: Check,
 };
 
+type MediaEntries = [IncidentTimelineEntry, ...IncidentTimelineEntry[]];
+
 type ActivityNode =
     | { kind: 'entry'; entry: IncidentTimelineEntry }
-    | { kind: 'media-group'; entries: IncidentTimelineEntry[] };
+    | { kind: 'media-group'; entries: MediaEntries };
 
 /**
  * Colapsa rachas consecutivas de `media_assessed` en un solo nodo agregado:
@@ -140,7 +142,7 @@ function MediaGroupNode({
     entries,
     formatTs,
 }: {
-    entries: IncidentTimelineEntry[];
+    entries: MediaEntries;
     formatTs: (entry: IncidentTimelineEntry) => string;
 }) {
     const [expanded, setExpanded] = useState(false);
@@ -168,7 +170,7 @@ function MediaGroupNode({
     }, [entries]);
 
     const first = entries[0];
-    const last = entries[entries.length - 1];
+    const last = entries[entries.length - 1] ?? first;
 
     return (
         <li className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-2 py-1.5 text-xs">

@@ -344,11 +344,10 @@ export function CopilotComposer({
                             ) {
                                 e.preventDefault();
 
-                                if (
-                                    suggestions.length > 0 &&
-                                    lastWord?.startsWith('@')
-                                ) {
-                                    applySuggestion(suggestions[0]);
+                                const [first] = suggestions;
+
+                                if (first && lastWord?.startsWith('@')) {
+                                    applySuggestion(first);
 
                                     return;
                                 }
@@ -363,9 +362,11 @@ export function CopilotComposer({
                                 onStop();
                             }
 
-                            if (e.key === 'Tab' && suggestions.length > 0) {
+                            const [suggestion] = suggestions;
+
+                            if (e.key === 'Tab' && suggestion) {
                                 e.preventDefault();
-                                applySuggestion(suggestions[0]);
+                                applySuggestion(suggestion);
                             }
                         }}
                         rows={1}

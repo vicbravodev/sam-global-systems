@@ -339,8 +339,9 @@ export function LiveMap({
         };
 
         for (const cluster of clusters) {
-            if (cluster.members.length === 1) {
-                const asset = cluster.members[0];
+            const [asset] = cluster.members;
+
+            if (cluster.members.length === 1 && asset) {
                 upsertUnit(cluster.key, asset, [
                     asset.longitude,
                     asset.latitude,
@@ -404,7 +405,12 @@ export function LiveMap({
             const el = createClusterMarker(statuses, aria);
             el.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const first = cluster.members[0];
+                const [first] = cluster.members;
+
+                if (!first) {
+                    return;
+                }
+
                 const samePoint = cluster.members.every(
                     (m) =>
                         Math.abs(m.longitude - first.longitude) < 1e-6 &&
