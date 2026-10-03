@@ -46,7 +46,7 @@ function PageHeader({
                     ) : null}
                 </div>
                 {description ? (
-                    <p className="text-fg-3 mt-1 text-sm">{description}</p>
+                    <p className="mt-1 text-sm text-fg-3">{description}</p>
                 ) : null}
             </div>
             {actions ? (
