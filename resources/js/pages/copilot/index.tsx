@@ -1,20 +1,10 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, Link, usePage } from '@inertiajs/react';
-import {
-    BarChart3,
-    MessageSquarePlus,
-    Pin,
-    PinOff,
-    Plug,
-    Sparkles,
-    Trash2,
-} from 'lucide-react';
+import { Head, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopilotChatPanel } from '@/components/sam/copilot/copilot-chat-panel';
-import { timeAgo } from '@/components/sam/copilot/copilot-format';
+import { CopilotConversationSidebar } from '@/components/sam/copilot/copilot-conversation-sidebar';
+import { CopilotPageHeader } from '@/components/sam/copilot/copilot-page-header';
 import { useCopilotChat } from '@/components/sam/copilot/use-copilot-chat';
-import { Meter } from '@/components/sam/meter';
-import { cn } from '@/lib/utils';
 import copilotRoutes from '@/routes/copilot';
 import type {
     CopilotCatalog,
@@ -114,144 +104,28 @@ export default function CopilotIndex(props: PageProps) {
         <>
             <Head title="SAM Copilot" />
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-[260px_minmax(0,1fr)]">
-                <aside className="hidden min-h-0 flex-col border-r border-border bg-surface-1 md:flex">
-                    <div className="p-3">
-                        <button
-                            type="button"
-                            onClick={chat.reset}
-                            className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm font-medium text-fg-1 hover:bg-surface-3"
-                        >
-                            <MessageSquarePlus className="size-4 text-ai-accent" />
-                            <span className="flex-1 text-left">
-                                Nueva conversación
-                            </span>
-                        </button>
-                    </div>
-                    <div className="sam-caps px-4 pt-1 pb-1.5">
-                        Conversaciones
-                    </div>
-                    <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
-                        {conversations.length === 0 && (
-                            <p className="px-2 py-3 text-xs text-fg-3">
-                                Aquí aparecerán tus conversaciones. Son
-                                privadas: solo tú las ves.
-                            </p>
-                        )}
-                        {conversations.map((conversation) => (
-                            <div
-                                key={conversation.id}
-                                className={cn(
-                                    'group relative rounded-md',
-                                    conversation.id === chat.conversationId
-                                        ? 'bg-primary/15'
-                                        : 'hover:bg-surface-2',
-                                )}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        void chat.load(conversation.id)
-                                    }
-                                    className="flex w-full cursor-pointer flex-col gap-0.5 px-2.5 py-2 pr-14 text-left"
-                                >
-                                    <span className="line-clamp-2 text-xs font-medium text-fg-1">
-                                        {conversation.isPinned && (
-                                            <Pin className="mr-1 inline size-3 text-ai-accent" />
-                                        )}
-                                        {conversation.title}
-                                    </span>
-                                    <span className="font-mono text-3xs text-fg-3">
-                                        {timeAgo(conversation.lastMessageAt)}
-                                    </span>
-                                </button>
-                                <div className="absolute top-1.5 right-1.5 hidden gap-0.5 group-focus-within:flex group-hover:flex">
-                                    <button
-                                        type="button"
-                                        aria-label={
-                                            conversation.isPinned
-                                                ? 'Desfijar'
-                                                : 'Fijar'
-                                        }
-                                        onClick={() =>
-                                            void chat.togglePin(conversation)
-                                        }
-                                        className="grid size-6 cursor-pointer place-items-center rounded-sm text-fg-3 hover:bg-surface-3 hover:text-fg-1"
-                                    >
-                                        {conversation.isPinned ? (
-                                            <PinOff className="size-3" />
-                                        ) : (
-                                            <Pin className="size-3" />
-                                        )}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        aria-label="Eliminar"
-                                        onClick={() =>
-                                            void removeConversation(
-                                                conversation,
-                                            )
-                                        }
-                                        className="grid size-6 cursor-pointer place-items-center rounded-sm text-fg-3 hover:bg-severity-critical/15 hover:text-severity-critical"
-                                    >
-                                        <Trash2 className="size-3" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </nav>
-                    <QuotaMeter quota={quota} />
-                    {props.canViewUsage && (
-                        <Link
-                            href={copilotRoutes.usage(teamSlug)}
-                            className="mx-3 mb-3 flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-fg-2 hover:bg-surface-2 hover:text-fg-1"
-                        >
-                            <BarChart3 className="size-3.5" /> Uso y consumo
-                        </Link>
-                    )}
-                </aside>
+                <CopilotConversationSidebar
+                    conversations={conversations}
+                    activeConversationId={chat.conversationId}
+                    quota={quota}
+                    canViewUsage={props.canViewUsage}
+                    teamSlug={teamSlug}
+                    onNew={chat.reset}
+                    onLoad={(conversation) => void chat.load(conversation.id)}
+                    onTogglePin={(conversation) =>
+                        void chat.togglePin(conversation)
+                    }
+                    onRemove={(conversation) =>
+                        void removeConversation(conversation)
+                    }
+                />
 
                 <section className="flex min-h-0 min-w-0 flex-col">
-                    <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-6">
-                        <div className="grid size-9 place-items-center rounded-md bg-ai-accent-bg text-ai-accent">
-                            <Sparkles className="size-4.5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <h1 className="text-sm font-semibold text-fg-1">
-                                SAM Copilot
-                            </h1>
-                            <p className="truncate font-mono text-3xs text-fg-3">
-                                Conectado a {team?.name} · {engineLabel}
-                            </p>
-                        </div>
-                        <div className="hidden items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-2xs text-fg-2 lg:flex">
-                            <Plug className="size-3" />
-                            {[
-                                'Unidades',
-                                'GPS',
-                                'Telemetría',
-                                'Media',
-                                'Incidentes',
-                                'Conductores',
-                            ].map((source, index) => (
-                                <span
-                                    key={source}
-                                    className="flex items-center gap-2"
-                                >
-                                    {index > 0 && (
-                                        <span className="size-0.75 rounded-full bg-fg-3" />
-                                    )}
-                                    {source}
-                                </span>
-                            ))}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={chat.reset}
-                            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-fg-2 hover:bg-surface-2 md:hidden"
-                        >
-                            <MessageSquarePlus className="size-3.5" /> Nueva
-                        </button>
-                    </header>
+                    <CopilotPageHeader
+                        teamName={team?.name}
+                        engineLabel={engineLabel}
+                        onNew={chat.reset}
+                    />
                     <CopilotChatPanel
                         chat={chat}
                         catalog={catalog}
@@ -261,44 +135,6 @@ export default function CopilotIndex(props: PageProps) {
                 </section>
             </div>
         </>
-    );
-}
-
-function QuotaMeter({ quota }: { quota: CopilotQuota }) {
-    if (quota.included === null) {
-        return (
-            <div className="mx-3 mb-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-3xs text-fg-3">
-                <span className="font-mono text-xs font-semibold text-fg-1">
-                    {quota.used}
-                </span>{' '}
-                consultas este mes
-            </div>
-        );
-    }
-
-    const percent = Math.min(100, quota.percent ?? 0);
-
-    return (
-        <div className="mx-3 mb-2 rounded-md border border-border bg-surface-2 px-3 py-2">
-            <div className="flex items-baseline justify-between text-3xs text-fg-3">
-                <span>Consultas del mes</span>
-                <span className="font-mono text-fg-2 tabular-nums">
-                    {quota.used} / {quota.included}
-                </span>
-            </div>
-            <Meter
-                value={percent}
-                label="Consultas del mes usadas"
-                className="mt-1.5 h-1"
-                toneClassName={
-                    percent >= 100
-                        ? 'bg-severity-critical'
-                        : percent >= 80
-                          ? 'bg-severity-high'
-                          : 'bg-ai-accent'
-                }
-            />
-        </div>
     );
 }
 

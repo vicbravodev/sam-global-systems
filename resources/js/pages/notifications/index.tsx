@@ -1,172 +1,21 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
-import {
-    Bell,
-    BellOff,
-    CircleSlash,
-    Send,
-    Siren,
-    TriangleAlert,
-} from 'lucide-react';
-import {
-    ClearFiltersButton,
-    EMPTY_PAGINATION,
-    FilterDropdown,
-    ListFooter,
-} from '@/components/sam/list';
+import { Bell } from 'lucide-react';
+import { EMPTY_PAGINATION, ListFooter } from '@/components/sam/list';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
+import {
+    EMPTY_NOTIFICATION_FILTERS,
+    NotificationsFilterBar,
+} from '@/components/sam/notifications/notifications-filter-bar';
+import { NotificationsPulse } from '@/components/sam/notifications/notifications-pulse';
 import { NotificationsTable } from '@/components/sam/notifications/notifications-table';
-import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { useServerList } from '@/hooks/use-server-list';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
-import { cn } from '@/lib/utils';
 import notificationRoutes from '@/routes/notifications';
 import type {
     NotificationFilterOptions,
-    NotificationFilters,
     NotificationsIndexProps,
-    NotificationsSummary,
 } from '@/types/notifications';
-
-// ---- Pulse strip ----
-
-function CenterPulse({
-    summary,
-    filters,
-    onApply,
-}: {
-    summary: NotificationsSummary;
-    filters: NotificationFilters;
-    onApply: (next: NotificationFilters) => void;
-}) {
-    return (
-        <PulseStrip>
-            <PulseStat
-                label="Sin leer"
-                value={summary.unread}
-                icon={Bell}
-                tone={summary.unread > 0 ? 'primary' : 'neutral'}
-                hint="para ti, en este equipo"
-                onClick={() => onApply({ ...filters, unread: !filters.unread })}
-                active={filters.unread}
-            />
-            <PulseStat
-                label="Enviadas 24 h"
-                value={summary.sent24h}
-                icon={Send}
-                tone="ok"
-                hint="salieron por algún canal"
-            />
-            <PulseStat
-                label="No entregadas 24 h"
-                value={summary.undelivered24h}
-                icon={CircleSlash}
-                tone={summary.undelivered24h > 0 ? 'critical' : 'neutral'}
-                hint="con entregas fallidas, fallidas o canceladas"
-                onClick={() =>
-                    onApply({ ...filters, failures: !filters.failures })
-                }
-                active={filters.failures}
-            />
-            <PulseStat
-                label="Críticas 24 h"
-                value={summary.critical24h}
-                icon={Siren}
-                tone={summary.critical24h > 0 ? 'critical' : 'neutral'}
-                hint="prioridad crítica"
-                onClick={() =>
-                    onApply({
-                        ...filters,
-                        priority:
-                            filters.priority === 'critical' ? null : 'critical',
-                    })
-                }
-                active={filters.priority === 'critical'}
-            />
-        </PulseStrip>
-    );
-}
-
-// ---- FilterBar ----
-
-const EMPTY_FILTERS: NotificationFilters = {
-    status: null,
-    priority: null,
-    unread: false,
-    failures: false,
-};
-
-interface FilterBarProps {
-    filters: NotificationFilters;
-    options: NotificationFilterOptions;
-    onApply: (next: NotificationFilters) => void;
-}
-
-function FilterBar({ filters, options, onApply }: FilterBarProps) {
-    const hasActive =
-        filters.status !== null ||
-        filters.priority !== null ||
-        filters.unread ||
-        filters.failures;
-
-    return (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <button
-                type="button"
-                aria-pressed={filters.unread}
-                onClick={() => onApply({ ...filters, unread: !filters.unread })}
-                className={cn(
-                    'flex items-center gap-1 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
-                    filters.unread
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong hover:text-fg-1',
-                )}
-            >
-                {filters.unread ? <BellOff size={11} /> : <Bell size={11} />}
-                Mis no leídas
-            </button>
-
-            <button
-                type="button"
-                aria-pressed={filters.failures}
-                onClick={() =>
-                    onApply({ ...filters, failures: !filters.failures })
-                }
-                className={cn(
-                    'flex items-center gap-1 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
-                    filters.failures
-                        ? 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical'
-                        : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong hover:text-fg-1',
-                )}
-            >
-                <TriangleAlert size={11} />
-                No entregadas
-            </button>
-
-            <FilterDropdown
-                label="Estado"
-                value={filters.status}
-                options={options.statuses}
-                allLabel="Todas"
-                onChange={(status) => onApply({ ...filters, status })}
-            />
-
-            <FilterDropdown
-                label="Prioridad"
-                value={filters.priority}
-                options={options.priorities}
-                allLabel="Todas"
-                onChange={(priority) => onApply({ ...filters, priority })}
-            />
-
-            {hasActive && (
-                <ClearFiltersButton onClick={() => onApply(EMPTY_FILTERS)} />
-            )}
-        </div>
-    );
-}
-
-// ---- Main page ----
 
 const EMPTY_OPTIONS: NotificationFilterOptions = {
     statuses: [],
@@ -188,8 +37,8 @@ export default function NotificationsIndex(pageProps: NotificationsIndexProps) {
     const list = useServerList({
         only: ['notifications', 'pagination'],
         refreshOnly: ['notifications', 'pagination', 'summary'],
-        filters: pageProps.filters ?? EMPTY_FILTERS,
-        emptyFilters: EMPTY_FILTERS,
+        filters: pageProps.filters ?? EMPTY_NOTIFICATION_FILTERS,
+        emptyFilters: EMPTY_NOTIFICATION_FILTERS,
     });
 
     const markRead = (id: number) => {
@@ -235,7 +84,7 @@ export default function NotificationsIndex(pageProps: NotificationsIndexProps) {
                 refreshing={list.refreshing}
                 pulse={
                     summary && (
-                        <CenterPulse
+                        <NotificationsPulse
                             summary={summary}
                             filters={list.filters}
                             onApply={list.apply}
@@ -243,7 +92,7 @@ export default function NotificationsIndex(pageProps: NotificationsIndexProps) {
                     )
                 }
                 filters={
-                    <FilterBar
+                    <NotificationsFilterBar
                         filters={list.filters}
                         options={filterOptions}
                         onApply={list.apply}

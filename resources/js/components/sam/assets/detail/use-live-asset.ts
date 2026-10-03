@@ -1,11 +1,15 @@
-import { router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import {
+    useBroadcastReload,
+    useTeamBroadcast,
+} from '@/hooks/use-team-broadcasts';
 import type { AssetShowProps, LocationTrailPoint } from '@/types/assets';
 import type { FleetPosition } from '@/types/realtime';
 
 const RELOAD_DEBOUNCE_MS = 2000;
+
+// Every prop this page keeps live (what a socket resync reloads).
+const LIVE_KEYS = ['asset', 'locationHistory', 'locationTrail', 'telemetry'];
 
 // Live positions move the header and the map in memory every feed cycle; the
 // history table (and the geocoded address) re-read the server at most this
@@ -52,7 +56,7 @@ function withLivePosition(
 /**
  * The asset with its live position laid over, plus the trail extended with
  * the points received live. Listens to the team broadcasts for THIS unit and
- * coalesces bursts into one partial reload.
+ * coalesces bursts into one partial reload through the shared buffer.
  */
 export function useLiveAsset(
     serverAsset: AssetShowProps['asset'],
@@ -85,39 +89,35 @@ export function useLiveAsset(
 
     // Live updates for THIS asset only: location polls refresh position +
     // history, status transitions refresh the header badge. Bursts coalesce
-    // into one partial reload with the union of affected props.
-    const pendingKeys = useRef<Set<string>>(new Set());
-    const timer = useRef<number | null>(null);
+    // in the shared reload buffer (one partial reload with the union of
+    // affected props, paused while the tab is hidden); after a socket drop
+    // every prop this page keeps live reloads once.
+    const reload = useBroadcastReload(
+        {},
+        { debounceMs: RELOAD_DEBOUNCE_MS, resync: LIVE_KEYS },
+    );
     const lastHistoryRefresh = useRef(0);
 
+    // The page was just rendered from the server: no history refresh for the
+    // first interval.
     useEffect(() => {
-        // The page was just rendered from the server: no history refresh
-        // for the first interval.
         lastHistoryRefresh.current = Date.now();
+    }, [asset.id]);
 
-        // Coalesce into one partial reload with the union of affected props.
-        const schedule = (...keys: string[]): void => {
-            keys.forEach((key) => pendingKeys.current.add(key));
-
-            if (timer.current !== null) {
-                return;
-            }
-
-            timer.current = window.setTimeout(() => {
-                const only = [...pendingKeys.current];
-                pendingKeys.current.clear();
-                timer.current = null;
-                router.reload({ only });
-            }, RELOAD_DEBOUNCE_MS);
-        };
-
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-
-            switch (detail?.event) {
+    useTeamBroadcast(
+        [
+            'fleet.positions_updated',
+            'fleet.telemetry_updated',
+            'asset.location_updated',
+            'asset.status_changed',
+            'asset.monitoring_changed',
+        ],
+        (detail) => {
+            switch (detail.event) {
                 case 'fleet.positions_updated': {
-                    const { positions } = detail.payload;
-                    const mine = positions.find((p) => p.asset_id === asset.id);
+                    const mine = detail.payload.positions.find(
+                        (p) => p.asset_id === asset.id,
+                    );
 
                     if (mine === undefined) {
                         return;
@@ -144,59 +144,43 @@ export function useLiveAsset(
                         HISTORY_REFRESH_MS
                     ) {
                         lastHistoryRefresh.current = Date.now();
-                        schedule('asset', 'locationHistory', 'locationTrail');
+                        reload.schedule([
+                            'asset',
+                            'locationHistory',
+                            'locationTrail',
+                        ]);
                     }
 
                     return;
                 }
                 case 'fleet.telemetry_updated': {
-                    const { assets } = detail.payload;
-
-                    if (assets.some((entry) => entry.asset_id === asset.id)) {
-                        schedule('telemetry');
+                    if (
+                        detail.payload.assets.some(
+                            (entry) => entry.asset_id === asset.id,
+                        )
+                    ) {
+                        reload.schedule(['telemetry']);
                     }
 
                     return;
                 }
-                case 'asset.location_updated':
-                case 'asset.status_changed':
-                case 'asset.monitoring_changed': {
-                    const payload = detail.payload as { asset_id?: number };
-
-                    if (payload.asset_id !== asset.id) {
-                        return;
-                    }
-
+                case 'asset.location_updated': {
                     // A one-off live lookup (critical event) still arrives
                     // per asset.
-                    if (detail.event === 'asset.location_updated') {
-                        schedule(
-                            'asset',
-                            'locationHistory',
-                            'locationTrail',
-                            'telemetry',
-                        );
-                    } else {
-                        schedule('asset');
+                    if (detail.payload.asset_id === asset.id) {
+                        reload.schedule(LIVE_KEYS);
                     }
 
                     return;
                 }
-                default:
-                    return;
+                default: {
+                    if (detail.payload.asset_id === asset.id) {
+                        reload.schedule(['asset']);
+                    }
+                }
             }
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-            }
-        };
-    }, [asset.id, trailWindowHours]);
+        },
+    );
 
     return { asset, trail };
 }
