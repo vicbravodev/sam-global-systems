@@ -39,6 +39,15 @@ class RenderNotificationContent
             ? $this->render($bodyTemplate, $variables)
             : ($notification->body_preview ?? '');
 
+        // Una llamada lee `spoken` (texto pensado para oírse: saludo, sin
+        // placas ni ligas) en vez del asunto + el SMS. Una plantilla de voz
+        // del tenant sigue mandando.
+        $spoken = $variables['spoken'] ?? null;
+
+        if ($channelType === ChannelType::Voice && $template === null && is_string($spoken) && trim($spoken) !== '') {
+            [$subject, $body] = [null, trim($spoken)];
+        }
+
         [$subject, $body] = $this->withLateNotice($channelType, $subject, $body, $variables);
 
         return new RenderedNotification(

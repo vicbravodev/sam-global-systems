@@ -10,6 +10,7 @@ use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
@@ -55,8 +56,12 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame(NotificationPriority::High, $notification->priority);
         $this->assertSame(NotificationSourceType::Incident, $notification->source_type);
         $this->assertSame((string) $incident->id, $notification->source_reference_id);
-        $this->assertSame('Nuevo incidente creado', $notification->subject);
-        $this->assertSame('Se ha reportado un nuevo incidente en tu equipo.', $notification->body_preview);
+        // Dice qué pasó (el título del incidente), no un genérico.
+        $copy = IncidentNoticeCopy::created($incident);
+        $this->assertSame($copy['subject'], $notification->subject);
+        $this->assertSame($copy['body'], $notification->body_preview);
+        $this->assertStringStartsWith('SAM: ', $notification->body_preview);
+        $this->assertSame($copy['spoken'], $notification->payload_json['spoken'] ?? null);
     }
 
     public function test_in_review_status_change_is_internal_and_never_notifies(): void

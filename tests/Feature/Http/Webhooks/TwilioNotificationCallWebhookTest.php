@@ -100,7 +100,7 @@ class TwilioNotificationCallWebhookTest extends TestCase
         $response = $this->press($delivery, '1');
 
         $response->assertOk();
-        $this->assertStringContainsString('Incidente atendido', $response->getContent());
+        $this->assertStringContainsString('quedaste a cargo de esta alerta', $response->getContent());
 
         $fresh = $incident->fresh();
         $this->assertNotNull($fresh->acknowledged_at);

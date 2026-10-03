@@ -78,7 +78,9 @@ class PlaceVerificationCallJobTest extends TestCase
                     return $to === '+5215512345678'
                         && $from === '+15005550006'
                         && str_contains($params['twiml'], '<Gather')
-                        && str_contains($params['twiml'], 'Presione 1')
+                        && str_contains($params['twiml'], 'Si es una emergencia real, presiona 1.')
+                        && str_contains($params['twiml'], 'Si fue un error o una falsa alarma, presiona 2.')
+                        && str_contains($params['twiml'], '<Say voice="Polly.Mia-Neural" language="es-MX">')
                         && str_contains($params['twiml'], "voice/{$verification->id}/gather")
                         && str_contains($params['statusCallback'], "voice/{$verification->id}/status");
                 })

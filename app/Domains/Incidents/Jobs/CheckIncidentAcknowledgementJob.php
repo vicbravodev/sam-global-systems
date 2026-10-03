@@ -12,6 +12,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\EscalationLadder;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -247,13 +248,16 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             .($this->attempt > 1 ? ":a{$this->attempt}" : '')
             .($this->epoch > 1 ? ":e{$this->epoch}" : '');
 
+        $copy = IncidentNoticeCopy::unattended($incident);
+
         $notifyLevel->execute(
             incident: $incident,
             level: $this->level,
             eventKey: $eventKey,
             notificationType: 'incident.sla_breached',
-            subject: 'SLA vencido sin atención: '.$incident->title,
-            body: "El incidente superó su SLA sin acknowledgement (nivel {$this->level}, intento {$this->attempt}).",
+            subject: $copy['subject'],
+            body: $copy['body'],
+            spoken: $copy['spoken'],
         );
     }
 

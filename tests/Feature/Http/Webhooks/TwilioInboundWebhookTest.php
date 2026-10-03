@@ -138,7 +138,7 @@ class TwilioInboundWebhookTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/xml; charset=UTF-8');
-        $this->assertStringContainsString('confirmado', $response->getContent());
+        $this->assertStringContainsString('quedaste a cargo del incidente', $response->getContent());
 
         $incident = $token->incident()->first();
         // The reply names the per-tenant reference, never the global id.
@@ -152,7 +152,7 @@ class TwilioInboundWebhookTest extends TestCase
 
         $this->assertSame(1, IncidentTimeline::query()
             ->where('incident_id', $incident->id)
-            ->where('title', 'Incident acknowledged via sms')
+            ->where('title', 'Incidente atendido por SMS')
             ->count());
 
         $this->assertSame(1, AuditLog::withoutGlobalScopes()
@@ -173,7 +173,7 @@ class TwilioInboundWebhookTest extends TestCase
         $response = $this->postReply('NO-W4K9');
 
         $response->assertOk();
-        $this->assertStringContainsString('descartado', $response->getContent());
+        $this->assertStringContainsString('como falsa alarma', $response->getContent());
 
         $incident = $token->incident()->first()->fresh('status');
         $this->assertSame(IncidentStatusCode::FalsePositive->value, $incident->status?->code);
@@ -192,7 +192,7 @@ class TwilioInboundWebhookTest extends TestCase
         $response = $this->postReply('ESC-W4K9');
 
         $response->assertOk();
-        $this->assertStringContainsString('escalado', $response->getContent());
+        $this->assertStringContainsString('Pedimos apoyo', $response->getContent());
 
         $incident = $token->incident()->first()->fresh('status');
         $this->assertSame(IncidentStatusCode::Escalated->value, $incident->status?->code);
@@ -221,7 +221,7 @@ class TwilioInboundWebhookTest extends TestCase
         $response = $this->postReply('SI-W4K9');
 
         $response->assertOk();
-        $this->assertStringContainsString('expirado', $response->getContent());
+        $this->assertStringContainsString('ya venció', $response->getContent());
         $this->assertNull($token->incident()->first()->acknowledged_at);
 
         $this->assertSystemLogged('notifications.inbound_reply.ignored', fn (array $c) => $c['reason'] === 'token_expired'
@@ -257,7 +257,7 @@ class TwilioInboundWebhookTest extends TestCase
         $response = $this->postReply('NO-W4K9');
 
         $response->assertOk();
-        $this->assertStringContainsString('Ya registramos', $response->getContent());
+        $this->assertStringContainsString('Ya teníamos tu respuesta', $response->getContent());
 
         $incident = $token->incident()->first()->fresh('status');
         $this->assertEquals($firstAck, $incident->acknowledged_at);

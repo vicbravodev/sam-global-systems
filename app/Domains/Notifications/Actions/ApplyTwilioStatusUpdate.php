@@ -232,11 +232,12 @@ class ApplyTwilioStatusUpdate
         }
 
         $current = $delivery->status;
-        $advances = $target !== null
+        $advances = ($target !== null
             && ! $current->isTerminal()
-            && $target->progressRank() > $current->progressRank();
+            && $target->progressRank() > $current->progressRank())
+            || $this->isLateMachineVerdict($charge, $current, $errorCode);
 
-        if (! $advances) {
+        if (! $advances || $target === null) {
             // Late/duplicate event: keep the state. A non-terminal provider
             // status never overwrites the one of an already-final delivery
             // (but `completed` after `in-progress`, or `read`, still does).
@@ -316,6 +317,19 @@ class ApplyTwilioStatusUpdate
         $message = "twilio {$charge->resource_type->value} {$status}";
 
         return $errorCode !== null ? "{$message} (error {$errorCode})" : $message;
+    }
+
+    /**
+     * Con la detección de contestadora en paralelo, `in-progress` ya marcó la
+     * llamada como entregada cuando llega el veredicto "contestó un buzón".
+     * Ese veredicto sí la pasa a fallida, igual que en modo síncrono: un
+     * buzón no cuenta como "le avisamos".
+     */
+    private function isLateMachineVerdict(MessagingCharge $charge, DeliveryStatus $current, ?string $errorCode): bool
+    {
+        return $charge->resource_type === MessagingResourceType::Call
+            && $errorCode === TwilioErrorCatalog::ANSWERED_BY_MACHINE
+            && $current === DeliveryStatus::Delivered;
     }
 
     /**

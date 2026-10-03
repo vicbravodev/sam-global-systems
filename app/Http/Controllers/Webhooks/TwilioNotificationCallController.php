@@ -7,6 +7,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Support\TwilioSpeech;
 use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Http\Controllers\Controller;
 use App\Models\Membership;
@@ -64,13 +65,13 @@ class TwilioNotificationCallController extends Controller
         if ($digits !== '1') {
             SystemLog::skipped('notifications.voice_ack.received', reason: 'invalid_digit', input: $input, calc: ['digits_length' => strlen($digits)]);
 
-            return $this->say('Opción no válida. SAM seguirá avisando al equipo.');
+            return $this->say(['Esa opción no es válida.', 'Vamos a seguir avisando al equipo.']);
         }
 
         if ($incident->acknowledged_at !== null || $incident->isTerminal()) {
             SystemLog::skipped('notifications.voice_ack.received', reason: 'already_handled', input: $input);
 
-            return $this->say('Este incidente ya fue atendido. Gracias.');
+            return $this->say(['Alguien más ya está atendiendo esta alerta.', 'Gracias.']);
         }
 
         $userId = $this->acknowledgingUserId($row);
@@ -79,7 +80,7 @@ class TwilioNotificationCallController extends Controller
 
         SystemLog::ok('notifications.voice_ack.received', input: $input, result: ['acknowledged' => true, 'by_user' => $userId !== null]);
 
-        return $this->say('Incidente atendido. SAM detuvo la escalación. Gracias.');
+        return $this->say(['Gracias, quedaste a cargo de esta alerta.', 'Ya no vamos a avisar a nadie más.']);
     }
 
     /**
@@ -120,11 +121,12 @@ class TwilioNotificationCallController extends Controller
         return $row;
     }
 
-    private function say(string $text): Response
+    /**
+     * @param  string|list<string>  $text
+     */
+    private function say(string|array $text): Response
     {
-        $say = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-
-        return response('<?xml version="1.0" encoding="UTF-8"?><Response><Say language="es-MX">'.$say.'</Say></Response>', 200)
+        return response(TwilioSpeech::response($text), 200)
             ->header('Content-Type', 'text/xml');
     }
 }

@@ -45,7 +45,9 @@ class AppendReplyInstructions
             $rendered->address,
         );
 
-        $instructions = "\nResponde SI-{$token->token} confirma / NO-{$token->token} descarta / ESC-{$token->token} escala";
+        // SI = "yo lo atiendo" (detiene los avisos), NO = falsa alarma (lo
+        // cierra), ESC = pedir apoyo (sube de nivel). Dicho así, sin jerga.
+        $instructions = "\nResponde SI-{$token->token} (lo atiendo), NO-{$token->token} (falsa alarma) o ESC-{$token->token} (pedir apoyo)";
 
         $body = $rendered->body;
 

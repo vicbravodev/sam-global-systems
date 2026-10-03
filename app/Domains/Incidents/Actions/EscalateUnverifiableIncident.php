@@ -8,6 +8,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 
@@ -73,13 +74,16 @@ class EscalateUnverifiableIncident
         }
 
         // Escalar no es sólo cambiar de estado: el primer nivel se entera YA.
+        $copy = IncidentNoticeCopy::verificationUnavailable($incident);
+
         $this->notifyEscalationLevel->execute(
             incident: $incident,
             level: 0,
             eventKey: "incident_unverifiable:{$incident->id}:{$reason}",
             notificationType: 'incident.verification_unavailable',
-            subject: 'Emergencia sin verificar: '.$incident->title,
-            body: $description.' Atiéndela ahora.',
+            subject: $copy['subject'],
+            body: $copy['body'],
+            spoken: $copy['spoken'],
         );
 
         // Ese aviso cuenta como el paso 0 de la escalera (ver accelerate()).

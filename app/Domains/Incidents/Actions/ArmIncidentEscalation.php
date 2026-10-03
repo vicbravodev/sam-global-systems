@@ -9,6 +9,7 @@ use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\EscalationExhaustedNotification;
 use App\Domains\Incidents\Support\EscalationLadder;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use App\Models\Team;
@@ -131,13 +132,16 @@ class ArmIncidentEscalation
             // Sin depender del contexto del llamador (puede ser un job).
             $fresh = TenantContext::for($incident->team_id, fn () => $incident->freshOrFail(['priority', 'type']));
 
+            $copy = IncidentNoticeCopy::becameCritical($fresh);
+
             $this->notifyEscalationLevel->execute(
                 incident: $fresh,
                 level: 0,
                 eventKey: "incident_priority_raised:{$incident->id}:e{$outcome['epoch']}",
                 notificationType: 'incident.priority_raised',
-                subject: 'Incidente ahora CRÍTICO: '.$fresh->title,
-                body: "El incidente {$fresh->reference()} subió a prioridad crítica. Atiéndelo ahora.",
+                subject: $copy['subject'],
+                body: $copy['body'],
+                spoken: $copy['spoken'],
             );
 
             $this->accelerate($fresh, 'priority_raised_critical');
