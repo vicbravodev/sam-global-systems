@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Http;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
@@ -149,6 +152,72 @@ class PagePropsLoadingTest extends TestCase
                 ->has('members', 1)
                 ->has('reclassifyOptions.types')
                 ->missing('incidents')));
+    }
+
+    public function test_inbox_deferred_catalogs_never_include_another_tenant(): void
+    {
+        $this->seed(AccessSeeder::class);
+        $this->seed(IncidentsSeeder::class);
+
+        $user = User::factory()->create(['name' => 'Operadora Propia']);
+        $team = $user->currentTeam;
+        $foreignUser = User::factory()->create(['name' => 'Operador Ajeno']);
+        $foreignTeam = $foreignUser->currentTeam;
+
+        $ownProvider = IntegrationProvider::factory()->create(['name' => 'Proveedor Propio']);
+        $foreignProvider = IntegrationProvider::factory()->create(['name' => 'Proveedor Ajeno']);
+
+        Incident::factory()->create([
+            'team_id' => $team->id,
+            'related_event_id' => NormalizedEvent::factory()->create([
+                'team_id' => $team->id,
+                'provider_id' => $ownProvider->id,
+            ])->id,
+        ]);
+        Incident::factory()->create([
+            'team_id' => $foreignTeam->id,
+            'related_event_id' => NormalizedEvent::factory()->create([
+                'team_id' => $foreignTeam->id,
+                'provider_id' => $foreignProvider->id,
+            ])->id,
+        ]);
+
+        $url = route('incidents.index', ['current_team' => $team->slug]);
+        $initial = $this->actingAs($user)->get($url)->assertOk();
+
+        $props = $this->assertNoTenantLeak($team, fn () => $this
+            ->partialReload($initial, $url, 'incidents/index', ['filterOptions', 'members', 'reclassifyOptions'])
+            ->assertOk()
+            ->json('props'));
+
+        $this->assertSame(['Proveedor Propio'], $props['filterOptions']['providers']);
+
+        $memberIds = array_column($props['members'], 'id');
+        $this->assertContains($user->id, $memberIds);
+        $this->assertNotContains($foreignUser->id, $memberIds);
+        $this->assertNotContains('Operador Ajeno', array_column($props['members'], 'name'));
+    }
+
+    public function test_fleet_monitoring_quota_never_counts_another_tenants_units(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $foreignTeam = User::factory()->create()->currentTeam;
+
+        Asset::factory()->create(['team_id' => $team->id, 'monitoring_state' => AssetMonitoringState::Monitored]);
+        Asset::factory()->count(3)->create(['team_id' => $foreignTeam->id, 'monitoring_state' => AssetMonitoringState::Monitored]);
+
+        $url = route('assets.index', ['current_team' => $team->slug]);
+        $initial = $this->actingAs($user)->get($url)->assertOk();
+
+        $props = $this->assertNoTenantLeak($team, fn () => $this
+            ->partialReload($initial, $url, 'assets/index', ['summary', 'monitoring'])
+            ->assertOk()
+            ->json('props'));
+
+        $this->assertSame(1, $props['monitoring']['monitored']);
+        $this->assertSame(0, $props['monitoring']['pending']);
+        $this->assertSame(1, $props['summary']['total']);
     }
 
     public function test_fleet_pulse_reload_does_not_run_the_paginated_asset_query(): void
