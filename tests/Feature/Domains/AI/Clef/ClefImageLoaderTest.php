@@ -106,4 +106,37 @@ class ClefImageLoaderTest extends TestCase
         $this->assertCount(4, $result['images']);
         $this->assertSame(['max_images' => 2], $result['skipped']);
     }
+
+    public function test_does_not_download_images_beyond_the_cap(): void
+    {
+        config(['ai.clef.max_images' => 4]);
+        $downloads = 0;
+        $this->app->instance(ObjectStorage::class, new class($downloads) extends RustFsObjectStorage
+        {
+            public function __construct(private int &$downloads) {}
+
+            public function get(string $path): ?string
+            {
+                $this->downloads++;
+
+                return parent::get($path);
+            }
+        });
+        $team = Team::factory()->create();
+        $evaluation = $this->makeEvaluation($team);
+
+        foreach (range(1, 6) as $i) {
+            Storage::disk('rustfs')->put("h{$i}.jpg", self::JPEG.str_repeat('a', 10));
+            EventMediaContext::factory()->create([
+                'team_id' => $team->id,
+                'normalized_event_id' => $evaluation->normalized_event_id,
+                'retrieval_status' => MediaRetrievalStatus::Ready,
+                'storage_path' => "h{$i}.jpg",
+            ]);
+        }
+
+        TenantContext::for($team->id, fn () => app(ClefImageLoader::class)->forEvent($evaluation->id, $evaluation->normalized_event_id));
+
+        $this->assertSame(4, $downloads);
+    }
 }

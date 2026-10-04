@@ -44,6 +44,13 @@ class ClefImageLoader
         $used = 0;
 
         foreach ($media as $item) {
+            // El tope se aplica antes de descargar: lo que ya no cabe no se baja.
+            if (count($images) >= $maxImages) {
+                $skipped['max_images'] = ($skipped['max_images'] ?? 0) + 1;
+
+                continue;
+            }
+
             $bytes = $this->storage->get((string) $item->storage_path);
             $mime = $bytes !== null && $bytes !== '' ? ImageSignature::detect($bytes) : null;
 
@@ -51,7 +58,6 @@ class ClefImageLoader
                 $bytes === null || $bytes === '' => 'missing',
                 $mime === null || ! in_array($mime, self::ACCEPTED, true) => 'unsupported_type',
                 strlen($bytes) > $maxBytes => 'oversize',
-                count($images) >= $maxImages => 'max_images',
                 $used + strlen($bytes) > $budget => 'total_budget',
                 default => null,
             };
