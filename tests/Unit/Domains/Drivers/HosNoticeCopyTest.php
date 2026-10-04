@@ -39,7 +39,7 @@ class HosNoticeCopyTest extends TestCase
 
     public function test_minutes_and_hours_read_naturally(): void
     {
-        $this->assertStringContainsString('Te quedan 15 min para tu break obligatorio de 30 min', HosNoticeCopy::for(HosNotice::BreakLead, 15)['body']);
+        $this->assertStringContainsString('Te quedan 15 min para tu descanso obligatorio de 30 min', HosNoticeCopy::for(HosNotice::BreakLead, 15)['body']);
         $this->assertStringContainsString('Te quedan 15 minutos', HosNoticeCopy::for(HosNotice::BreakLead, 15)['spoken']);
         $this->assertStringContainsString('en 1 minuto.', HosNoticeCopy::for(HosNotice::DriveLead, 1)['spoken']);
         $this->assertStringContainsString('Te quedan 5 h en tu ciclo de 70 h', HosNoticeCopy::for(HosNotice::CycleLead, 5)['body']);
@@ -62,6 +62,6 @@ class HosNoticeCopyTest extends TestCase
             $this->assertStringEndsWith('.', HosNoticeCopy::corrected($situation));
         }
 
-        $this->assertSame('El chofer ya tomó su break de 30 min.', HosNoticeCopy::corrected(HosSituation::BreakDue));
+        $this->assertSame('El chofer ya tomó su descanso de 30 min.', HosNoticeCopy::corrected(HosSituation::BreakDue));
     }
 }

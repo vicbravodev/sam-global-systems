@@ -33,18 +33,18 @@ final class HosNoticeCopy
 
         return match ($notice) {
             HosNotice::BreakLead => self::copy(
-                "Tu break de 30 min es en {$minutes}",
-                "Te quedan {$minutes} para tu break obligatorio de 30 min. Busca dónde parar con seguridad.",
+                "Tu descanso de 30 min es en {$minutes}",
+                "Te quedan {$minutes} para tu descanso obligatorio de 30 min. Busca dónde parar con seguridad.",
                 "Te quedan {$spokenMinutes} para tu descanso obligatorio de media hora. Busca dónde parar con seguridad.",
             ),
             HosNotice::BreakLimit => self::copy(
-                'Ya te toca tu break de 30 min',
-                'Ya te toca tu break obligatorio de 30 min. Para en cuanto puedas hacerlo con seguridad.',
+                'Ya te toca tu descanso de 30 min',
+                'Ya te toca tu descanso obligatorio de 30 min. Para en cuanto puedas hacerlo con seguridad.',
                 'Ya te toca tu descanso obligatorio de media hora. Por favor detente en cuanto puedas hacerlo con seguridad.',
             ),
             HosNotice::BreakInsist => self::copy(
-                'Sigues sin tu break de 30 min',
-                'Sigues manejando sin tu break de 30 min. Detente ya en un lugar seguro; si no, avisaremos a tu equipo de monitoreo.',
+                'Sigues sin tu descanso de 30 min',
+                'Sigues manejando sin tu descanso de 30 min. Detente ya en un lugar seguro; si no, avisaremos a tu equipo de monitoreo.',
                 "Sigues manejando sin tu descanso de media hora. Por favor detente ya en un lugar seguro. {$warnTeam}",
             ),
             HosNotice::DriveLead => self::copy(
@@ -99,7 +99,7 @@ final class HosNoticeCopy
     public static function corrected(HosSituation $situation): string
     {
         return match ($situation) {
-            HosSituation::BreakDue => 'El chofer ya tomó su break de 30 min.',
+            HosSituation::BreakDue => 'El chofer ya tomó su descanso de 30 min.',
             HosSituation::DriveLimit, HosSituation::ShiftLimit => 'El chofer ya se detuvo para su descanso de 10 h.',
             HosSituation::CycleLimit => 'El ciclo de 70 h del chofer ya tiene horas disponibles.',
             HosSituation::RestComplete => 'El chofer ya retomó su ruta.',
