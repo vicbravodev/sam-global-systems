@@ -11,6 +11,7 @@ use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Enums\AssetUnresolvedReason;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
+use App\Domains\Normalization\Enums\SamsaraAlertTrigger;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
 use App\Domains\Normalization\Events\NormalizedEventUpdated;
@@ -235,7 +236,14 @@ class NormalizeRawEvent
                 'event_severity_id' => $this->getUnmappedSeverityId(),
                 'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
                 'processed_at' => now(),
-                'payload_normalized_json' => $rawEvent->payload_json ?? [],
+                // El payload crudo, más lo que el resto del pipeline necesita
+                // decidir sin releerlo (p. ej. el gate de IA con las alertas
+                // del proveedor reconocidas).
+                'payload_normalized_json' => [
+                    ...($rawEvent->payload_json ?? []),
+                    'external_event_type' => $externalEventType,
+                    'provider_trigger_ids' => SamsaraAlertTrigger::fromPayload($rawEvent->payload_json ?? []),
+                ],
                 'status' => NormalizedEventStatus::Unmapped,
             ],
         );
@@ -841,7 +849,7 @@ class NormalizeRawEvent
             'external_resolved_at' => Arr::get($payload, 'data.resolvedAtTime') ?? $this->resolveFeedResolvedAt($payload),
             'event_state' => Arr::get($payload, 'eventState'),
             'raw_conditions' => Arr::get($payload, 'data.conditions'),
-            'provider_trigger_ids' => self::triggerIds($payload),
+            'provider_trigger_ids' => SamsaraAlertTrigger::fromPayload($payload),
             'raw_behavior_labels' => Arr::get($payload, 'behaviorLabels'),
         ];
     }
@@ -875,26 +883,6 @@ class NormalizeRawEvent
         $first = reset($conditions);
 
         return is_array($first) ? $first : null;
-    }
-
-    /**
-     * Integer `triggerId`s of every AlertIncident condition (Samsara's
-     * `triggerTypeId`), so downstream code never re-reads the raw payload.
-     *
-     * @param  array<string, mixed>  $payload
-     * @return list<int>
-     */
-    private static function triggerIds(array $payload): array
-    {
-        $ids = [];
-
-        foreach ((array) data_get($payload, 'data.conditions.*.triggerId') as $id) {
-            if (is_int($id) || (is_string($id) && ctype_digit($id))) {
-                $ids[] = (int) $id;
-            }
-        }
-
-        return $ids;
     }
 
     /**
