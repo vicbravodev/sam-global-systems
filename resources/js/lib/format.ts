@@ -85,19 +85,9 @@ export function formatDate(iso: string | Date | null | undefined): string {
     });
 }
 
-/** Fecha y hora: "9 jun 2026, 14:05". */
+/** Fecha y hora con reloj de 24 h: "9 jun 2026, 14:05". */
 export function formatDateTime(iso: string | Date | null | undefined): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = toDate(iso);
-
-    if (Number.isNaN(date.getTime())) {
-        return '—';
-    }
-
-    return date.toLocaleString(APP_LOCALE, {
+    return formatDateWith(iso, {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
