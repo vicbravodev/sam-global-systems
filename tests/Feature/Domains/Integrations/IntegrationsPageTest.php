@@ -94,7 +94,13 @@ class IntegrationsPageTest extends TestCase
                                 ->has('lastValidReceivedAt')
                                 ->has('lastRejectedAt')
                                 ->has('lastRejectionReason')
-                                ->missing('secret'),
+                                ->has('setupMode')
+                                ->has('setupStatus')
+                                ->has('setupError')
+                                ->has('provisionedAt')
+                                ->missing('secret')
+                                ->missing('previous_secret')
+                                ->missing('provider_webhook_id'),
                         ),
                 )
                 ->has('providers')
@@ -385,6 +391,7 @@ class IntegrationsPageTest extends TestCase
                 ->where('integrations.0.webhook.secretConfigured', true)
                 ->where('integrations.0.webhook.secretConfiguredAt', $configuredAt->toIso8601String())
                 ->where('integrations.0.webhook.health', WebhookEndpoint::HEALTH_OK)
+                ->where('integrations.0.webhook.setupMode', WebhookEndpoint::SETUP_MANUAL)
                 ->missing('integrations.0.webhook.secret'),
         );
     }

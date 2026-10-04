@@ -128,6 +128,12 @@ class IntegrationPageController extends Controller
             'lastValidReceivedAt' => $endpoint->last_valid_received_at?->toIso8601String(),
             'lastRejectedAt' => $endpoint->last_rejected_at?->toIso8601String(),
             'lastRejectionReason' => $endpoint->last_rejection_reason,
+            // Alta automática (ProvisionSamsaraWebhook): el modo, cómo quedó y
+            // un motivo corto y seguro si falló. Nunca ids ni llaves de Samsara.
+            'setupMode' => $endpoint->setup_mode,
+            'setupStatus' => $endpoint->setup_status,
+            'setupError' => $endpoint->setup_error,
+            'provisionedAt' => $endpoint->provisioned_at?->toIso8601String(),
         ];
     }
 

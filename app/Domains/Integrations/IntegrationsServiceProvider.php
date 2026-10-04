@@ -12,6 +12,7 @@ use App\Contracts\RawEventIngestion;
 use App\Domains\Integrations\Adapters\ProviderAdapterManager;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Events\IntegrationConnected;
+use App\Domains\Integrations\Listeners\ProvisionWebhookOnIntegrationConnected;
 use App\Domains\Integrations\Listeners\SyncCatalogOnIntegrationConnected;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Policies\TenantIntegrationPolicy;
@@ -36,5 +37,6 @@ class IntegrationsServiceProvider extends ServiceProvider
 
         // Backfill the asset/driver catalog as soon as an integration connects.
         Event::listen(IntegrationConnected::class, SyncCatalogOnIntegrationConnected::class);
+        Event::listen(IntegrationConnected::class, ProvisionWebhookOnIntegrationConnected::class);
     }
 }

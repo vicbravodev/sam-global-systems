@@ -78,6 +78,16 @@ export interface IntegrationWebhook {
     lastValidReceivedAt: string | null;
     lastRejectedAt: string | null;
     lastRejectionReason: string | null;
+    /** `manual`: el cliente pegó la Secret Key; `automatic`: SAM la creó. */
+    setupMode: 'manual' | 'automatic';
+    setupStatus:
+        | 'pending'
+        | 'provisioned'
+        | 'missing_permissions'
+        | 'failed'
+        | null;
+    setupError: string | null;
+    provisionedAt: string | null;
 }
 
 export interface IntegrationRow {

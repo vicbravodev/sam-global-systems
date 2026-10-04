@@ -23,6 +23,7 @@ import { update as updateWebhookSecret } from '@/routes/integrations/webhook-sec
 import type { IntegrationRow, IntegrationWebhook } from '@/types/sam';
 import { CopyField } from './copy-field';
 import type { IntegrationTone } from './integration-state';
+import { isAutoProvisioned, WebhookAutoSetup } from './webhook-auto-setup';
 
 interface Props {
     integration: IntegrationRow;
@@ -91,8 +92,10 @@ export function WebhookSecretPanel({
     const HealthIcon = health.icon;
     const healthy = webhook.health === 'ok' || webhook.health === 'waiting';
     const [editing, setEditing] = useState(false);
+    // Aprovisionado por SAM: la llave la maneja SAM (se rota, no se pega).
+    const automatic = isAutoProvisioned(webhook);
     // Sin llave o rechazando: el formulario no se puede esconder.
-    const showForm = canUpdate && (editing || !healthy);
+    const showForm = canUpdate && !automatic && (editing || !healthy);
     const form = useHttp({ webhook_secret: '' });
     const inputId = `webhook-secret-${integration.id}`;
 
@@ -153,7 +156,7 @@ export function WebhookSecretPanel({
                         que Samsara crea para ella.
                     </p>
                 </div>
-                {canUpdate && !showForm ? (
+                {canUpdate && !showForm && !automatic ? (
                     <Button
                         size="sm"
                         variant="outline"
@@ -163,6 +166,13 @@ export function WebhookSecretPanel({
                     </Button>
                 ) : null}
             </div>
+
+            <WebhookAutoSetup
+                integration={integration}
+                webhook={webhook}
+                teamSlug={teamSlug}
+                onSaved={onSaved}
+            />
 
             <div
                 className={cn(
