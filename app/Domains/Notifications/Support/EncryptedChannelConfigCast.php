@@ -30,7 +30,6 @@ class EncryptedChannelConfigCast implements CastsAttributes
         'api_key',
         'api_secret',
         'server_key',
-        'firebase_credentials',
         'slack_webhook_url',
     ];
 
