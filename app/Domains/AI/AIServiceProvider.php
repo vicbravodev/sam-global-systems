@@ -7,6 +7,7 @@ use App\Contracts\AI\MediaAssessmentAgent;
 use App\Contracts\NullImplementations\NullEventEvaluationAgent;
 use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
 use App\Domains\AI\Commands\ClefBackfillCommand;
+use App\Domains\AI\Commands\LabelEventsCommand;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
@@ -59,6 +60,7 @@ class AIServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 ClefBackfillCommand::class,
+                LabelEventsCommand::class,
             ]);
         }
 
