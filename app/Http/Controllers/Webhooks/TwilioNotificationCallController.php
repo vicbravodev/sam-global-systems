@@ -9,6 +9,7 @@ use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\TwilioSpeech;
 use App\Domains\Notifications\Support\TwilioWebhookSignature;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use App\Models\Membership;
 use App\Support\SystemLog;
@@ -63,9 +64,20 @@ class TwilioNotificationCallController extends Controller
         $input['incident_id'] = $incident->id;
 
         if ($digits !== '1') {
-            SystemLog::skipped('notifications.voice_ack.received', reason: 'invalid_digit', input: $input, calc: ['digits_length' => strlen($digits)]);
+            // Tecla equivocada (#, *, 2…): se repite la pregunta una vez; a la
+            // segunda se cierra y la escalera sigue avisando.
+            $retried = $request->query('retry') === '1';
 
-            return $this->say(['Esa opción no es válida.', 'Vamos a seguir avisando al equipo.']);
+            SystemLog::skipped('notifications.voice_ack.received', reason: 'invalid_digit', input: $input, calc: [
+                'digits_length' => strlen($digits),
+                'reprompted' => ! $retried,
+            ]);
+
+            if ($retried) {
+                return $this->say(['No pudimos entender tu respuesta.', 'Vamos a seguir avisando al equipo.']);
+            }
+
+            return $this->retry($row);
         }
 
         if ($incident->acknowledged_at !== null || $incident->isTerminal()) {
@@ -119,6 +131,29 @@ class TwilioNotificationCallController extends Controller
         TenantContext::set($row->team_id);
 
         return $row;
+    }
+
+    /**
+     * "Esa opción no es válida" y la pregunta otra vez, con `retry=1` en la
+     * acción para no preguntar en bucle.
+     */
+    private function retry(NotificationDelivery $row): Response
+    {
+        $action = htmlspecialchars(
+            TwilioWebhookUrl::route('webhooks.twilio.voice.notification.gather', ['delivery' => $row->id, 'retry' => 1]),
+            ENT_XML1 | ENT_QUOTES,
+            'UTF-8',
+        );
+
+        $twiml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<Response>'
+            .'<Gather numDigits="1" timeout="8" finishOnKey="" action="'.$action.'" method="POST">'
+            .TwilioSpeech::say(['Esa opción no es válida.', 'Si tú la vas a atender, presiona 1.'])
+            .'</Gather>'
+            .TwilioSpeech::say(['No recibimos respuesta.', 'Vamos a seguir avisando al equipo.'])
+            .'</Response>';
+
+        return response($twiml, 200)->header('Content-Type', 'text/xml');
     }
 
     /**

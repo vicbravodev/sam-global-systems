@@ -108,7 +108,7 @@ class VoiceNotificationDriver implements NotificationDriver
 
         return '<?xml version="1.0" encoding="UTF-8"?>'
             .'<Response>'
-            .'<Gather numDigits="1" timeout="8" action="'.$action.'" method="POST">'
+            .'<Gather numDigits="1" timeout="8" finishOnKey="" action="'.$action.'" method="POST">'
             .TwilioSpeech::say($text.' '.$prompt)
             .'<Pause length="1"/>'
             .TwilioSpeech::say('Te repito. '.$text.' '.$prompt)

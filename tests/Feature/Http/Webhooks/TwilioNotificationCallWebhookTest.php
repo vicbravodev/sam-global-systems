@@ -81,9 +81,9 @@ class TwilioNotificationCallWebhookTest extends TestCase
         ]);
     }
 
-    private function press(NotificationDelivery $delivery, string $digits, ?string $authToken = self::AUTH_TOKEN): TestResponse
+    private function press(NotificationDelivery $delivery, string $digits, ?string $authToken = self::AUTH_TOKEN, string $query = ''): TestResponse
     {
-        $path = "/api/webhooks/twilio/voice/notification/{$delivery->id}/gather";
+        $path = "/api/webhooks/twilio/voice/notification/{$delivery->id}/gather{$query}";
         $params = ['CallSid' => 'CA123', 'Digits' => $digits];
         $signature = $authToken !== null
             ? (new RequestValidator($authToken))->computeSignature(url($path), $params)
@@ -139,9 +139,25 @@ class TwilioNotificationCallWebhookTest extends TestCase
         $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
         $delivery = $this->delivery($incident, $this->operator);
 
-        $this->press($delivery, '9')->assertOk();
+        $response = $this->press($delivery, '9')->assertOk();
         $this->assertNull($incident->fresh()->acknowledged_at);
-        $this->assertSystemLogged('notifications.voice_ack.received', fn (array $c) => ($c['reason'] ?? null) === 'invalid_digit');
+        $this->assertStringContainsString('Esa opción no es válida.', $response->getContent());
+        $this->assertStringContainsString("notification/{$delivery->id}/gather?retry=1", $response->getContent());
+        $this->assertSystemLogged('notifications.voice_ack.received', fn (array $c) => ($c['reason'] ?? null) === 'invalid_digit'
+            && $c['calc'] === ['digits_length' => 1, 'reprompted' => true]);
+
+        // Segundo error: se cierra y la escalera sigue.
+        $second = $this->press($delivery, '#', query: '?retry=1')->assertOk();
+        $this->assertStringNotContainsString('<Gather', $second->getContent());
+        $this->assertStringContainsString('Vamos a seguir avisando al equipo.', $second->getContent());
+        $this->assertNull($incident->fresh()->acknowledged_at);
+        $this->assertSystemLogged('notifications.voice_ack.received', fn (array $c) => ($c['reason'] ?? null) === 'invalid_digit'
+            && $c['calc'] === ['digits_length' => 1, 'reprompted' => false]);
+
+        // La tecla correcta en la segunda vuelta sí atiende.
+        $this->press($delivery, '1', query: '?retry=1')->assertOk();
+        $this->assertNotNull($incident->fresh()->acknowledged_at);
+        $incident->forceFill(['acknowledged_at' => null])->save();
 
         $incident->forceFill(['acknowledged_at' => now()->subMinute()])->save();
         $this->press($delivery, '1')->assertOk();
@@ -204,7 +220,7 @@ class TwilioNotificationCallWebhookTest extends TestCase
         $rendered = new RenderedNotification(ChannelType::Voice, '+5215512345678', 'Pánico', 'Unidad 42.');
 
         $driver->send($rendered->forDelivery(77, true), $this->voice);
-        $this->assertStringContainsString('<Gather numDigits="1"', $captured->twiml);
+        $this->assertStringContainsString('<Gather numDigits="1" timeout="8" finishOnKey=""', $captured->twiml);
         $this->assertStringContainsString('https://sam.example.com/api/webhooks/twilio/voice/notification/77/gather', $captured->twiml);
         $this->assertStringContainsString('presiona 1', $captured->twiml);
 
