@@ -161,7 +161,7 @@ class UnmappedProviderAlertTest extends TestCase
 
         Notification::assertSentTo($this->superAdmin, PipelineFailureNotification::class, function (PipelineFailureNotification $n) {
             $mail = $n->toMail($this->superAdmin);
-            $text = $mail->subject.implode("\n", $mail->introLines).json_encode($n->toArray($this->superAdmin));
+            $text = $mail->subject.$mail->render().json_encode($n->toArray($this->superAdmin));
 
             return ! str_contains($text, '5512345678')
                 && ! str_contains($text, 'evt-malformed')

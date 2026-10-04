@@ -7,6 +7,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 
 class GenericNotificationMail extends Mailable
 {
@@ -24,12 +25,19 @@ class GenericNotificationMail extends Mailable
 
     public function content(): Content
     {
-        // `Content` no tiene `textString`: el texto plano sale de una vista
-        // que imprime el cuerpo tal cual (sin escapar, no es HTML).
+        // El HTML usa la plantilla de marca (Markdown). El cuerpo es texto del
+        // tenant: se escapa y se pinta como un único bloque HTML de una línea
+        // para que Markdown no interprete `#`, `*` ni saltos dobles. El texto
+        // plano sale de una vista que imprime el cuerpo tal cual.
         return new Content(
+            markdown: 'mail.generic-notification',
             text: 'mail.generic-notification-text',
-            with: ['bodyText' => $this->bodyText],
-            htmlString: nl2br(e($this->bodyText)),
+            with: [
+                'subjectLine' => $this->subjectLine,
+                'bodyText' => $this->bodyText,
+                'bodyHtml' => '<p class="message-body">'.str_replace(["\r\n", "\r", "\n"], '<br />', e($this->bodyText)).'</p>',
+                'bodyPreview' => Str::limit((string) preg_replace('/\s+/', ' ', $this->bodyText), 140),
+            ],
         );
     }
 }

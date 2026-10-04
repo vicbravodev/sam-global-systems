@@ -2,8 +2,8 @@
 
 namespace App\Domains\Incidents\Support;
 
+use App\Support\SamMailMessage;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -34,19 +34,25 @@ class EscalationExhaustedNotification extends Notification
         return ['mail', 'database'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         $d = $this->details;
 
-        return (new MailMessage)
+        return (new SamMailMessage)
             ->error()
             ->subject("[SAM] Escalación agotada sin atención: {$d['incident_reference']}".($d['team_name'] !== null ? " · {$d['team_name']}" : ''))
+            ->eyebrow('Alerta de plataforma')
+            ->greeting("Nadie atendió el incidente {$d['incident_reference']}")
             ->line('Se avisó a todos los niveles de escalación del tenant y nadie atendió el incidente. Contacta al cliente.')
-            ->line('Tenant: '.($d['team_name'] ?? "#{$d['team_id']}"))
-            ->line("Incidente: {$d['incident_reference']} (#{$d['incident_id']})")
-            ->line('Tipo: '.($d['incident_type'] ?? '—').' · Prioridad: '.($d['priority'] ?? '—'))
-            ->line("Niveles avisados: {$d['levels_count']}")
-            ->line('Abierto: '.($d['opened_at'] ?? '—').' · Agotado: '.$d['exhausted_at']);
+            ->details([
+                'Tenant' => $d['team_name'] ?? "#{$d['team_id']}",
+                'Incidente' => "{$d['incident_reference']} (#{$d['incident_id']})",
+                'Tipo' => $d['incident_type'] ?? '—',
+                'Prioridad' => $d['priority'] ?? '—',
+                'Niveles avisados' => $d['levels_count'],
+                'Abierto' => $d['opened_at'] ?? '—',
+                'Agotado' => $d['exhausted_at'],
+            ], 'Detalle del incidente');
     }
 
     /**

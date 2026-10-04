@@ -3,9 +3,9 @@
 namespace App\Domains\Assets\Notifications;
 
 use App\Models\Team;
+use App\Support\SamMailMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -33,7 +33,7 @@ class AssetsPendingMonitoringNotification extends Notification implements Should
         return ['mail'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         $units = $this->newlyPending === 1 ? 'unidad nueva' : 'unidades nuevas';
         $capLine = $this->cap === null
@@ -43,11 +43,18 @@ class AssetsPendingMonitoringNotification extends Notification implements Should
                     ? ' Encender más se cobra como extra por cada día que estén encendidas.'
                     : ' Aún tienes cupo dentro de lo contratado.');
 
-        return (new MailMessage)
+        return (new SamMailMessage)
             ->subject("{$this->newlyPending} {$units} sin vigilar en {$this->team->name}")
+            ->tone(SamMailMessage::TONE_WARNING)
+            ->eyebrow('Flota · '.$this->team->name)
+            ->greeting($this->newlyPending === 1 ? 'Encontramos una unidad nueva' : "Encontramos {$this->newlyPending} unidades nuevas")
             ->line("La sincronización encontró {$this->newlyPending} {$units} en tu flota. SAM no las vigila hasta que tú lo decidas.")
             ->line($capLine)
-            ->line("Unidades pendientes en total: {$this->totalPending}.")
+            ->details([
+                'Unidades nuevas' => $this->newlyPending,
+                'Pendientes en total' => $this->totalPending,
+                'Vigiladas' => $this->cap === null ? (string) $this->monitored : "{$this->monitored} de {$this->cap}",
+            ], 'Resumen de tu flota')
             ->action('Elegir qué unidades vigilar', route('assets.index', ['current_team' => $this->team->slug, 'monitoring' => 'pending']));
     }
 

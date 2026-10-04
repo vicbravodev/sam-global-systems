@@ -4,12 +4,12 @@ namespace App\Notifications\Teams;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SamMailMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Password;
 
@@ -70,7 +70,7 @@ class TenantAccessInvitation extends Notification implements ShouldQueue
         return false;
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         /** @var User $notifiable */
         $team = Team::query()->findOrFail($this->teamId);
@@ -87,13 +87,19 @@ class TenantAccessInvitation extends Notification implements ShouldQueue
             result: ['expires_in_days' => $days],
         ));
 
-        return (new MailMessage)
+        return (new SamMailMessage)
             ->subject("Tu acceso a SAM para {$team->name}")
+            ->eyebrow('Bienvenida')
             ->greeting("Hola, {$notifiable->name}")
             ->line($inviter !== null
                 ? "{$inviter->name} te dio de alta en SAM Global Systems para operar la flota de {$team->name}."
                 : "Te dimos de alta en SAM Global Systems para operar la flota de {$team->name}.")
             ->line('Para entrar, define tu contraseña con el botón de abajo. Tu correo quedará verificado.')
+            ->details([
+                'Empresa' => $team->name,
+                'Tu usuario' => $notifiable->email,
+                'Vigencia del enlace' => $days === 1 ? '1 día, un solo uso' : "{$days} días, un solo uso",
+            ])
             ->action('Definir mi contraseña', route('onboarding.show', [
                 'token' => $token,
                 'email' => $notifiable->email,

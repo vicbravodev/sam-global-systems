@@ -164,7 +164,7 @@ class PipelineFailureAlertTest extends TestCase
 
         Notification::assertSentTo($this->superAdmin, PipelineFailureNotification::class, function (PipelineFailureNotification $n) use ($raw) {
             $message = (string) $n->details['error_message'];
-            $mail = implode("\n", $n->toMail($this->superAdmin)->introLines);
+            $mail = (string) $n->toMail($this->superAdmin)->render();
 
             return $n->details['raw_event_id'] === $raw->id
                 && ! str_contains($message, 'driver@example.com')
@@ -188,7 +188,7 @@ class PipelineFailureAlertTest extends TestCase
 
         Notification::assertSentTo($this->ownerA, PipelineFailureNotification::class, function (PipelineFailureNotification $n) {
             $data = $n->toArray($this->ownerA);
-            $mail = implode("\n", $n->toMail($this->ownerA)->introLines);
+            $mail = (string) $n->toMail($this->ownerA)->render();
 
             return ! array_key_exists('error_message', $data)
                 && ! str_contains($mail, 'SQLSTATE');
