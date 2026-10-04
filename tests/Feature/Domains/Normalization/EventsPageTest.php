@@ -422,6 +422,29 @@ class EventsPageTest extends TestCase
         );
     }
 
+    public function test_show_links_an_echo_to_its_safety_event_only_within_the_tenant(): void
+    {
+        $safetyEvent = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+        $foreign = NormalizedEvent::factory()->create(['team_id' => Team::factory()->create()->id]);
+
+        $echo = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'payload_normalized_json' => ['echo_of_normalized_event_id' => $safetyEvent->id],
+        ]);
+        $forged = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'payload_normalized_json' => ['echo_of_normalized_event_id' => $foreign->id],
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $echo->id]))
+            ->assertInertia(fn (Assert $page) => $page->where('event.facts.echoOfEventId', $safetyEvent->id));
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $forged->id]))
+            ->assertInertia(fn (Assert $page) => $page->where('event.facts.echoOfEventId', null));
+    }
+
     public function test_show_ignores_unsafe_external_urls_and_missing_location(): void
     {
         $event = NormalizedEvent::factory()->create([
