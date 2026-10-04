@@ -23,7 +23,9 @@ use App\Support\SystemLog;
  *     resuelto o cerrado) DESPUÉS de crearse la notificación — los avisos
  *     posteriores (p.ej. "incidente cerrado") sí se siguen reintentando;
  *   - el destinatario ya fue alcanzado por otro canal que interrumpe (SMS o
- *     WhatsApp aceptado, llamada contestada); la app y el correo no cuentan.
+ *     WhatsApp aceptado, llamada contestada); la app y el correo no cuentan;
+ *   - la notificación es un aviso HOS al chofer (`own_ladder`): la escalera HOS
+ *     decide el siguiente intento.
  *
  * Lo consultan el listener que programa el reintento/fallback y los propios
  * jobs al ejecutarse (van con retardo y el mundo pudo cambiar entretanto).
@@ -72,6 +74,13 @@ final class DeliveryEscalationGuard
 
         if (($blocked = TenantCanSend::blockedReason($delivery->team_id)) !== null) {
             return ['reason' => $blocked, 'calc' => $calc];
+        }
+
+        // La escalera HOS es su propia insistencia: cada escalón ya sube de
+        // canal a su hora. Un reintento o el fallback de la política del
+        // tenant mandarían avisos pagados fuera de esa escalera.
+        if ($notification->source_type === NotificationSourceType::HosEpisode) {
+            return ['reason' => 'own_ladder', 'calc' => $calc];
         }
 
         if ($notification->created_at !== null

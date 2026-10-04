@@ -10,4 +10,5 @@ enum NotificationSourceType: string
     case Escalation = 'escalation';
     case Manual = 'manual';
     case SystemEvent = 'system_event';
+    case HosEpisode = 'hos_episode';
 }

@@ -5,6 +5,8 @@ namespace App\Domains\Notifications\Actions;
 use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
 use App\Domains\Notifications\Data\TenantNotificationPolicy;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\NotificationSourceType;
+use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationPreference;
@@ -97,7 +99,11 @@ class SelectNotificationChannels
         }
 
         $preference = $this->resolvePreference($notification, $recipient);
-        $quiet = $this->insideQuietHours($team, $policy, $preference);
+        // Avisos HOS al chofer (spec 2026-10-04 §3.10): seguridad vial y el
+        // chofer está en ruta, así que no hay horario silencioso.
+        $quiet = $notification->source_type === NotificationSourceType::HosEpisode
+            ? ['active' => false, 'source' => 'bypassed']
+            : $this->insideQuietHours($team, $policy, $preference);
 
         $calc['quiet_hours_active'] = $quiet['active'];
         $calc['quiet_hours_source'] = $quiet['source'];
@@ -235,7 +241,9 @@ class SelectNotificationChannels
 
     private function resolvePreference(Notification $notification, NotificationRecipient $recipient): ?NotificationPreference
     {
-        $userId = $recipient->recipient_reference_id !== null && is_numeric($recipient->recipient_reference_id)
+        $userId = $recipient->recipient_type === RecipientType::User
+            && $recipient->recipient_reference_id !== null
+            && is_numeric($recipient->recipient_reference_id)
             ? (int) $recipient->recipient_reference_id
             : null;
 
