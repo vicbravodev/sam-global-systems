@@ -8,11 +8,14 @@ use App\Domains\Context\Enums\MediaRetrievalStatus;
 use App\Domains\Context\Enums\MediaRole;
 use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Events\EventMediaAvailable;
+use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Ingestion\Enums\AttachmentType;
 use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\FileObject;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class AttachImmediateEventMedia
@@ -99,6 +102,8 @@ class AttachImmediateEventMedia
             ],
         );
 
+        $placement = $this->placement($normalizedEvent, $attachment);
+
         $media = EventMediaContext::query()->firstOrCreate(
             [
                 'normalized_event_id' => $normalizedEvent->id,
@@ -111,10 +116,10 @@ class AttachImmediateEventMedia
                 'file_object_id' => $fileObject->id,
                 'source_attachment_id' => $attachment->id,
                 'media_type' => $this->resolveMediaType($attachment->attachment_type),
-                'media_role' => MediaRole::PrimaryEvidence,
+                'media_role' => $placement['role'],
                 'mime_type' => $mimeType,
                 'size_bytes' => $sizeBytes,
-                'captured_at' => $normalizedEvent->occurred_at ?? $normalizedEvent->rawEvent?->occurred_at ?? null,
+                'captured_at' => $placement['captured_at'],
                 'availability_status' => MediaAvailabilityStatus::Available,
                 'retrieval_status' => MediaRetrievalStatus::Ready,
                 'metadata_json' => $attachment->metadata_json ?? null,
@@ -134,6 +139,32 @@ class AttachImmediateEventMedia
             ]);
 
         return $media;
+    }
+
+    /**
+     * Event evidence is dated at the event. A context still (the dashcam's own
+     * periodic/trip photo, {@see FetchDeferredEventMediaJob}) is dated at its
+     * real capture and placed before or after the event, so nobody reads a
+     * photo taken a minute earlier as the event itself.
+     *
+     * @return array{role: MediaRole, captured_at: CarbonInterface|null}
+     */
+    private function placement(NormalizedEvent $normalizedEvent, RawEventAttachment $attachment): array
+    {
+        $eventAt = $normalizedEvent->occurred_at ?? $normalizedEvent->rawEvent?->occurred_at;
+        $metadata = $attachment->metadata_json ?? [];
+        $startTime = $metadata['start_time'] ?? null;
+
+        if (($metadata['evidence_kind'] ?? null) !== 'context' || ! is_string($startTime) || $startTime === '') {
+            return ['role' => MediaRole::PrimaryEvidence, 'captured_at' => $eventAt];
+        }
+
+        $capturedAt = Carbon::parse($startTime);
+
+        return [
+            'role' => $eventAt !== null && $capturedAt->gt($eventAt) ? MediaRole::PostEventContext : MediaRole::PreEventContext,
+            'captured_at' => $capturedAt,
+        ];
     }
 
     private function resolveMediaType(?AttachmentType $type): MediaType

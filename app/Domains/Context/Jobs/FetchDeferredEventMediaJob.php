@@ -19,6 +19,7 @@ use App\Domains\Ingestion\Enums\AttachmentType;
 use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Actions\NormalizeRawEvent;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
@@ -27,6 +28,7 @@ use App\Support\ObjectStorageFailure;
 use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Closure;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -83,8 +85,40 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
     public const string SETTING_STILL_COUNT = 'media.still_count';
 
-    /** Device-side triggers whose auto-uploaded media count as event evidence. */
-    public const array UPLOADED_TRIGGER_REASONS = ['panicButton', 'safetyEvent'];
+    /**
+     * Device-side triggers whose auto-uploaded media count as event evidence:
+     * the panic/safety clip itself, or footage someone already pulled for
+     * that instant (dashboard retrieval, API).
+     */
+    public const array UPLOADED_TRIGGER_REASONS = ['panicButton', 'safetyEvent', 'videoRetrieval', 'api'];
+
+    /**
+     * Stills the dashcam takes on its own schedule (every ~2 min per camera
+     * while driving, plus trip start/end). They are not footage OF the event,
+     * but for detections Samsara never uploads a clip for (passenger,
+     * obstructed camera) or events no device trigger covers (after-hours
+     * movement) they are the only picture of the cab and the road at that
+     * moment. Only the nearest one before and after the event per camera is
+     * kept ({@see CONTEXT_MATCH_SECONDS}).
+     */
+    public const array CONTEXT_TRIGGER_REASONS = ['periodicStill', 'tripStartStill', 'tripEndStill'];
+
+    /** Farthest a context still may be from the event: one periodic cycle and a half. */
+    public const int CONTEXT_MATCH_SECONDS = 180;
+
+    /**
+     * A sweep-only request backed only by context stills keeps polling this
+     * long for the event's own clip (a panic/safety upload lands minutes after
+     * the press) before it settles for the stills.
+     */
+    public const int CONTEXT_SETTLE_SECONDS = 900;
+
+    /**
+     * An emergency whose dashcam uploaded nothing after this long gets one
+     * paid clip retrieval of both cameras — a panic must never be left without
+     * footage while the device may still hold it.
+     */
+    public const int EMERGENCY_FALLBACK_AFTER_SECONDS = 300;
 
     /**
      * An uploaded item belongs to the event only when its capture instant is
@@ -206,39 +240,36 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         $this->sweepUploadedMedia($request, $event, $integration, $externalAssetId, $mediaAdapter, $storage, $attachImmediate, $refreshSnapshot, $tenantConfig);
 
-        // Sweep-only requests (panic/safety auto-pull) never place a paid
-        // retrieval: the dashcam already uploaded the footage, so we just keep
-        // listing it (quota-free) until it lands or the request expires.
-        if ($request->sweep_only) {
+        $metadata = $request->response_metadata_json ?? [];
+
+        // Sweep-only requests (auto-pull for incident-worthy events) keep
+        // listing the quota-free uploads until they land or the request
+        // expires. The one exception is an emergency the dashcam uploaded
+        // nothing for: it escalates to a single paid clip retrieval, which is
+        // then polled like any other.
+        if ($request->sweep_only && ! isset($metadata['retrieval_id'])) {
             $this->continueSweepOnly(
                 $request,
                 $event,
                 $refreshSnapshot,
                 'Request fulfilled by the quota-free uploaded-media sweep.',
                 'fulfilled_by_sweep',
+                fn (): bool => $this->placeEmergencyFallback($request, $event, $integration, $externalAssetId, $mediaAdapter, $tenantConfig, $refreshSnapshot),
             );
 
             return;
         }
 
-        $metadata = $request->response_metadata_json ?? [];
-
         if (! isset($metadata['retrieval_id']) && ! isset($metadata['still_retrievals'])) {
-            $maxAgeHours = max(1, (int) $tenantConfig->resolve(
-                $event->team_id,
-                self::SETTING_RETRIEVAL_MAX_AGE,
-                self::DEFAULT_RETRIEVAL_MAX_AGE_HOURS,
-            ));
+            $retention = $this->footageRetention($request, $event, $tenantConfig);
 
-            $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
-
-            if ($occurredAt->lt(now()->subHours($maxAgeHours))) {
+            if ($retention['expired']) {
                 $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, sprintf(
                     'Event is older than the device footage retention window (%dh); only already-uploaded media was swept.',
-                    $maxAgeHours,
+                    $retention['max_age_hours'],
                 ), 'older_than_footage_retention', [
-                    'event_age_hours' => (int) $occurredAt->diffInHours(now(), true),
-                    'max_age_hours' => $maxAgeHours,
+                    'event_age_hours' => $retention['event_age_hours'],
+                    'max_age_hours' => $retention['max_age_hours'],
                 ]);
                 $refreshSnapshot->execute($event->id);
 
@@ -634,10 +665,16 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     }
 
     /**
-     * Download any media the device already auto-uploaded for the event window
-     * (panic-button/safety-event triggers). Runs on every poll cycle so
-     * uploads that land late are still captured — this is the monitorist
-     * re-checking the camera after the event. Quota-free at the provider.
+     * Download any media the device already uploaded for the event window.
+     * Runs on every poll cycle so uploads that land late are still captured —
+     * this is the monitorist re-checking the camera after the event.
+     * Quota-free at the provider.
+     *
+     * Two kinds of uploads are kept: event evidence (panic/safety clips and
+     * prior retrievals, matched to the event instant) and context stills (the
+     * dashcam's own periodic/trip photos, the nearest one before and after the
+     * event per camera). Context stills are tagged `evidence_kind=context` so
+     * the request, the AI and the operator can tell them apart.
      */
     private function sweepUploadedMedia(
         EventMediaRequest $request,
@@ -663,16 +700,23 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             $externalAssetId,
             $occurredAt->copy()->subSeconds($windowSeconds),
             $occurredAt->copy()->addSeconds($windowSeconds),
-            self::UPLOADED_TRIGGER_REASONS,
+            [...self::UPLOADED_TRIGGER_REASONS, ...self::CONTEXT_TRIGGER_REASONS],
         )['items'];
 
         $downloaded = 0;
         $alreadyStored = 0;
         $availableCount = 0;
         $outOfWindow = 0;
+        $contextCandidates = [];
 
         foreach ($items as $item) {
             if ($item['status'] !== 'available' || ! is_string($item['url'] ?? null) || $item['url'] === '') {
+                continue;
+            }
+
+            if (in_array($item['trigger_reason'] ?? null, self::CONTEXT_TRIGGER_REASONS, true)) {
+                $contextCandidates[] = $item;
+
                 continue;
             }
 
@@ -684,17 +728,19 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             $availableCount++;
 
-            $isVideo = str_starts_with($item['media_type'] ?? '', 'video');
+            $outcome = $this->downloadUploadedItem($event, $item, $storage);
 
-            $outcome = $this->downloadMedia(
-                $event,
-                $item,
-                $storage,
-                $this->uploadedFilenameFor($item),
-                $isVideo ? AttachmentType::Clip : AttachmentType::Snapshot,
-                $isVideo ? 'video/mp4' : 'image/jpeg',
-                'uploaded_media',
-            );
+            if ($outcome === MediaDownloadOutcome::Stored) {
+                $downloaded++;
+            } elseif ($outcome === MediaDownloadOutcome::AlreadyExists) {
+                $alreadyStored++;
+            }
+        }
+
+        $contextSelected = $this->nearestContextStills($contextCandidates, $occurredAt);
+
+        foreach ($contextSelected as $item) {
+            $outcome = $this->downloadUploadedItem($event, $item, $storage, ['evidence_kind' => 'context']);
 
             if ($outcome === MediaDownloadOutcome::Stored) {
                 $downloaded++;
@@ -709,9 +755,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             calc: [
                 'window_seconds' => $windowSeconds,
                 'match_seconds' => self::UPLOADED_MATCH_SECONDS,
+                'context_match_seconds' => self::CONTEXT_MATCH_SECONDS,
                 'items_found' => count($items),
                 'available' => $availableCount,
                 'out_of_window' => $outOfWindow,
+                'context_candidates' => count($contextCandidates),
+                'context_selected' => count($contextSelected),
             ],
             result: ['downloaded' => $downloaded, 'already_stored' => $alreadyStored],
         );
@@ -728,6 +777,62 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $request->forceFill(['response_metadata_json' => $metadata])->save();
 
         $refreshSnapshot->execute($event->id);
+    }
+
+    /**
+     * @param  array{input: string|null, status: string, url: string|null, media_type?: string|null, trigger_reason?: string|null, start_time?: string|null}  $item
+     * @param  array<string, mixed>  $extraMetadata
+     */
+    private function downloadUploadedItem(NormalizedEvent $event, array $item, ObjectStorage $storage, array $extraMetadata = []): MediaDownloadOutcome
+    {
+        $isVideo = str_starts_with($item['media_type'] ?? '', 'video');
+
+        return $this->downloadMedia(
+            $event,
+            $item,
+            $storage,
+            $this->uploadedFilenameFor($item),
+            $isVideo ? AttachmentType::Clip : AttachmentType::Snapshot,
+            $isVideo ? 'video/mp4' : 'image/jpeg',
+            'uploaded_media',
+            $extraMetadata,
+        );
+    }
+
+    /**
+     * Per camera input, the context still captured closest before (or at) the
+     * event and the closest after it, both within {@see CONTEXT_MATCH_SECONDS}.
+     * Items without a capture instant cannot be placed and are dropped.
+     *
+     * @param  list<array{input: string|null, status: string, url: string|null, media_type?: string|null, trigger_reason?: string|null, start_time?: string|null}>  $candidates
+     * @return list<array{input: string|null, status: string, url: string|null, media_type?: string|null, trigger_reason?: string|null, start_time?: string|null}>
+     */
+    private function nearestContextStills(array $candidates, Carbon $occurredAt): array
+    {
+        /** @var array<string, array{offset: int, item: array{input: string|null, status: string, url: string|null, media_type?: string|null, trigger_reason?: string|null, start_time?: string|null}}> $best */
+        $best = [];
+
+        foreach ($candidates as $item) {
+            $startTime = $item['start_time'] ?? null;
+
+            if (! is_string($startTime) || $startTime === '' || str_starts_with($item['media_type'] ?? '', 'video')) {
+                continue;
+            }
+
+            $offset = (int) round(Carbon::parse($startTime)->getTimestamp() - $occurredAt->getTimestamp());
+
+            if (abs($offset) > self::CONTEXT_MATCH_SECONDS) {
+                continue;
+            }
+
+            $key = ($item['input'] ?? 'unknown').'|'.($offset <= 0 ? 'before' : 'after');
+
+            if (! isset($best[$key]) || abs($offset) < abs($best[$key]['offset'])) {
+                $best[$key] = ['offset' => $offset, 'item' => $item];
+            }
+        }
+
+        return array_values(array_map(fn (array $pick): array => $pick['item'], $best));
     }
 
     /**
@@ -753,7 +858,15 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      * placed (either the request is explicitly sweep-only, or the asset reports
      * no paired camera and the provider flag can be stale) — re-sweep the
      * uploaded media until evidence lands or the request's `expires_at` closes
-     * it. Once any uploaded evidence backs the event the request completes.
+     * it. The request completes once event evidence backs the event, or once
+     * context stills do and {@see CONTEXT_SETTLE_SECONDS} passed without the
+     * event's own clip.
+     *
+     * `$escalate` (explicit sweep-only requests) lets an emergency without any
+     * upload place its paid fallback retrieval; it returns true when it did,
+     * and the retrieval's own poll chain takes over.
+     *
+     * @param  (Closure(): bool)|null  $escalate
      */
     private function continueSweepOnly(
         EventMediaRequest $request,
@@ -761,24 +874,186 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         RefreshContextMediaSnapshot $refreshSnapshot,
         string $fulfilledReason,
         string $reasonCode,
+        ?Closure $escalate = null,
     ): void {
-        if ($this->hasUploadedEvidence($event)) {
+        $evidence = $this->uploadedEvidence($event);
+        $requestAgeSeconds = $this->requestAgeSeconds($request);
+
+        if ($evidence['event']) {
             $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, $fulfilledReason, $reasonCode);
             $refreshSnapshot->execute($event->id);
 
             return;
         }
 
+        if ($evidence['context'] && $requestAgeSeconds >= self::CONTEXT_SETTLE_SECONDS) {
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Request fulfilled by the context stills the dashcam took around the event.', 'fulfilled_by_context', [
+                'request_age_seconds' => $requestAgeSeconds,
+                'settle_seconds' => self::CONTEXT_SETTLE_SECONDS,
+            ]);
+            $refreshSnapshot->execute($event->id);
+
+            return;
+        }
+
+        $emergency = $this->isEmergency($event);
+        $fallbackPending = $emergency
+            && $escalate !== null
+            && ! array_key_exists('emergency_fallback', $request->response_metadata_json ?? []);
+
+        if ($fallbackPending && $requestAgeSeconds >= self::EMERGENCY_FALLBACK_AFTER_SECONDS) {
+            if ($escalate()) {
+                return;
+            }
+
+            $fallbackPending = false;
+        }
+
         $request->forceFill(['status' => MediaRequestStatus::Processing])->save();
         $refreshSnapshot->execute($event->id);
+
+        // While an emergency may still escalate, poll at retrieval pace so the
+        // fallback lands right after its grace window.
+        $delay = $fallbackPending ? self::POLL_DELAY_SECONDS : self::SWEEP_POLL_DELAY_SECONDS;
 
         SystemLog::ok(
             'media.deferred.sweep_polling',
             input: $this->logInput($request),
-            calc: ['next_poll_seconds' => self::SWEEP_POLL_DELAY_SECONDS],
+            calc: [
+                'next_poll_seconds' => $delay,
+                'emergency' => $emergency,
+                'has_context_stills' => $evidence['context'],
+                'request_age_seconds' => $requestAgeSeconds,
+            ],
         );
 
-        self::dispatch($request->id)->delay(now()->addSeconds(self::SWEEP_POLL_DELAY_SECONDS));
+        self::dispatch($request->id)->delay(now()->addSeconds($delay));
+    }
+
+    /**
+     * The paid fallback for an emergency the dashcam uploaded nothing for: one
+     * high-res clip of both cameras around the event. Decided once per
+     * request (`emergency_fallback` in the metadata records the outcome), so a
+     * skipped or rejected fallback never re-fires on every poll. Returns true
+     * when the retrieval was placed.
+     */
+    private function placeEmergencyFallback(
+        EventMediaRequest $request,
+        NormalizedEvent $event,
+        TenantIntegration $integration,
+        string $externalAssetId,
+        MediaRetrievalAdapter $mediaAdapter,
+        TenantConfigResolver $tenantConfig,
+        RefreshContextMediaSnapshot $refreshSnapshot,
+    ): bool {
+        $metadata = $request->response_metadata_json ?? [];
+        $retention = $this->footageRetention($request, $event, $tenantConfig);
+
+        $skipReason = match (true) {
+            $retention['expired'] => 'older_than_footage_retention',
+            $this->assetReportsNoCamera($event) => 'asset_reports_no_camera',
+            default => null,
+        };
+
+        if ($skipReason !== null) {
+            $metadata['emergency_fallback'] = false;
+            $request->forceFill(['response_metadata_json' => $metadata])->save();
+
+            SystemLog::skipped('media.deferred.emergency_fallback_skipped', reason: $skipReason, input: $this->logInput($request), calc: [
+                'event_age_hours' => $retention['event_age_hours'],
+                'max_age_hours' => $retention['max_age_hours'],
+            ]);
+
+            return false;
+        }
+
+        $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
+
+        $windowSeconds = min(self::MAX_CLIP_WINDOW_SECONDS, max(1, (int) $tenantConfig->resolve(
+            $event->team_id,
+            self::SETTING_CLIP_WINDOW,
+            self::DEFAULT_CLIP_WINDOW_SECONDS,
+        )));
+
+        $inputs = $this->inputsFor(MediaRequestType::FetchVideoClip);
+
+        $retrievalId = $mediaAdapter->requestMedia(
+            $integration,
+            $externalAssetId,
+            $occurredAt->copy()->subSeconds($windowSeconds),
+            $occurredAt->copy()->addSeconds($windowSeconds),
+            $inputs,
+        );
+
+        if ($retrievalId === null) {
+            $metadata['emergency_fallback'] = false;
+            $request->forceFill(['response_metadata_json' => $metadata])->save();
+
+            SystemLog::skipped('media.deferred.emergency_fallback_skipped', reason: 'provider_rejected_retrieval', input: $this->logInput($request));
+
+            return false;
+        }
+
+        $metadata['retrieval_id'] = $retrievalId;
+        $metadata['clip_window_seconds'] = $windowSeconds;
+        $metadata['emergency_fallback'] = true;
+
+        $request->forceFill([
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => $metadata,
+        ])->save();
+
+        $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.emergency_fallback_placed',
+            input: $this->logInput($request),
+            calc: [
+                'grace_seconds' => self::EMERGENCY_FALLBACK_AFTER_SECONDS,
+                'request_age_seconds' => $this->requestAgeSeconds($request),
+                'clip_window_seconds' => $windowSeconds,
+                'inputs' => $inputs,
+                'next_poll_seconds' => self::POLL_DELAY_SECONDS,
+            ],
+        );
+
+        self::dispatch($request->id)->delay(now()->addSeconds(self::POLL_DELAY_SECONDS));
+
+        return true;
+    }
+
+    /**
+     * @return array{expired: bool, event_age_hours: int, max_age_hours: int}
+     */
+    private function footageRetention(EventMediaRequest $request, NormalizedEvent $event, TenantConfigResolver $tenantConfig): array
+    {
+        $maxAgeHours = max(1, (int) $tenantConfig->resolve(
+            $event->team_id,
+            self::SETTING_RETRIEVAL_MAX_AGE,
+            self::DEFAULT_RETRIEVAL_MAX_AGE_HOURS,
+        ));
+
+        $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
+
+        return [
+            'expired' => $occurredAt->lt(now()->subHours($maxAgeHours)),
+            'event_age_hours' => (int) $occurredAt->diffInHours(now(), true),
+            'max_age_hours' => $maxAgeHours,
+        ];
+    }
+
+    private function isEmergency(NormalizedEvent $event): bool
+    {
+        $event->loadMissing(['eventCategory', 'eventType']);
+
+        return NormalizeRawEvent::isEmergencyCode($event->eventCategory?->code, $event->eventType?->code);
+    }
+
+    private function requestAgeSeconds(EventMediaRequest $request): int
+    {
+        $since = $request->requested_at ?? $request->created_at ?? now();
+
+        return (int) max(0, $since->diffInSeconds(now(), false));
     }
 
     /**
@@ -798,12 +1073,30 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             && $metadata['has_camera'] === false;
     }
 
-    private function hasUploadedEvidence(NormalizedEvent $event): bool
+    /**
+     * Which kinds of uploaded media already back the event: `event` = its own
+     * clip/stills (panic, safety, prior retrieval), `context` = the dashcam's
+     * periodic/trip stills around it.
+     *
+     * @return array{event: bool, context: bool}
+     */
+    private function uploadedEvidence(NormalizedEvent $event): array
     {
-        return RawEventAttachment::query()
+        $kinds = RawEventAttachment::query()
             ->where('raw_event_id', $event->raw_event_id)
             ->where('metadata_json->source', 'uploaded_media')
-            ->exists();
+            ->get(['metadata_json'])
+            ->map(fn (RawEventAttachment $attachment): string => ($attachment->metadata_json['evidence_kind'] ?? null) === 'context' ? 'context' : 'event');
+
+        return [
+            'event' => $kinds->contains('event'),
+            'context' => $kinds->contains('context'),
+        ];
+    }
+
+    private function hasUploadedEvidence(NormalizedEvent $event): bool
+    {
+        return in_array(true, $this->uploadedEvidence($event), true);
     }
 
     /**
@@ -916,6 +1209,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      * a poll can tell "nothing new" apart from "download failed, retry".
      *
      * @param  array{input: string|null, status: string, url: string|null, offset_seconds?: int, trigger_reason?: string|null, start_time?: string|null}  $item
+     * @param  array<string, mixed>  $extraMetadata
      */
     private function downloadMedia(
         NormalizedEvent $event,
@@ -925,6 +1219,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         AttachmentType $type,
         string $defaultMimeType,
         string $source = 'deferred_retrieval',
+        array $extraMetadata = [],
     ): MediaDownloadOutcome {
         $storagePath = "teams/{$event->team_id}/raw-events/{$event->raw_event_id}/{$filename}";
 
@@ -941,7 +1236,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                     'attachment_type' => $type,
                     'mime_type' => $this->resolveMimeType($storage->mimeType($storagePath), $filename, $defaultMimeType),
                     'size_bytes' => $storage->size($storagePath) ?? 0,
-                    'metadata_json' => ['source' => $source, 'input' => $item['input']],
+                    'metadata_json' => ['source' => $source, 'input' => $item['input'], ...$extraMetadata],
                 ],
             );
 
@@ -975,7 +1270,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             $download->cleanup();
         }
 
-        $metadata = ['source' => $source, 'input' => $item['input']];
+        $metadata = ['source' => $source, 'input' => $item['input'], ...$extraMetadata];
 
         if (array_key_exists('offset_seconds', $item)) {
             $metadata['offset_seconds'] = $item['offset_seconds'];
