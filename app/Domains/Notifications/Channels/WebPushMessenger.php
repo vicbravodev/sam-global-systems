@@ -4,6 +4,7 @@ namespace App\Domains\Notifications\Channels;
 
 use App\Domains\Notifications\Data\WebPushOutcome;
 use App\Domains\Notifications\Data\WebPushTarget;
+use App\Domains\Notifications\Support\PushEndpoint;
 use App\Support\RedactSensitiveLogData;
 use GuzzleHttp\Client;
 use Illuminate\Support\Str;
@@ -19,7 +20,10 @@ use Throwable;
  */
 class WebPushMessenger
 {
-    private const TIMEOUT_SECONDS = 10;
+    /** Un servicio de push lento no debe frenar el lote ni el worker. */
+    private const TIMEOUT_SECONDS = 5;
+
+    private const CONNECT_TIMEOUT_SECONDS = 3;
 
     public function isConfigured(): bool
     {
@@ -52,7 +56,7 @@ class WebPushMessenger
                 'privateKey' => (string) config('webpush.vapid.private_key'),
             ]],
             defaultOptions: ['TTL' => $ttl, 'urgency' => $urgency],
-            client: new Client(['timeout' => self::TIMEOUT_SECONDS]),
+            client: new Client(['timeout' => self::TIMEOUT_SECONDS, 'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS]),
         );
 
         $byEndpoint = [];
@@ -60,6 +64,13 @@ class WebPushMessenger
         $outcomes = [];
 
         foreach ($targets as $target) {
+            if (! PushEndpoint::isAllowed($target->endpoint)) {
+                // Fila guardada antes del allowlist o manipulada: nunca se pide.
+                $outcomes[] = new WebPushOutcome($target->subscriptionId, false, false, null, 'endpoint_not_allowed');
+
+                continue;
+            }
+
             $byEndpoint[$target->endpoint] = $target->subscriptionId;
             $host = parse_url($target->endpoint, PHP_URL_HOST);
 
@@ -67,7 +78,7 @@ class WebPushMessenger
                 $hosts[$host] = true;
             }
 
-            if (! $this->hasValidKeys($target)) {
+            if (! PushEndpoint::hasValidKeys($target->publicKey, $target->authToken)) {
                 // Una suscripción malformada no tumba el lote: sólo ella falla.
                 $outcomes[] = new WebPushOutcome($target->subscriptionId, false, false, null, 'invalid_subscription');
 
@@ -101,19 +112,6 @@ class WebPushMessenger
         }
 
         return $outcomes;
-    }
-
-    /**
-     * El cifrado (en flush) revienta con llaves que no son base64url válido
-     * del tamaño esperado y tumbaría el lote entero: se descartan antes.
-     */
-    private function hasValidKeys(WebPushTarget $target): bool
-    {
-        $publicKey = base64_decode(strtr($target->publicKey, '-_', '+/'), true);
-        $authToken = base64_decode(strtr($target->authToken, '-_', '+/'), true);
-
-        return $publicKey !== false && strlen($publicKey) === 65
-            && $authToken !== false && strlen($authToken) >= 16;
     }
 
     /**

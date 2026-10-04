@@ -32,6 +32,9 @@ class PushSubscription extends Model
     /** @use HasFactory<PushSubscriptionFactory> */
     use BelongsToTenant, HasFactory;
 
+    /** Dispositivos por usuario y team; al pasar el tope se borran los más viejos. */
+    public const MAX_PER_USER = 10;
+
     protected $fillable = [
         'team_id',
         'user_id',

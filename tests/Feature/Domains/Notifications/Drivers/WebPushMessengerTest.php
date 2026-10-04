@@ -14,6 +14,9 @@ class WebPushMessengerTest extends TestCase
     {
         $keys = VAPID::createVapidKeys();
         config(['webpush.vapid' => ['subject' => 'mailto:soporte@example.com', 'public_key' => $keys['publicKey'], 'private_key' => $keys['privateKey']]]);
+        // 127.0.0.1:443 no escucha: un endpoint permitido pero inalcanzable
+        // que falla rápido y sin red externa.
+        config(['webpush.allowed_hosts' => ['127.0.0.1']]);
     }
 
     public function test_is_not_configured_without_vapid_keys(): void
@@ -59,7 +62,7 @@ class WebPushMessengerTest extends TestCase
         $outcomes = app(WebPushMessenger::class)->send(
             [new WebPushTarget(
                 7,
-                'https://127.0.0.1:9/push/abc',
+                'https://127.0.0.1/push/abc',
                 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
                 'tBHItJI5svbpez7KI4CCXg',
                 'aes128gcm',
@@ -84,10 +87,10 @@ class WebPushMessengerTest extends TestCase
 
         $outcomes = app(WebPushMessenger::class)->send(
             [
-                new WebPushTarget(1, 'https://127.0.0.1:9/push/bad', 'not-a-key', 'tBHItJI5svbpez7KI4CCXg', 'aes128gcm'),
+                new WebPushTarget(1, 'https://127.0.0.1/push/bad', 'not-a-key', 'tBHItJI5svbpez7KI4CCXg', 'aes128gcm'),
                 new WebPushTarget(
                     2,
-                    'https://127.0.0.1:9/push/ok',
+                    'https://127.0.0.1/push/ok',
                     'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
                     'tBHItJI5svbpez7KI4CCXg',
                     'aes128gcm',
@@ -104,5 +107,44 @@ class WebPushMessengerTest extends TestCase
         $this->assertSame('invalid_subscription', $byId[1]->reason);
         $this->assertFalse($byId[2]->success);
         $this->assertNotSame('invalid_subscription', $byId[2]->reason);
+    }
+
+    public function test_an_endpoint_outside_the_allowlist_is_never_requested(): void
+    {
+        $this->configureVapid();
+        $started = microtime(true);
+
+        $outcomes = app(WebPushMessenger::class)->send(
+            [
+                // Si se pidiera, el host de metadata colgaría la conexión hasta el timeout.
+                new WebPushTarget(
+                    1,
+                    'https://169.254.169.254/latest/meta-data',
+                    'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
+                    'tBHItJI5svbpez7KI4CCXg',
+                    'aes128gcm',
+                ),
+                new WebPushTarget(
+                    2,
+                    'https://127.0.0.1/push/ok',
+                    'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
+                    'tBHItJI5svbpez7KI4CCXg',
+                    'aes128gcm',
+                ),
+            ],
+            '{"title":"x"}',
+            60,
+            'high',
+        );
+
+        $byId = collect($outcomes)->keyBy('subscriptionId');
+        $this->assertCount(2, $outcomes);
+        $this->assertFalse($byId[1]->success);
+        $this->assertFalse($byId[1]->expired);
+        $this->assertNull($byId[1]->statusCode);
+        $this->assertSame('endpoint_not_allowed', $byId[1]->reason);
+        $this->assertFalse($byId[2]->success);
+        $this->assertNotSame('endpoint_not_allowed', $byId[2]->reason);
+        $this->assertLessThan(3.0, microtime(true) - $started);
     }
 }
