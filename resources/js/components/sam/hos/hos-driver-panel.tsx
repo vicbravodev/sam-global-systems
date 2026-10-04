@@ -40,7 +40,10 @@ export function HosDriverPanel({ hos, teamSlug }: HosDriverPanelProps) {
                 >
                     {state ? (
                         <>
-                            <HosClockBars clocks={state.clocks} />
+                            <HosClockBars
+                                clocks={state.clocks}
+                                dutyStatus={state.dutyStatus}
+                            />
                             {state.violationSeconds > 0 ? (
                                 <p
                                     className={cn(

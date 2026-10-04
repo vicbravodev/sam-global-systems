@@ -137,7 +137,6 @@ export interface HosFleetEpisode {
     situation: HosSituationKey;
     ladderStep: number;
     escalated: boolean;
-    incidentId: number | null;
 }
 
 export interface HosFleetRow {
@@ -156,11 +155,15 @@ export interface HosFleetRow {
 
 export type HosFleetSummary = Record<HosUrgencyLevel, number> & {
     total: number;
+    /** Filas sin lectura reciente: listadas, fuera de los niveles. */
+    stale: number;
 };
 
 export interface HosFleetData {
     rows: HosFleetRow[];
     summary: HosFleetSummary;
+    /** Lectura más reciente del team a cualquier edad (null si nunca hubo). */
+    lastObservedAt: string | null;
 }
 
 export interface HosFleetPageProps {

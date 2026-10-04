@@ -1,8 +1,9 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Hourglass } from 'lucide-react';
+import { CloudOff, Hourglass } from 'lucide-react';
 import { useState } from 'react';
 import { HosFleetTable } from '@/components/sam/hos/hos-fleet-table';
+import { fleetOutageLabel } from '@/components/sam/hos/lib';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
@@ -18,6 +19,7 @@ export default function DriversHos({ fleet }: HosFleetPageProps) {
     const page = usePage();
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const [refreshing, setRefreshing] = useState(false);
+    const outage = fleetOutageLabel(fleet);
 
     // Cada sondeo (~1 min) recarga sólo la lista.
     useBroadcastReload(
@@ -52,7 +54,15 @@ export default function DriversHos({ fleet }: HosFleetPageProps) {
                 onRefresh={refresh}
                 refreshing={refreshing}
             >
-                {fleet.rows.length === 0 ? (
+                {outage !== null ? (
+                    <ListEmptyState
+                        icon={CloudOff}
+                        filtered={false}
+                        title={outage}
+                        description="SAM sigue consultando cada minuto. Si no se recupera, revisa la integración con Samsara en Configuración."
+                        filteredDescription=""
+                    />
+                ) : fleet.rows.length === 0 ? (
                     <ListEmptyState
                         icon={Hourglass}
                         filtered={false}
@@ -90,6 +100,14 @@ function FleetMeta({ summary }: { summary: HosFleetSummary }) {
                     {' · '}
                     <span className={TONE_TEXT.high}>
                         {formatNumber(summary.at_limit)} en el límite
+                    </span>
+                </>
+            ) : null}
+            {summary.stale > 0 ? (
+                <>
+                    {' · '}
+                    <span className={TONE_TEXT.warn}>
+                        {formatNumber(summary.stale)} sin lectura reciente
                     </span>
                 </>
             ) : null}

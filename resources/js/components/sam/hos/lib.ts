@@ -1,9 +1,9 @@
 import { CHANNEL_DELIVERY } from '@/components/sam/notifications/copy';
 import { formatNumber } from '@/lib/format';
 import { channelLabel } from '@/lib/labels';
-import { hoursMinutesLabel } from '@/lib/time';
+import { hoursMinutesLabel, relativeLabel } from '@/lib/time';
 import type { Tone } from '@/lib/tone';
-import type { HosClocks, HosFleetRow, HosNudge } from '@/types/hos';
+import type { HosClocks, HosFleetData, HosNudge } from '@/types/hos';
 import { HOS_CLOCK_LABELS, HOS_NOTICE_LABELS } from './copy';
 
 export const HOS_CLOCK_KEYS = ['break', 'drive', 'shift', 'cycle'] as const;
@@ -48,32 +48,87 @@ export function clockTone(
     return remaining <= warningSeconds ? 'warn' : 'ok';
 }
 
-function remainingLabel(seconds: number | null): string {
+/** Mismo criterio que `HosDutyStatus::isWorking()`. */
+const WORKING_STATUSES = ['driving', 'onDuty', 'yardMove'];
+
+/** Manejando, en turno o en patio: sus relojes corren. */
+export function isWorkingStatus(dutyStatus: string): boolean {
+    return WORKING_STATUSES.includes(dutyStatus);
+}
+
+/**
+ * Parado (fuera de turno, en litera, uso personal) un reloj en 0 es lo
+ * normal: no se pinta como alarma. Sin estado conocido no se presume.
+ */
+function isResting(dutyStatus: string | null | undefined): boolean {
+    return (
+        dutyStatus !== null &&
+        dutyStatus !== undefined &&
+        !isWorkingStatus(dutyStatus)
+    );
+}
+
+function remainingLabel(seconds: number | null, resting: boolean): string {
     if (seconds === null) {
         return 'Sin dato';
     }
 
-    return seconds <= 0 ? 'Agotado' : hoursMinutesLabel(seconds);
+    if (seconds <= 0) {
+        return resting ? 'En 0' : 'Agotado';
+    }
+
+    return hoursMinutesLabel(seconds);
 }
 
-export function clockBars(clocks: HosClocks): HosClockBar[] {
-    return HOS_CLOCK_KEYS.map((key) => ({
-        key,
-        label: HOS_CLOCK_LABELS[key],
-        remaining: clocks[key],
-        max: HOS_CLOCK_FULL_SECONDS[key],
-        tone: clockTone(clocks[key], HOS_WARNING_SECONDS[key]),
-        valueLabel: remainingLabel(clocks[key]),
-    }));
+export function clockBars(
+    clocks: HosClocks,
+    dutyStatus: string | null = null,
+): HosClockBar[] {
+    const resting = isResting(dutyStatus);
+
+    return HOS_CLOCK_KEYS.map((key) => {
+        const tone = clockTone(clocks[key], HOS_WARNING_SECONDS[key]);
+
+        return {
+            key,
+            label: HOS_CLOCK_LABELS[key],
+            remaining: clocks[key],
+            max: HOS_CLOCK_FULL_SECONDS[key],
+            tone: resting && tone !== 'ok' ? 'neutral' : tone,
+            valueLabel: remainingLabel(clocks[key], resting),
+        };
+    });
 }
 
 /** El reloj más corto de una fila de la flota. */
-export function nearestLabel(
-    row: Pick<HosFleetRow, 'minRemainingSeconds'>,
-): string {
+export function nearestLabel(row: {
+    minRemainingSeconds: number | null;
+    dutyStatus?: string | null;
+}): string {
     return row.minRemainingSeconds === null
         ? '—'
-        : remainingLabel(row.minRemainingSeconds);
+        : remainingLabel(row.minRemainingSeconds, isResting(row.dutyStatus));
+}
+
+/** Igual que `ListHosFleet::STALE_SECONDS`. */
+export const HOS_STALE_SECONDS = 180;
+
+/**
+ * Sin filas recientes pero con una lectura vieja: Samsara dejó de responder
+ * (o el sondeo se detuvo), no es que nadie esté en monitoreo.
+ */
+export function fleetOutageLabel(
+    fleet: Pick<HosFleetData, 'rows' | 'lastObservedAt'>,
+): string | null {
+    if (fleet.rows.length > 0 || fleet.lastObservedAt === null) {
+        return null;
+    }
+
+    const age = Date.now() - Date.parse(fleet.lastObservedAt);
+
+    return age > HOS_STALE_SECONDS * 1000
+        ? `Sin lectura de Samsara desde ${relativeLabel(fleet.lastObservedAt, 'long')}`
+        : null;
 }
 
 /** Cuántos avisos salieron de verdad (no el escalón en que va el episodio). */

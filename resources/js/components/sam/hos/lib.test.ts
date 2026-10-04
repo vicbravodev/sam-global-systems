@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HosFleetRow, HosNudge } from '@/types/hos';
 import {
     clockBars,
     deliveryLines,
     driverTabFromUrl,
+    fleetOutageLabel,
+    isWorkingStatus,
     nearestLabel,
     nudgeTitle,
     nudgesLabel,
@@ -26,17 +28,86 @@ describe('clockBars', () => {
         ]);
         expect(bars[0]?.max).toBe(28800);
     });
+
+    it('quien está parado no lee "Agotado" en rojo: el reloj en 0 es lo normal', () => {
+        const clocks = { break: 900, drive: 0, shift: 0, cycle: 30000 };
+
+        expect(
+            clockBars(clocks, 'offDuty').map((bar) => [
+                bar.key,
+                bar.tone,
+                bar.valueLabel,
+            ]),
+        ).toEqual([
+            ['break', 'neutral', '15 min'],
+            ['drive', 'neutral', 'En 0'],
+            ['shift', 'neutral', 'En 0'],
+            ['cycle', 'ok', '8 h 20 min'],
+        ]);
+        expect(clockBars(clocks, 'driving')[1]?.tone).toBe('critical');
+        expect(clockBars(clocks, 'onDuty')[1]?.valueLabel).toBe('Agotado');
+        // Sin estado conocido no se presume que descansa.
+        expect(clockBars(clocks, null)[1]?.tone).toBe('critical');
+    });
+});
+
+describe('isWorkingStatus', () => {
+    it('manejar, en turno o en patio cuentan como trabajo', () => {
+        expect(isWorkingStatus('driving')).toBe(true);
+        expect(isWorkingStatus('onDuty')).toBe(true);
+        expect(isWorkingStatus('yardMove')).toBe(true);
+        expect(isWorkingStatus('offDuty')).toBe(false);
+        expect(isWorkingStatus('sleeperBed')).toBe(false);
+        expect(isWorkingStatus('personalConveyance')).toBe(false);
+    });
+});
+
+describe('fleetOutageLabel', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('sin filas y con una lectura vieja dice desde cuándo no lee Samsara', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T18:00:00Z'));
+
+        expect(
+            fleetOutageLabel({
+                rows: [],
+                lastObservedAt: '2026-10-04T16:00:00Z',
+            }),
+        ).toBe('Sin lectura de Samsara desde hace 2 horas');
+        expect(fleetOutageLabel({ rows: [], lastObservedAt: null })).toBeNull();
+        // Una lectura de hace un minuto no es una caída.
+        expect(
+            fleetOutageLabel({
+                rows: [],
+                lastObservedAt: '2026-10-04T17:59:00Z',
+            }),
+        ).toBeNull();
+        expect(
+            fleetOutageLabel({
+                rows: [{} as HosFleetRow],
+                lastObservedAt: '2026-10-04T16:00:00Z',
+            }),
+        ).toBeNull();
+    });
 });
 
 describe('textos del panel', () => {
     it('lo más cercano de una fila', () => {
         const row = { minRemainingSeconds: 900 } as Pick<
             HosFleetRow,
-            'minRemainingSeconds'
+            'minRemainingSeconds' | 'dutyStatus'
         >;
 
         expect(nearestLabel(row)).toBe('15 min');
-        expect(nearestLabel({ minRemainingSeconds: 0 })).toBe('Agotado');
+        expect(
+            nearestLabel({ minRemainingSeconds: 0, dutyStatus: 'driving' }),
+        ).toBe('Agotado');
+        expect(
+            nearestLabel({ minRemainingSeconds: 0, dutyStatus: 'sleeperBed' }),
+        ).toBe('En 0');
         expect(nearestLabel({ minRemainingSeconds: null })).toBe('—');
     });
 
