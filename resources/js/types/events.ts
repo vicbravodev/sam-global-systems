@@ -142,6 +142,7 @@ export interface EventMediaItem {
     id: number;
     mediaType: string | null;
     mediaRole: string | null;
+    mimeType: string | null;
     url: string | null;
     thumbnailUrl: string | null;
     capturedAt: string | null;

@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Normalization;
 
-use App\Contracts\ObjectStorage;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Support\PlaceholderEvaluation;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Context\Support\EventMediaGallery;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
@@ -482,34 +482,23 @@ class EventsPageController extends Controller
      */
     private function mediaItems(NormalizedEvent $event): array
     {
-        $storage = app(ObjectStorage::class);
-
-        return array_values(EventMediaContext::query()
+        $media = EventMediaContext::query()
             ->where('normalized_event_id', $event->id)
             ->orderByDesc('id')
-            ->get()
-            ->map(function (EventMediaContext $media) use ($storage): array {
-                $url = $media->media_url;
+            ->get();
 
-                if ($url === null && $media->storage_path !== null) {
-                    try {
-                        $url = $storage->temporaryUrl($media->storage_path, now()->addMinutes(30));
-                    } catch (\Throwable) {
-                        $url = null;
-                    }
-                }
-
-                return [
-                    'id' => $media->id,
-                    'mediaType' => $media->media_type?->value,
-                    'mediaRole' => $media->media_role?->value,
-                    'url' => $url,
-                    'thumbnailUrl' => $media->thumbnail_url,
-                    'capturedAt' => $media->captured_at?->toIso8601String(),
-                    'durationSeconds' => $media->duration_seconds,
-                ];
-            })
-            ->all());
+        // Misma galería que el detalle de incidente: los frames extraídos se
+        // pliegan bajo su clip y le dan miniatura (un mp4 no va en un <img>).
+        return array_map(fn (array $entry): array => [
+            'id' => $entry['media']->id,
+            'mediaType' => $entry['media']->media_type?->value,
+            'mediaRole' => $entry['media']->media_role?->value,
+            'mimeType' => $entry['media']->mime_type,
+            'url' => $entry['url'],
+            'thumbnailUrl' => $entry['thumbnailUrl'],
+            'capturedAt' => $entry['media']->captured_at?->toIso8601String(),
+            'durationSeconds' => $entry['media']->duration_seconds,
+        ], EventMediaGallery::photosFirst(app(EventMediaGallery::class)->entries($media)));
     }
 
     /**

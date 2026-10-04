@@ -401,7 +401,7 @@ class IncidentInboxController extends Controller
 
         // Una entrada por archivo real: los frames extraídos se pliegan bajo su
         // clip y le dan miniatura (un mp4 no se previsualiza en un <img>).
-        $entries = $this->galleryOrder(app(EventMediaGallery::class)->entries($media));
+        $entries = EventMediaGallery::photosFirst(app(EventMediaGallery::class)->entries($media));
 
         // Un veredicto por archivo (el de un clip sale de sus frames): el
         // resumen nunca dice "8 de 4 medias evaluadas".
@@ -475,22 +475,7 @@ class IncidentInboxController extends Controller
             'sizeBytes' => $entry['media']->size_bytes,
             'capturedAt' => $entry['media']->captured_at?->toIso8601String(),
             'availabilityStatus' => $entry['media']->availability_status?->value,
-        ], $this->galleryOrder(app(EventMediaGallery::class)->entries($media)));
-    }
-
-    /**
-     * Fotos antes que clips y, dentro de cada grupo, en orden de captura: el
-     * operador ve primero lo que carga al instante.
-     *
-     * @param  list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>  $entries
-     * @return list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>
-     */
-    private function galleryOrder(array $entries): array
-    {
-        usort($entries, fn (array $a, array $b): int => [EventMediaGallery::isVideo($a['media']), $a['media']->id]
-            <=> [EventMediaGallery::isVideo($b['media']), $b['media']->id]);
-
-        return $entries;
+        ], EventMediaGallery::photosFirst(app(EventMediaGallery::class)->entries($media)));
     }
 
     /**

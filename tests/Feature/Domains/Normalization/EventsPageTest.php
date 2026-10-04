@@ -8,6 +8,7 @@ use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
@@ -231,6 +232,70 @@ class EventsPageTest extends TestCase
      * PR #130 follow-up: `normalized_events.context_json` is never written;
      * the context shown must come from `event_context_snapshots`.
      */
+    /**
+     * The event detail showed 6 "Capturas" + 2 clips with blank boxes: the
+     * frames cut out of each clip were listed as photos. Same gallery as the
+     * incident detail: 1 photo + 1 clip, the clip previewed by its first frame.
+     */
+    public function test_show_folds_clip_frames_under_their_clip(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        $media = fn (array $attributes): EventMediaContext => EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            ...$attributes,
+        ]);
+
+        $clip = $media(['media_type' => 'clip', 'mime_type' => 'video/mp4', 'media_url' => 'https://media.example.test/road.mp4']);
+        $photo = $media(['media_type' => 'snapshot', 'mime_type' => 'image/jpeg', 'media_url' => 'https://media.example.test/road.jpg']);
+        $media([
+            'media_type' => 'snapshot',
+            'media_url' => 'https://media.example.test/road-frame-1.jpg',
+            'metadata_json' => ['source' => 'video_frame', 'parent_media_context_id' => $clip->id, 'offset_seconds' => 15],
+        ]);
+        $media([
+            'media_type' => 'snapshot',
+            'media_url' => 'https://media.example.test/road-frame-0.jpg',
+            'metadata_json' => ['source' => 'video_frame', 'parent_media_context_id' => $clip->id, 'offset_seconds' => 3],
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('events/show')
+                ->has('media', 2)
+                ->has('media.0', fn (Assert $item) => $item
+                    ->where('id', $photo->id)
+                    ->where('url', 'https://media.example.test/road.jpg')
+                    ->etc())
+                ->has('media.1', fn (Assert $item) => $item
+                    ->where('id', $clip->id)
+                    ->where('url', 'https://media.example.test/road.mp4')
+                    ->where('thumbnailUrl', 'https://media.example.test/road-frame-0.jpg')
+                    ->etc()));
+    }
+
+    public function test_show_never_lists_media_of_another_tenant(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+        $otherTeam = User::factory()->create()->currentTeam;
+
+        // Corrupt row: another tenant's media pointing at our event id.
+        EventMediaContext::factory()->create([
+            'team_id' => $otherTeam->id,
+            'normalized_event_id' => $event->id,
+            'media_url' => 'https://media.example.test/ajeno.jpg',
+        ]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id])));
+
+        $response->assertInertia(fn (Assert $page) => $page->has('media', 0));
+        $this->assertStringNotContainsString('ajeno.jpg', (string) $response->getContent());
+    }
+
     public function test_show_reads_context_from_the_event_context_snapshot(): void
     {
         $event = NormalizedEvent::factory()->create([
