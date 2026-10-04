@@ -1563,6 +1563,12 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             // endCursor de Samsara es un token opaco (string no vacío o null).
         } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
 
+        // If the loop exited with hasNext still true, we hit the page cap or lost the cursor
+        // and couldn't complete the listing — callers must discard this partial result.
+        if ($hasNext) {
+            throw new ProviderUnavailable("Samsara listing for {$path} was truncated (page cap or missing cursor).");
+        }
+
         return $records;
     }
 }

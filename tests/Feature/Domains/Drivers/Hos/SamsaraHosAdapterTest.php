@@ -142,4 +142,19 @@ class SamsaraHosAdapterTest extends TestCase
             ['id' => '8142583', 'name' => 'LOCAL HT', 'parent_id' => '4691922', 'vehicle_ids' => [], 'driver_ids' => ['9']],
         ], $tags);
     }
+
+    public function test_it_throws_when_listing_arrives_truncated(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/hos/clocks*' => Http::response([
+                'data' => [$this->drivingRow()],
+                'pagination' => ['endCursor' => '', 'hasNextPage' => true],
+            ]),
+        ]);
+
+        $this->expectException(ProviderUnavailable::class);
+        $this->expectExceptionMessage('truncated');
+
+        app(ProviderAdapter::class)->fetchHosClocks($this->integration());
+    }
 }
