@@ -2,6 +2,7 @@
 
 namespace App\Domains\Drivers\Actions;
 
+use App\Domains\Drivers\Enums\HosSituation;
 use App\Domains\Drivers\Models\HosEpisode;
 use App\Domains\Drivers\Support\HosNoticeCopy;
 use App\Domains\Incidents\Actions\AppendTimelineEntry;
@@ -10,7 +11,9 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 
@@ -18,9 +21,16 @@ use Illuminate\Support\Facades\DB;
  * The driver corrected an episode whose ladder already escalated (spec
  * 2026-10-04 §3.11): the incident gets a timeline line and, if nobody
  * acknowledged or claimed it yet and the driver has no other open escalated
- * episode (CreateIncidentFromEvent folds a driver's HOS events into one
- * incident, and the other episode may not be linked yet),
- * it is resolved `resolved_externally` — which also stops its escalation.
+ * episode on it (CreateIncidentFromEvent folds a driver's HOS events into one
+ * incident, and the other episode may not be linked yet: unlinked ones count,
+ * episodes linked to ANOTHER incident do not), it is resolved
+ * `resolved_externally` — which also stops its escalation.
+ *
+ * A violation already happened: its incident is never closed by a
+ * correction, only annotated (`violation_kept_open`).
+ *
+ * The decision is re-checked on the incident locked for update, so an
+ * operator who takes it (or a resolution) in the meantime always wins.
  *
  * Idempotent: the timeline line carries the episode id, so settling the same
  * episode again adds nothing.
@@ -38,7 +48,7 @@ class SettleHosIncident
     ) {}
 
     /**
-     * @return 'resolved'|'annotated'|'already_closed'|'already_settled'|'incident_not_found'
+     * @return 'resolved'|'annotated'|'violation_kept_open'|'already_closed'|'already_settled'|'incident_not_found'
      */
     public function execute(HosEpisode $episode): string
     {
@@ -62,15 +72,17 @@ class SettleHosIncident
             'acknowledged' => $incident->acknowledged_at !== null,
             'claimed' => $incident->claimed_by_user_id !== null,
             'terminal' => $incident->isTerminal(),
-            // Cualquier otro episodio escalado y abierto del mismo chofer, esté o
-            // no vinculado ya: CreateIncidentFromEvent pudo plegar su evento en
-            // este incidente y el vínculo (LinkHosEpisodeIncident) llega después.
+            // Otro episodio escalado y abierto del mismo chofer en ESTE incidente,
+            // o aún sin vincular: CreateIncidentFromEvent pudo plegar su evento
+            // aquí y el vínculo (LinkHosEpisodeIncident) llega después. Uno ya
+            // vinculado a otro incidente no lo detiene.
             'other_open_episodes' => HosEpisode::query()
                 ->where('team_id', $episode->team_id)
                 ->where('driver_id', $episode->driver_id)
                 ->whereNotNull('escalated_at')
                 ->whereNull('resolved_at')
                 ->whereKeyNot($episode->id)
+                ->where(fn ($query) => $query->whereNull('incident_id')->orWhere('incident_id', $incident->id))
                 ->exists(),
         ];
 
@@ -94,12 +106,26 @@ class SettleHosIncident
             return 'already_settled';
         }
 
-        $close = ! $calc['acknowledged'] && ! $calc['claimed'] && ! $calc['other_open_episodes'];
+        // Línea y cierre juntos, sobre el incidente bloqueado: o queda todo o nada,
+        // y si alguien lo tomó o cerró mientras tanto, gana esa persona.
+        $outcome = DB::transaction(function () use ($incident, $episode, &$calc): string {
+            $locked = Incident::query()
+                ->where('team_id', $episode->team_id)
+                ->whereKey($incident->id)
+                ->lockForUpdate()
+                ->first();
 
-        // Línea y cierre juntos: o queda todo o nada.
-        DB::transaction(function () use ($incident, $episode, $close): void {
+            if ($locked === null || $locked->load('status')->isTerminal()) {
+                $calc['terminal'] = true;
+
+                return 'already_closed';
+            }
+
+            $calc['acknowledged'] = $locked->acknowledged_at !== null;
+            $calc['claimed'] = $locked->claimed_by_user_id !== null;
+
             $this->appendTimelineEntry->execute(
-                incident: $incident,
+                incident: $locked,
                 entryType: TimelineEntryType::ExternallyResolved,
                 actorType: TimelineActorType::System,
                 title: self::TIMELINE_TITLE,
@@ -107,17 +133,30 @@ class SettleHosIncident
                 payload: ['hos_episode_id' => $episode->id, 'situation' => $episode->situation->value],
             );
 
-            if ($close) {
-                $this->closeIncident->execute(
-                    incident: $incident,
-                    resolutionCode: ResolutionCode::ResolvedExternally,
-                    summary: 'Se resolvió solo: el chofer corrigió su situación de horas de servicio antes de que alguien tomara el incidente.',
-                    resolvedByType: IncidentCreatorType::System,
-                );
+            // La infracción ya ocurrió: corregirla no la borra, el equipo la revisa.
+            if ($episode->situation === HosSituation::Violation) {
+                return 'violation_kept_open';
             }
+
+            if (IncidentSuppression::isUnderHumanControl($locked) || $calc['other_open_episodes']) {
+                return 'annotated';
+            }
+
+            $this->closeIncident->execute(
+                incident: $locked,
+                resolutionCode: ResolutionCode::ResolvedExternally,
+                summary: 'Se resolvió solo: el chofer corrigió su situación de horas de servicio antes de que alguien tomara el incidente.',
+                resolvedByType: IncidentCreatorType::System,
+            );
+
+            return 'resolved';
         });
 
-        $outcome = $close ? 'resolved' : 'annotated';
+        if ($outcome === 'already_closed') {
+            SystemLog::skipped('hos.incident.settled', reason: 'already_closed', input: $input, calc: $calc);
+
+            return 'already_closed';
+        }
 
         SystemLog::ok('hos.incident.settled', input: $input, calc: $calc, result: ['outcome' => $outcome]);
 

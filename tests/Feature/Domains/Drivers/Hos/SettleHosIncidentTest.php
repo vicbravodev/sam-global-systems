@@ -18,6 +18,7 @@ use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Data\HosClockReading;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Models\User;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use Database\Seeders\IncidentsSeeder;
@@ -116,6 +117,61 @@ class SettleHosIncidentTest extends TestCase
         $settled = $this->assertSystemLogged('hos.incident.settled');
         $this->assertSame('annotated', $settled['result']['outcome']);
         $this->assertTrue($settled['calc']['acknowledged']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_incident_someone_claimed_only_gets_a_timeline_entry(): void
+    {
+        $incident = $this->openIncident(['claimed_by_user_id' => User::factory()->create()->id]);
+        $this->escalatedEpisode($incident);
+
+        $this->correct();
+
+        $this->assertFalse($incident->fresh('status')->isTerminal());
+        $this->assertTrue($this->correctionNoted($incident));
+        $settled = $this->assertSystemLogged('hos.incident.settled');
+        $this->assertSame('annotated', $settled['result']['outcome']);
+        $this->assertTrue($settled['calc']['claimed']);
+        $this->assertFalse($settled['calc']['acknowledged']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_corrected_violation_never_closes_its_incident(): void
+    {
+        // Una infracción ya ocurrió: aunque nadie la haya tomado, el incidente queda abierto.
+        $incident = $this->openIncident();
+        $episode = $this->escalatedEpisode($incident, HosSituation::Violation);
+
+        $this->correct();
+
+        $this->assertSame(HosEpisodeResolution::Corrected, $episode->fresh()->resolution);
+        $this->assertFalse($incident->fresh('status')->isTerminal());
+        $this->assertTrue($this->correctionNoted($incident));
+        $settled = $this->assertSystemLogged('hos.incident.settled');
+        $this->assertSame('violation_kept_open', $settled['result']['outcome']);
+        $this->assertSame('violation', $settled['calc']['situation']);
+        Event::assertNotDispatched(IncidentResolved::class);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_escalated_episode_tied_to_another_incident_does_not_keep_this_one_open(): void
+    {
+        $incident = $this->openIncident();
+        $episode = $this->escalatedEpisode($incident);
+        // Otro episodio del mismo chofer escaló a OTRO incidente (fuera de la ventana de plegado).
+        $elsewhere = $this->openIncident();
+        $drive = $this->escalatedEpisode($elsewhere, HosSituation::DriveLimit);
+
+        $this->correct(drive: 0);
+
+        $this->assertNull($drive->fresh()->resolved_at);
+        $this->assertSame(HosEpisodeResolution::Corrected, $episode->fresh()->resolution);
+        $this->assertTrue($incident->fresh('status')->isTerminal());
+        $this->assertFalse($elsewhere->fresh('status')->isTerminal());
+        $settled = $this->assertSystemLogged('hos.incident.settled');
+        $this->assertSame('resolved', $settled['result']['outcome']);
+        $this->assertFalse($settled['calc']['other_open_episodes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_settling_the_same_episode_twice_adds_nothing_new(): void
@@ -142,6 +198,7 @@ class SettleHosIncidentTest extends TestCase
 
         $this->assertFalse($this->correctionNoted($incident));
         $this->assertSame('already_closed', $this->assertSystemLogged('hos.incident.settled')['reason']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_an_unknown_incident_is_logged_and_the_poll_goes_on(): void
@@ -152,6 +209,7 @@ class SettleHosIncidentTest extends TestCase
 
         $this->assertSame(HosEpisodeResolution::Corrected, $episode->fresh()->resolution);
         $this->assertSame('incident_not_found', $this->assertSystemLogged('hos.incident.settled')['reason']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_an_incident_shared_with_another_open_episode_stays_open(): void
@@ -168,6 +226,7 @@ class SettleHosIncidentTest extends TestCase
         $settled = $this->assertSystemLogged('hos.incident.settled');
         $this->assertSame('annotated', $settled['result']['outcome']);
         $this->assertTrue($settled['calc']['other_open_episodes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_another_escalated_episode_not_yet_linked_keeps_the_incident_open(): void
@@ -184,6 +243,7 @@ class SettleHosIncidentTest extends TestCase
         $settled = $this->assertSystemLogged('hos.incident.settled');
         $this->assertSame('annotated', $settled['result']['outcome']);
         $this->assertTrue($settled['calc']['other_open_episodes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_settling_never_touches_another_tenants_incident(): void
@@ -202,5 +262,6 @@ class SettleHosIncidentTest extends TestCase
 
         $this->assertTrue($incident->fresh('status')->isTerminal());
         $this->assertFalse($otherIncident->fresh('status')->isTerminal());
+        $this->assertNoSensitiveDataLogged();
     }
 }
