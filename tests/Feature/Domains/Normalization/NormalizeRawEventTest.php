@@ -654,4 +654,113 @@ class NormalizeRawEventTest extends TestCase
 
         $this->assertSame(NormalizedEventStatus::Unmapped, $normalized->status);
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tamperingAlertIncident(string $vehicleId, string $driverId): array
+    {
+        return [
+            'eventType' => 'AlertIncident',
+            'data' => [
+                'conditions' => [
+                    // Una condición sin details no corta la búsqueda.
+                    ['triggerId' => 1000, 'description' => 'Vehicle Speed'],
+                    [
+                        'triggerId' => 1045,
+                        'description' => 'Tampering Detected',
+                        'details' => ['tamperingDetected' => [
+                            'vehicle' => ['id' => $vehicleId, 'name' => 'T-1'],
+                            'driver' => ['id' => $driverId, 'name' => 'Conductor'],
+                        ]],
+                    ],
+                ],
+                'happenedAtTime' => '2026-10-04T10:00:00Z',
+            ],
+        ];
+    }
+
+    private function tamperingRule(): EventType
+    {
+        $tampering = EventType::factory()->create([
+            'code' => 'tampering',
+            'category_id' => $this->operationalCategory->id,
+            'default_severity_id' => $this->criticalSeverity->id,
+        ]);
+
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->samsaraProvider->id,
+            'external_event_type' => 'AlertIncident',
+            'external_conditions_json' => ['data.conditions.*.triggerId' => 1045],
+            'mapped_event_type_id' => $tampering->id,
+        ]);
+
+        return $tampering;
+    }
+
+    public function test_alert_incident_resolves_asset_and_driver_from_any_trigger_details(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+        $tampering = $this->tamperingRule();
+
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $asset->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '494123',
+        ]);
+        $driver = Driver::factory()->create(['team_id' => $this->teamId]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $driver->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '45646',
+        ]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => $this->samsaraProvider->id,
+            'event_type_raw' => 'AlertIncident',
+            'payload_json' => $this->tamperingAlertIncident('494123', '45646'),
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertSame($tampering->id, $normalized?->event_type_id);
+        $this->assertSame($asset->id, $normalized->asset_id);
+        $this->assertSame($driver->id, $normalized->driver_id);
+        $this->assertSame([1000, 1045], $normalized->payload_normalized_json['provider_trigger_ids']);
+        $this->assertSame('Tampering Detected', $normalized->payload_normalized_json['description']);
+    }
+
+    public function test_alert_incident_details_never_bind_another_tenants_asset_or_driver(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+        $this->tamperingRule();
+
+        $foreignTeamId = User::factory()->create()->currentTeam->id;
+        $foreignAsset = Asset::factory()->create(['team_id' => $foreignTeamId]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $foreignAsset->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '494123',
+        ]);
+        $foreignDriver = Driver::factory()->create(['team_id' => $foreignTeamId]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $foreignDriver->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '45646',
+        ]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => $this->samsaraProvider->id,
+            'event_type_raw' => 'AlertIncident',
+            'payload_json' => $this->tamperingAlertIncident('494123', '45646'),
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertNull($normalized?->asset_id);
+        $this->assertNull($normalized?->driver_id);
+    }
 }

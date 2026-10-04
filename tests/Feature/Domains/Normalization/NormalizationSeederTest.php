@@ -192,4 +192,54 @@ class NormalizationSeederTest extends TestCase
             'Running NormalizationSeeder twice should not duplicate event types — firstOrCreate ensures idempotency',
         );
     }
+
+    /**
+     * @return array<string, array{conditions: array<string, mixed>, priority: int}>
+     */
+    private function alertIncidentRulesByType(): array
+    {
+        return EventMappingRule::query()
+            ->with('mappedEventType')
+            ->where('external_event_type', 'AlertIncident')
+            ->get()
+            ->mapWithKeys(fn (EventMappingRule $rule) => [(string) $rule->mappedEventType?->code => [
+                'conditions' => $rule->external_conditions_json ?? [],
+                'priority' => $rule->priority,
+            ]])
+            ->all();
+    }
+
+    public function test_alert_incident_rules_recognize_samsara_triggers_in_any_condition(): void
+    {
+        $this->seed(NormalizationSeeder::class);
+
+        $rules = $this->alertIncidentRulesByType();
+
+        $this->assertSame(['data.conditions.*.triggerId' => 1034], $rules['panic_button']['conditions']);
+        $this->assertSame(['data.conditions.*.triggerId' => 1045], $rules['tampering']['conditions']);
+        // Sin triggerTypeId público: por texto, pero en cualquier condición.
+        $this->assertSame(['data.conditions.*.description' => 'Camera Obstructed'], $rules['camera_obstructed']['conditions']);
+
+        // Lo más grave gana cuando una configuración trae varias condiciones.
+        $this->assertGreaterThan($rules['tampering']['priority'], $rules['panic_button']['priority']);
+        $this->assertGreaterThan($rules['camera_obstructed']['priority'], $rules['tampering']['priority']);
+    }
+
+    public function test_reseeding_converts_description_rules_in_place_without_duplicates(): void
+    {
+        $this->seed(NormalizationSeeder::class);
+
+        // Como quedaron los entornos sembrados antes del cambio.
+        $panic = EventMappingRule::query()
+            ->where('external_event_type', 'AlertIncident')
+            ->whereHas('mappedEventType', fn ($q) => $q->where('code', 'panic_button'))
+            ->firstOrFail();
+        $panic->update(['external_conditions_json' => ['data.conditions.0.description' => 'Panic Button'], 'priority' => 10]);
+        $before = EventMappingRule::query()->where('external_event_type', 'AlertIncident')->count();
+
+        $this->seed(NormalizationSeeder::class);
+
+        $this->assertSame($before, EventMappingRule::query()->where('external_event_type', 'AlertIncident')->count());
+        $this->assertSame(['data.conditions.*.triggerId' => 1034], $panic->fresh()?->external_conditions_json);
+    }
 }

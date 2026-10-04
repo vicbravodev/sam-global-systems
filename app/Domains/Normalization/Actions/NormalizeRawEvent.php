@@ -18,6 +18,7 @@ use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\Conditions\FlatConditionMatcher;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
 use Illuminate\Support\Arr;
@@ -29,6 +30,17 @@ class NormalizeRawEvent
 
     /** @var array<int, string> */
     public const array EMERGENCY_EVENT_TYPES = ['panic_button', 'collision', 'rollover_protection'];
+
+    /**
+     * Where a provider payload carries the unit, in priority order. The last
+     * path walks every AlertIncident condition and trigger detail.
+     *
+     * @var list<string>
+     */
+    private const array ASSET_ID_PATHS = ['asset.id', 'vehicle.id', 'vehicleId', 'data.conditions.*.details.*.vehicle.id'];
+
+    /** @var list<string> */
+    private const array DRIVER_ID_PATHS = ['driver.id', 'data.conditions.*.details.*.driver.id'];
 
     public function __construct(
         private MapExternalEventType $mapExternalEventType,
@@ -283,7 +295,7 @@ class NormalizeRawEvent
                 'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
                 'processed_at' => now(),
                 'payload_normalized_json' => [
-                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload, $rule),
                     ...($unmonitored ? ['unmonitored_asset' => true] : []),
                     ...self::unresolvedAssetMarker($unresolvedReason),
                 ],
@@ -424,7 +436,8 @@ class NormalizeRawEvent
      * 1. payload.asset.id (Safety Event stream)
      * 2. payload.vehicle.id (AlertIncident root)
      * 3. payload.vehicleId (AlertIncident alternative)
-     * 4. payload.data.conditions.0.details.panicButton.vehicle.id (AlertIncident nested)
+     * 4. payload.data.conditions.*.details.*.vehicle.id (AlertIncident: any
+     *    condition, any trigger — panicButton, tamperingDetected, harshEvent…)
      *
      * With no asset it also says why (`AssetUnresolvedReason`): no id in the
      * payload, an id the tenant does not know (or whose asset it deleted), or
@@ -442,17 +455,11 @@ class NormalizeRawEvent
 
         // Ids de secuencia (FK): nunca son 0, así que `!== null` equivale al truthy.
         if ($providerId !== null && $teamId !== null) {
-            foreach (['asset.id', 'vehicle.id', 'vehicleId', 'data.conditions.0.details.panicButton.vehicle.id'] as $candidate) {
-                // First non-null value wins (as `??`); a falsy one ('0', '', 0, false…) means "no id".
-                if (Arr::get($payload, $candidate) !== null) {
-                    $path = self::isFalsyPayloadId(Arr::get($payload, $candidate)) ? null : $candidate;
-                    break;
-                }
-            }
+            ['path' => $path, 'value' => $externalId] = self::firstPayloadId($payload, self::ASSET_ID_PATHS);
 
             $reference = $path === null ? null : AssetExternalReference::query()
                 ->where('provider_id', $providerId)
-                ->where('external_id', (string) Arr::get($payload, $path))
+                ->where('external_id', $externalId)
                 ->first();
 
             if ($reference !== null) {
@@ -556,7 +563,7 @@ class NormalizeRawEvent
      *
      * Priority chain:
      * 1. payload.driver.id (both formats at root)
-     * 2. payload.data.conditions.0.details.panicButton.driver.id (AlertIncident nested)
+     * 2. payload.data.conditions.*.details.*.driver.id (AlertIncident: any condition, any trigger)
      *
      * @param  array<string, mixed>  $payload
      */
@@ -569,17 +576,11 @@ class NormalizeRawEvent
 
         // Ids de secuencia (FK): nunca son 0, así que `!== null` equivale al truthy.
         if ($providerId !== null && $teamId !== null) {
-            foreach (['driver.id', 'data.conditions.0.details.panicButton.driver.id'] as $candidate) {
-                // First non-null value wins (as `??`); a falsy one ('0', '', 0, false…) means "no id".
-                if (Arr::get($payload, $candidate) !== null) {
-                    $path = self::isFalsyPayloadId(Arr::get($payload, $candidate)) ? null : $candidate;
-                    break;
-                }
-            }
+            ['path' => $path, 'value' => $externalId] = self::firstPayloadId($payload, self::DRIVER_ID_PATHS);
 
             $reference = $path === null ? null : DriverExternalReference::query()
                 ->where('provider_id', $providerId)
-                ->where('external_id', (string) Arr::get($payload, $path))
+                ->where('external_id', $externalId)
                 ->first();
 
             if ($reference !== null) {
@@ -606,13 +607,13 @@ class NormalizeRawEvent
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function buildNormalizedPayload(RawEvent $rawEvent, EventType $eventType, EventSeverity $severity, array $payload): array
+    private function buildNormalizedPayload(RawEvent $rawEvent, EventType $eventType, EventSeverity $severity, array $payload, ?EventMappingRule $rule = null): array
     {
         return [
             'event_type_code' => $eventType->code,
             'severity_code' => $severity->code,
             'external_event_type' => $rawEvent->event_type_raw,
-            'description' => Arr::get($payload, 'data.conditions.0.description')
+            'description' => Arr::get($this->matchedCondition($payload, $rule) ?? [], 'description')
                 ?? Arr::get($payload, 'behaviorLabels.0.label')
                 ?? $rawEvent->event_type_raw,
             'occurred_at' => ($rawEvent->occurred_at ?? $rawEvent->received_at)->toIso8601String(),
@@ -625,8 +626,60 @@ class NormalizeRawEvent
             'external_resolved_at' => Arr::get($payload, 'data.resolvedAtTime') ?? $this->resolveFeedResolvedAt($payload),
             'event_state' => Arr::get($payload, 'eventState'),
             'raw_conditions' => Arr::get($payload, 'data.conditions'),
+            'provider_trigger_ids' => self::triggerIds($payload),
             'raw_behavior_labels' => Arr::get($payload, 'behaviorLabels'),
         ];
+    }
+
+    /**
+     * The AlertIncident condition the mapping rule matched: the one whose
+     * `triggerId` the rule asked for (`data.conditions.*.triggerId`), else the
+     * first. Its description is what the operator reads.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    private function matchedCondition(array $payload, ?EventMappingRule $rule): ?array
+    {
+        $conditions = Arr::get($payload, 'data.conditions');
+
+        if (! is_array($conditions) || $conditions === []) {
+            return null;
+        }
+
+        $wanted = $rule?->external_conditions_json['data.conditions.*.triggerId'] ?? null;
+
+        if ($wanted !== null) {
+            foreach ($conditions as $condition) {
+                if (is_array($condition) && FlatConditionMatcher::equals($condition['triggerId'] ?? null, $wanted)) {
+                    return $condition;
+                }
+            }
+        }
+
+        $first = reset($conditions);
+
+        return is_array($first) ? $first : null;
+    }
+
+    /**
+     * Integer `triggerId`s of every AlertIncident condition (Samsara's
+     * `triggerTypeId`), so downstream code never re-reads the raw payload.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return list<int>
+     */
+    private static function triggerIds(array $payload): array
+    {
+        $ids = [];
+
+        foreach ((array) data_get($payload, 'data.conditions.*.triggerId') as $id) {
+            if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -697,6 +750,38 @@ class NormalizeRawEvent
         }
 
         return $id ?? EventSeverity::query()->value('id');
+    }
+
+    /**
+     * First id found along `$paths`. A plain path wins with its first non-null
+     * value (as `??`); a `*` path wins with the first non-null element it
+     * reaches. A falsy value ('0', '', 0, false…) means "no id" and stops the
+     * search, as it always did. `path` is the candidate as written (generic,
+     * loggable), never the id.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $paths
+     * @return array{path: string|null, value: string|null}
+     */
+    private static function firstPayloadId(array $payload, array $paths): array
+    {
+        foreach ($paths as $candidate) {
+            $value = str_contains($candidate, '*')
+                ? collect((array) data_get($payload, $candidate))->first(fn (mixed $item): bool => $item !== null)
+                : Arr::get($payload, $candidate);
+
+            if ($value === null) {
+                continue;
+            }
+
+            if (self::isFalsyPayloadId($value) || ! is_scalar($value)) {
+                return ['path' => null, 'value' => null];
+            }
+
+            return ['path' => $candidate, 'value' => (string) $value];
+        }
+
+        return ['path' => null, 'value' => null];
     }
 
     /**
