@@ -78,7 +78,10 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
                         $since = now()->subDays(self::WINDOW_DAYS);
                         $driverIds = $teamDrivers->modelKeys();
 
+                        // Un evento descartado en origen (falso positivo) no
+                        // cuenta contra el conductor.
                         $eventCounts = NormalizedEvent::query()
+                            ->countable()
                             ->whereIn('driver_id', $driverIds)
                             ->where('occurred_at', '>=', $since)
                             ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
