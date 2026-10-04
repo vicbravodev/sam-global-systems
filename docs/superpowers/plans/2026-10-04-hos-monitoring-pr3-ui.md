@@ -38,6 +38,7 @@
 9. **Pestañas en el detalle del chofer** ("Resumen" | "HOS") sólo cuando el panel aplica; enlace directo `?pestana=hos` desde la vista de flota.
 10. **Sin Playwright**: `resources/js/CLAUDE.md` reserva el E2E para flujos que dejan un pánico sin atender o a un cliente sin operar; aquí cubren PHPUnit (`assertInertia`, policy, fuga) y Vitest (validación, vista previa, barras).
 11. **Seguimiento del PR 2 incluido** (sólo validación de UI/config): `samsara_driver_app` se rechaza en políticas de avisos del tenant y en preferencias (web y API; la API aceptaba cualquier texto); `hos.monitoring` ya no se puede escribir por el endpoint genérico de settings y "Avanzado" no lo lista.
+12. **Los episodios en curso se re-basan al cambiar la configuración** (hallazgo de la revisión final): `ladder_step` guarda avisos previos + escalón con la configuración de entonces y el planificador lee la de hoy. Si el tenant acorta avisos o escalera a media marcha y el paso queda más allá de la escalera nueva, el episodio no se da por terminado: si la escalera de hoy acaba en incidente y el episodio no ha escalado, escala al vencer su siguiente aviso (`HosLadderPlanner`, `test_a_shrunk_ladder_mid_episode_still_raises_the_pending_incident`).
 
 ## Review Focus
 

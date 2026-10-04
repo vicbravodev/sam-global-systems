@@ -116,7 +116,33 @@ class HosLadderPlannerTest extends TestCase
         $this->assertNull($incident->notice);
         $this->assertNull($incident->nextNudgeAt);
 
-        $this->assertSame(HosLadderMove::Done, $this->plan(HosSituation::BreakDue, 6, $atLimit)->move);
+        // Tras escalar, el episodio queda marcado y ya no se mueve.
+        $this->assertSame(HosLadderMove::Done, $this->plan(HosSituation::BreakDue, 6, $atLimit, escalated: true)->move);
+    }
+
+    public function test_a_shrunk_ladder_mid_episode_still_raises_the_pending_incident(): void
+    {
+        // El episodio iba en el escalón 5 (incidente pendiente con la escalera por defecto)
+        // y el tenant acortó la escalera a dos escalones: se re-basa y escala igual.
+        $config = ['lead_minutes' => [15], 'ladder' => [
+            ['after_minutes' => 0, 'channels' => ['samsara_driver_app']],
+            ['after_minutes' => 5, 'escalate' => 'incident'],
+        ]];
+        $atLimit = $this->reading(break: 0);
+
+        $notYet = $this->plan(HosSituation::BreakDue, 5, $atLimit, '2026-10-04 12:15:30', '2026-10-04 12:10:00', config: $config);
+        $this->assertSame(HosLadderMove::Wait, $notYet->move);
+        $this->assertSame('not_due', $notYet->reason);
+
+        $incident = $this->plan(HosSituation::BreakDue, 5, $atLimit, '2026-10-04 12:15:30', '2026-10-04 12:16:00', config: $config);
+        $this->assertSame(HosLadderMove::Escalate, $incident->move);
+        $this->assertSame('ladder_exhausted', $incident->reason);
+        $this->assertSame(5, $incident->step);
+        $this->assertSame(6, $incident->nextStep);
+        $this->assertSame([], $incident->channels);
+        $this->assertNull($incident->nextNudgeAt);
+
+        $this->assertSame(HosLadderMove::Done, $this->plan(HosSituation::BreakDue, 6, $atLimit, escalated: true, config: $config)->move);
     }
 
     public function test_reaching_the_limit_before_the_warnings_starts_the_ladder(): void

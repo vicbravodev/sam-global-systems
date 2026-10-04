@@ -280,7 +280,27 @@ class HosLadderPlanner
         $index = max(0, $ladderStep - $leadCount);
 
         if ($index >= count($ladder)) {
-            return $this->keep(HosLadderMove::Done, 'ladder_finished', $ladderStep, $nextNudgeAt);
+            $last = $ladder[count($ladder) - 1];
+
+            // La escalera se acortó a media marcha (el paso vive con la configuración
+            // de entonces): si la de hoy termina en incidente, el incidente pendiente sale igual.
+            if (! $last['escalate']) {
+                return $this->keep(HosLadderMove::Done, 'ladder_finished', $ladderStep, $nextNudgeAt);
+            }
+
+            if ($nextNudgeAt !== null && $now->lt($nextNudgeAt)) {
+                return $this->keep(HosLadderMove::Wait, 'not_due', $ladderStep, $nextNudgeAt);
+            }
+
+            return new HosLadderDecision(
+                move: HosLadderMove::Escalate,
+                reason: 'ladder_exhausted',
+                nextStep: $ladderStep + 1,
+                nextNudgeAt: null,
+                step: $ladderStep,
+                channels: $last['channels'],
+                notice: $last['channels'] === [] ? null : HosNotice::limit($situation, insist: true),
+            );
         }
 
         if ($ladderStep < $leadCount || ($ladderStep === $leadCount && $nextNudgeAt === null)) {
