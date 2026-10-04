@@ -8,6 +8,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIShadowEvaluation;
 use App\Domains\AI\Support\ClefShadowGate;
+use App\Domains\AI\Support\ScoredEvaluationVersion;
 use App\Infrastructure\AI\Clef\ClefQuestionSchema;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -49,21 +50,35 @@ class ClefBackfillCommand extends Command
         $since = $this->option('since') !== null ? Carbon::parse($this->option('since'))->startOfDay() : null;
         $limit = max(1, (int) $this->option('limit'));
 
+        // Sólo la versión que el reporte califica (ScoredEvaluationVersion):
+        // gastar en versiones superadas no aporta a la medición.
         /** @var Collection<int, AIEventEvaluation> $evaluations */
         $evaluations = TenantContext::withoutTenant(fn () => AIEventEvaluation::query()
             ->when($team !== null, fn (Builder $q) => $q->where('team_id', $team))
             ->when($since !== null, fn (Builder $q) => $q->where('created_at', '>=', $since))
             ->whereIn('evaluation_mode', [EvaluationMode::AiText, EvaluationMode::Hybrid])
             ->whereHas('inferenceLogs')
-            ->where(function (Builder $q) use ($models): void {
-                foreach ($models as $model) {
-                    $q->orWhereDoesntHave('shadowEvaluations', fn (Builder $s) => $s->where('model', $model)->where('schema_version', ClefQuestionSchema::VERSION)->settled());
-                }
-            })
-            ->orderByRaw('operator_verdict is null')
+            ->orderByDesc('evaluation_version')
             ->orderByDesc('id')
-            ->limit($limit)
-            ->get(['id', 'team_id']));
+            ->get(['id', 'team_id', 'normalized_event_id', 'evaluation_version', 'operator_verdict'])
+            ->groupBy('normalized_event_id')
+            ->map(fn (Collection $versions): ?AIEventEvaluation => ScoredEvaluationVersion::pick($versions))
+            ->filter()
+            ->values());
+
+        $settled = TenantContext::withoutTenant(fn () => AIShadowEvaluation::query()
+            ->whereIn('ai_event_evaluation_id', $evaluations->pluck('id'))
+            ->where('schema_version', ClefQuestionSchema::VERSION)
+            ->settled()
+            ->get(['ai_event_evaluation_id', 'model'])
+            ->groupBy('ai_event_evaluation_id')
+            ->map(fn (Collection $rows): array => $rows->pluck('model')->all()));
+
+        $evaluations = $evaluations
+            ->filter(fn (AIEventEvaluation $e): bool => array_diff($models, $settled->get($e->id, [])) !== [])
+            ->sortBy(fn (AIEventEvaluation $e): array => [$e->operator_verdict === null ? 1 : 0, -$e->id])
+            ->take($limit)
+            ->values();
 
         $tokens = (int) AIInferenceLog::query()->whereIn('evaluation_id', $evaluations->pluck('id'))->sum('input_tokens');
         $prices = (array) config('ai.clef.pricing_per_million_input', []);

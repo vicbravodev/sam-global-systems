@@ -75,6 +75,29 @@ class ClefBackfillCommandTest extends TestCase
         Queue::assertPushed(ShadowEvaluateWithClefJob::class, fn (ShadowEvaluateWithClefJob $job) => $job->evaluationId === $retryable->id);
     }
 
+    public function test_only_the_version_the_report_scores_is_backfilled(): void
+    {
+        $team = Team::factory()->create();
+        // Evento sin veredicto: se califica la última versión.
+        $old = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 1]);
+        $latest = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 2]);
+        $latest->forceFill(['normalized_event_id' => $old->normalized_event_id])->save();
+        // Evento con veredicto en v1: se califica v1, no la reevaluación.
+        $labeled = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 1, 'operator_verdict' => OperatorVerdict::FalsePositive]);
+        $after = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 2]);
+        $after->forceFill(['normalized_event_id' => $labeled->normalized_event_id])->save();
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertSuccessful();
+
+        $pushed = [];
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, function (ShadowEvaluateWithClefJob $job) use (&$pushed) {
+            $pushed[] = $job->evaluationId;
+
+            return true;
+        });
+        $this->assertEqualsCanonicalizing([$latest->id, $labeled->id], $pushed);
+    }
+
     public function test_asks_for_confirmation_without_force(): void
     {
         $this->makeEvaluation(Team::factory()->create());

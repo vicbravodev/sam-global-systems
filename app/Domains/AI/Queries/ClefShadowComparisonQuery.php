@@ -8,6 +8,7 @@ use App\Domains\AI\Enums\OperatorVerdict;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIShadowEvaluation;
+use App\Domains\AI\Support\ScoredEvaluationVersion;
 use App\Infrastructure\AI\Clef\ClefQuestionSchema;
 use App\Support\TenantContext;
 use DateTimeInterface;
@@ -45,7 +46,8 @@ class ClefShadowComparisonQuery
                 ->orderByDesc('id')
                 ->get()
                 ->groupBy('normalized_event_id')
-                ->map(fn ($versions) => $this->scoredVersion($versions))
+                ->map(fn ($versions) => ScoredEvaluationVersion::pick($versions))
+                ->filter()
                 ->values();
 
             $ids = $evaluations->pluck('id');
@@ -198,22 +200,6 @@ class ClefShadowComparisonQuery
             'latency_p95' => $this->percentile($latencies, 0.95),
             'failed' => $failed,
         ];
-    }
-
-    /**
-     * La versión de un evento que se califica: la que el operador etiquetó
-     * (si hay varias, la más reciente). Las versiones posteriores a un
-     * veredicto ya lo vieron en `recent_history.operator_feedback`, así que
-     * calificar esas favorecería a GPT. Sin veredicto, la más reciente.
-     *
-     * @param  EloquentCollection<int, AIEventEvaluation>  $versions  ordenadas de la más reciente a la más antigua
-     */
-    private function scoredVersion(EloquentCollection $versions): AIEventEvaluation
-    {
-        /** @var AIEventEvaluation $latest */
-        $latest = $versions->first();
-
-        return $versions->first(fn (AIEventEvaluation $e): bool => $e->operator_verdict !== null) ?? $latest;
     }
 
     /**
