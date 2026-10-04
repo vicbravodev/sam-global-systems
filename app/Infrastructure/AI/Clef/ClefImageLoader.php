@@ -62,8 +62,8 @@ class ClefImageLoader
                 continue;
             }
 
-            $used += strlen((string) $bytes);
-            $images[] = ['content_type' => (string) $mime, 'base64' => base64_encode((string) $bytes)];
+            $used += strlen($bytes);
+            $images[] = ['content_type' => $mime, 'base64' => base64_encode($bytes)];
         }
 
         if ($skipped !== []) {

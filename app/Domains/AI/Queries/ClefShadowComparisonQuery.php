@@ -11,9 +11,12 @@ use App\Domains\AI\Models\AIShadowEvaluation;
 use App\Infrastructure\AI\Clef\ClefQuestionSchema;
 use App\Support\TenantContext;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
+ * @phpstan-type Row array{evaluation: AIEventEvaluation, type: string, gpt_log: ?AIInferenceLog, shadows: EloquentCollection<int, AIShadowEvaluation>}
+ *
  * Métricas de la medición Clef vs GPT. Una fila por evento (última versión
  * de su evaluación) para no contar dos veces las reevaluaciones.
  *
@@ -31,7 +34,7 @@ class ClefShadowComparisonQuery
      */
     public function execute(?int $teamId, DateTimeInterface $since, bool $byEventType = false): array
     {
-        $load = function () use ($teamId, $since): Collection {
+        $load = function () use ($teamId, $since): array {
             $evaluations = AIEventEvaluation::query()
                 ->with('normalizedEvent.eventType')
                 ->when($teamId !== null, fn ($q) => $q->where('team_id', $teamId))
@@ -49,8 +52,7 @@ class ClefShadowComparisonQuery
                 ->when($teamId !== null, fn ($q) => $q->where('team_id', $teamId))
                 ->whereIn('ai_event_evaluation_id', $ids)
                 ->where('schema_version', ClefQuestionSchema::VERSION)
-                ->get()
-                ->groupBy('ai_event_evaluation_id');
+                ->get();
 
             $logs = AIInferenceLog::query()
                 ->whereIn('evaluation_id', $ids)
@@ -58,22 +60,29 @@ class ClefShadowComparisonQuery
                 ->get(['evaluation_id', 'latency_ms', 'cost_estimate'])
                 ->keyBy('evaluation_id');
 
-            return $evaluations->map(fn (AIEventEvaluation $e): array => [
-                'evaluation' => $e,
-                'type' => $e->normalizedEvent?->eventType?->code ?? 'desconocido',
-                'gpt_log' => $logs->get($e->id),
-                'shadows' => $shadows->get($e->id, collect()),
-            ]);
+            $rows = [];
+
+            foreach ($evaluations as $e) {
+                $rows[] = [
+                    'evaluation' => $e,
+                    'type' => $e->normalizedEvent?->eventType?->code ?? 'desconocido',
+                    'gpt_log' => $logs->get($e->id),
+                    'shadows' => $shadows->where('ai_event_evaluation_id', $e->id)->values(),
+                ];
+            }
+
+            return $rows;
         };
 
-        /** @var Collection<int, array{evaluation: AIEventEvaluation, type: string, gpt_log: ?AIInferenceLog, shadows: Collection<int, AIShadowEvaluation>}> $rows */
+        /** @var array<int, Row> $rows */
         $rows = $teamId !== null ? TenantContext::for($teamId, $load) : TenantContext::withoutTenant($load);
 
+        /** @var array<string, array<int, Row>> $buckets */
         $buckets = ['all' => $rows];
 
         if ($byEventType) {
-            foreach ($rows->groupBy('type') as $type => $group) {
-                $buckets[(string) $type] = $group;
+            foreach ($rows as $row) {
+                $buckets[$row['type']][] = $row;
             }
         }
 
@@ -94,31 +103,31 @@ class ClefShadowComparisonQuery
     }
 
     /**
-     * @param  Collection<int, array{evaluation: AIEventEvaluation, type: string, gpt_log: ?AIInferenceLog, shadows: Collection<int, AIShadowEvaluation>}>  $rows
+     * @param  array<int, Row>  $rows
      * @return array<string, float|int|null>
      */
-    private function metricsForGpt(Collection $rows): array
+    private function metricsForGpt(array $rows): array
     {
-        $items = $rows->map(fn (array $r): array => [
+        $items = array_map(fn (array $r): array => [
             'classification' => $r['evaluation']->classification,
             'verdict' => $r['evaluation']->operator_verdict,
             'gpt' => $r['evaluation']->classification,
             'p_real' => null,
             'latency' => $r['gpt_log']?->latency_ms,
-            'cost' => $r['gpt_log']?->cost_estimate !== null ? (float) $r['gpt_log']->cost_estimate : null,
-        ]);
+            'cost' => $r['gpt_log']?->cost_estimate,
+        ], $rows);
 
         return $this->metrics($items, failed: 0);
     }
 
     /**
-     * @param  Collection<int, array{evaluation: AIEventEvaluation, type: string, gpt_log: ?AIInferenceLog, shadows: Collection<int, AIShadowEvaluation>}>  $rows
+     * @param  array<int, Row>  $rows
      * @return array<string, float|int|null>
      */
-    private function metricsForModel(Collection $rows, string $model): array
+    private function metricsForModel(array $rows, string $model): array
     {
         $failed = 0;
-        $items = collect();
+        $items = [];
 
         foreach ($rows as $r) {
             $shadow = $r['shadows']->firstWhere('model', $model);
@@ -135,25 +144,26 @@ class ClefShadowComparisonQuery
 
             $probabilities = (array) $shadow->classification_probabilities_json;
 
-            $items->push([
+            $items[] = [
                 'classification' => EventClassification::tryFrom((string) $shadow->classification),
                 'verdict' => $r['evaluation']->operator_verdict,
                 'gpt' => $r['evaluation']->classification,
                 'p_real' => (float) ($probabilities['real_event'] ?? 0.0),
                 'latency' => $shadow->latency_ms,
                 'cost' => $shadow->cost_estimate,
-            ]);
+            ];
         }
 
         return $this->metrics($items, $failed);
     }
 
     /**
-     * @param  Collection<int, array{classification: ?EventClassification, verdict: ?OperatorVerdict, gpt: ?EventClassification, p_real: ?float, latency: ?int, cost: ?float}>  $items
+     * @param  array<int, array{classification: ?EventClassification, verdict: ?OperatorVerdict, gpt: ?EventClassification, p_real: ?float, latency: ?int, cost: ?float}>  $list
      * @return array<string, float|int|null>
      */
-    private function metrics(Collection $items, int $failed): array
+    private function metrics(array $list, int $failed): array
     {
+        $items = collect($list);
         $ratio = fn (int $hits, int $n): ?float => $n > 0 ? round($hits / $n, 4) : null;
         $dismissive = [EventClassification::FalsePositive, EventClassification::Noise, EventClassification::Duplicate];
 
@@ -172,8 +182,8 @@ class ClefShadowComparisonQuery
             'recall_real' => $ratio($real->filter(fn (array $i): bool => $i['classification']?->isActionable() === true)->count(), $real->count()),
             'fp_n' => $fp->count(),
             'discard_correct' => $ratio($fp->filter(fn (array $i): bool => in_array($i['classification'], $dismissive, true))->count(), $fp->count()),
-            'strict_accuracy' => $ratio($verdicted->filter(fn (array $i): bool => $i['verdict'] instanceof OperatorVerdict && $i['verdict']->agreesWith($i['classification']))->count(), $verdicted->count()),
-            'brier' => $calibrated->isEmpty() ? null : round((float) $calibrated->avg(fn (array $i): float => ((float) $i['p_real'] - ($i['verdict'] === OperatorVerdict::Confirmed ? 1.0 : 0.0)) ** 2), 4),
+            'strict_accuracy' => $ratio($verdicted->filter(fn (array $i): bool => $i['verdict']?->agreesWith($i['classification']) === true)->count(), $verdicted->count()),
+            'brier' => $calibrated->isEmpty() ? null : round((float) $calibrated->avg(fn (array $i): float => ($i['p_real'] - ($i['verdict'] === OperatorVerdict::Confirmed ? 1.0 : 0.0)) ** 2), 4),
             'cost_total' => round((float) $costs->sum(), 5),
             'cost_avg' => $costs->isEmpty() ? null : round((float) $costs->avg(), 5),
             'latency_p50' => $this->percentile($latencies, 0.5),
@@ -193,7 +203,7 @@ class ClefShadowComparisonQuery
             return null;
         }
 
-        $index = (int) min($sorted->count() - 1, max(0, (int) ceil($p * $sorted->count()) - 1));
+        $index = min($sorted->count() - 1, max(0, (int) ceil($p * $sorted->count()) - 1));
 
         return (int) $sorted[$index];
     }

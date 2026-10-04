@@ -21,7 +21,7 @@ class ClefReportCommand extends Command
     public function handle(ClefShadowComparisonQuery $query): int
     {
         $team = $this->option('team') !== null ? (int) $this->option('team') : null;
-        $report = $query->execute($team, now()->subDays(max(1, (int) $this->option('days'))), (bool) $this->option('by-type'));
+        $report = $query->execute($team, now()->subDays(max(1, (int) $this->option('days'))), $this->option('by-type'));
         $pct = fn (mixed $v): string => is_numeric($v) ? number_format((float) $v * 100, 1).' %' : '—';
 
         foreach ($report as $bucket => $models) {
@@ -51,7 +51,8 @@ class ClefReportCommand extends Command
                 $rows,
             );
 
-            $minVerdicts = min(array_map(fn (array $m): int => (int) $m['verdict_n'], $models));
+            $verdictCounts = array_map(fn (array $m): int => (int) $m['verdict_n'], $models);
+            $minVerdicts = $verdictCounts === [] ? 0 : min($verdictCounts);
 
             if ($minVerdicts < ClefShadowComparisonQuery::MIN_SAMPLE) {
                 $this->warn(sprintf(

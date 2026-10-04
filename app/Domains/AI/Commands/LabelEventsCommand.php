@@ -101,7 +101,7 @@ class LabelEventsCommand extends Command
      */
     private function stratifiedSample(int $limit): Collection
     {
-        $since = $this->option('since') !== null ? Carbon::parse((string) $this->option('since'))->startOfDay() : null;
+        $since = $this->option('since') !== null ? Carbon::parse($this->option('since'))->startOfDay() : null;
 
         $candidates = AIEventEvaluation::query()
             ->with('normalizedEvent:id,event_type_id')
@@ -141,8 +141,10 @@ class LabelEventsCommand extends Command
         $rows = [];
 
         foreach (self::SHOWN_KEYS as $key) {
-            if (! empty($snapshot[$key])) {
-                $rows[] = [$key, (string) json_encode($snapshot[$key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)];
+            $value = $snapshot[$key] ?? null;
+
+            if ($value !== null && $value !== [] && $value !== '') {
+                $rows[] = [$key, (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)];
             }
         }
 

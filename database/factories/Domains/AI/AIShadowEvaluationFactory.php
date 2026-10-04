@@ -19,8 +19,8 @@ class AIShadowEvaluationFactory extends Factory
     {
         return [
             'ai_event_evaluation_id' => AIEventEvaluation::factory(),
-            'team_id' => fn (array $attributes) => AIEventEvaluation::withoutGlobalScopes()->find($attributes['ai_event_evaluation_id'])?->team_id,
-            'normalized_event_id' => fn (array $attributes) => AIEventEvaluation::withoutGlobalScopes()->find($attributes['ai_event_evaluation_id'])?->normalized_event_id,
+            'team_id' => fn (array $attributes) => AIEventEvaluation::withoutGlobalScopes()->whereKey($attributes['ai_event_evaluation_id'])->value('team_id'),
+            'normalized_event_id' => fn (array $attributes) => AIEventEvaluation::withoutGlobalScopes()->whereKey($attributes['ai_event_evaluation_id'])->value('normalized_event_id'),
             'model' => 'clef',
             'schema_version' => 1,
             'source' => AIShadowEvaluation::SOURCE_LIVE,

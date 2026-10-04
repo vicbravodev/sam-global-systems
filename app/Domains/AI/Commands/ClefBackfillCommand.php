@@ -45,7 +45,7 @@ class ClefBackfillCommand extends Command
         /** @var list<string> $models */
         $models = array_values((array) config('ai.clef.models', []));
         $team = $this->option('team') !== null ? (int) $this->option('team') : null;
-        $since = $this->option('since') !== null ? Carbon::parse((string) $this->option('since'))->startOfDay() : null;
+        $since = $this->option('since') !== null ? Carbon::parse($this->option('since'))->startOfDay() : null;
         $limit = max(1, (int) $this->option('limit'));
 
         /** @var Collection<int, AIEventEvaluation> $evaluations */
