@@ -121,7 +121,7 @@ class EncryptedChannelConfigCastTest extends TestCase
         // row ever carries them, so they are not part of this list.
         $expected = [
             'secret', 'webhook_secret',
-            'api_key', 'api_secret', 'server_key', 'firebase_credentials',
+            'api_key', 'api_secret', 'server_key',
             'slack_webhook_url',
         ];
 

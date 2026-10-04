@@ -66,7 +66,7 @@ class NotificationChannelFactory extends Factory
     {
         return $this->state(fn () => [
             'channel_type' => ChannelType::Push,
-            'provider' => 'firebase',
+            'provider' => 'webpush',
         ]);
     }
 

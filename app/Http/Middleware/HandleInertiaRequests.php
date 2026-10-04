@@ -12,6 +12,7 @@ use App\Domains\Drivers\Models\Driver;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Notifications\Channels\WebPushMessenger;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
@@ -90,6 +91,13 @@ class HandleInertiaRequests extends Middleware
             'adminBadges' => fn () => $user?->isSuperAdmin() === true
                 ? $this->adminBadges()
                 : null,
+            // Llave pública VAPID para suscribir este dispositivo; null si la
+            // plataforma no tiene avisos al dispositivo configurados.
+            'webPush' => fn () => [
+                'publicKey' => app(WebPushMessenger::class)->isConfigured()
+                    ? (string) config('webpush.vapid.public_key')
+                    : null,
+            ],
             // SAM Copilot availability for the sidebar entry and the floating
             // bubble. Resolved through AuthorizeAction so the tenant feature
             // flag and the subscription state are honoured, not just the role.

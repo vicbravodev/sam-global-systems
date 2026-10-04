@@ -8,6 +8,7 @@ use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Models\CopilotMessage;
+use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
@@ -18,6 +19,8 @@ use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\DatabaseSeeder;
+use Faker\Provider\Base;
+use Faker\Provider\Lorem;
 use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
@@ -132,6 +135,8 @@ class CrossTenantRouteSweepTest extends TestCase
         'GET settings/appearance' => 'Ajuste personal del usuario autenticado.',
         'GET settings/notifications' => 'Preferencias personales del usuario autenticado.',
         'PUT settings/notifications' => 'Preferencias personales del usuario autenticado.',
+        'POST settings/push-subscriptions' => 'Dispositivo personal del usuario autenticado, sin parámetros de ruta (el aislamiento por tenant se prueba en los tests de PushSubscription).',
+        'DELETE settings/push-subscriptions' => 'Dispositivo personal del usuario autenticado, sin parámetros de ruta (el aislamiento por tenant se prueba en los tests de PushSubscription).',
         'PUT settings/password' => 'Ajuste personal del usuario autenticado.',
         'POST settings/phone/verification' => 'Teléfono del usuario autenticado.',
         'PATCH settings/phone/verification' => 'Teléfono del usuario autenticado.',
@@ -159,6 +164,13 @@ class CrossTenantRouteSweepTest extends TestCase
     ];
 
     private const TENANT_PARAMS = ['current_team', 'team'];
+
+    /**
+     * Columnas de texto cuyo valor en B es huella (con 8 caracteres o más).
+     *
+     * @var list<string>
+     */
+    private const FINGERPRINT_TEXT_COLUMNS = ['name', 'title', 'subject', 'display_name', 'external_id', 'label'];
 
     private Team $teamA;
 
@@ -312,6 +324,73 @@ class CrossTenantRouteSweepTest extends TestCase
         // …pero no cuando es subcadena casual de un texto de A.
         $this->assertNull($this->leakedFingerprint(
             TestResponse::fromBaseResponse(response()->json(['description' => 'Sunt officia dolorum quia'])), '/canary', [],
+        ));
+    }
+
+    /**
+     * Regresión (pre-push 2026-10-04): el lorem de faker de B («et
+     * consequatur») salió igual en un registro de A y el listado propio de A
+     * se reportó como fuga. Las huellas de B tienen que ser únicas por
+     * construcción, sin perder la detección de una fuga real.
+     */
+    public function test_tenant_a_record_with_the_same_faker_text_as_b_is_not_a_leak(): void
+    {
+        $this->bootTenants();
+        $this->listenForForeignHydration();
+
+        $lorem = new class(fake()) extends Base
+        {
+            public ?string $next = null;
+
+            /**
+             * @return list<string>|string
+             */
+            public function words(int $nb = 3, bool $asText = false): array|string
+            {
+                if ($asText && $this->next !== null) {
+                    [$text, $this->next] = [$this->next, null];
+
+                    return $text;
+                }
+
+                return Lorem::words($nb, $asText);
+            }
+        };
+        fake()->addProvider($lorem);
+
+        // B sale de la factory con «et consequatur»; su gemelo de A, igual.
+        $lorem->next = 'et consequatur';
+        $b = $this->record(DecisionRule::class, 'b');
+        $this->assertNull($lorem->next, 'La factory de DecisionRule ya no usa words(): elige otro modelo para el choque.');
+
+        $lorem->next = 'et consequatur';
+        $twinA = $this->makeRecord(DecisionRule::class, $this->teamA);
+        $this->assertSame('et consequatur', $twinA->getAttribute('name'));
+
+        // La huella de B sigue existiendo, pero ya no es el lorem compartido.
+        $this->assertContains($b->getAttribute('name'), $this->fingerprintsB);
+        $this->assertNotContains('et consequatur', $this->fingerprintsB);
+
+        $route = RouteFacade::getRoutes()->getByName('api.decisions.rules.index');
+        $this->assertNotNull($route);
+        $teamParam = ['class' => Team::class, 'field' => 'slug', 'selector' => false];
+
+        $failure = $this->probe(
+            ['key' => 'GET api/{current_team}/decisions/rules', 'method' => 'GET', 'route' => $route, 'params' => ['current_team' => $teamParam]],
+            'own',
+            ['tenant' => 'a', 'records' => 'a'],
+        );
+        $this->assertNull($failure);
+
+        // El listado sí sirve al gemelo de A (la prueba no es vacua)…
+        $this->actingAs($this->userA)
+            ->getJson("/api/{$this->teamA->slug}/decisions/rules")
+            ->assertOk()
+            ->assertSee('et consequatur');
+
+        // …y la regla de B, si se colara, se seguiría detectando.
+        $this->assertSame($b->getAttribute('name'), $this->leakedFingerprint(
+            TestResponse::fromBaseResponse(response()->json(['name' => $b->getAttribute('name')])), '/canary', [],
         ));
     }
 
@@ -620,7 +699,7 @@ class CrossTenantRouteSweepTest extends TestCase
             return ['a' => $shared, 'b' => $shared];
         }
 
-        $b = $this->makeRecord($class, $this->teamB);
+        $b = $this->brandFingerprintTexts($this->makeRecord($class, $this->teamB));
 
         foreach (self::SCALAR_PARAMS as $scalar) {
             if ($scalar['class'] === $class && $scalar['selector']) {
@@ -692,6 +771,35 @@ class CrossTenantRouteSweepTest extends TestCase
     }
 
     /**
+     * Reescribe los textos distintivos de B con un marcador único (`B-…`).
+     * El lorem de las factories («et consequatur») puede repetirse por azar
+     * en un registro de A o en un catálogo global, y la respuesta de A lo
+     * traería sin que haya fuga; con el marcador, la huella sólo puede
+     * aparecer si la respuesta sirve de verdad el registro de B.
+     */
+    private function brandFingerprintTexts(Model $b): Model
+    {
+        $branded = [];
+
+        foreach ($b->getAttributes() as $column => $value) {
+            if (in_array($column, self::FINGERPRINT_TEXT_COLUMNS, true) && is_string($value) && mb_strlen($value) >= 8
+                && ! Str::isUuid($value) && ! $b->hasCast($column)) {
+                $branded[$column] = 'B-'.Str::lower(Str::random(12));
+            }
+        }
+
+        if ($branded === []) {
+            return $b;
+        }
+
+        return TenantContext::for($this->teamB->id, function () use ($b, $branded): Model {
+            $b->forceFill($branded)->saveQuietly();
+
+            return $b->fresh() ?? $b;
+        });
+    }
+
+    /**
      * Identificadores de B que no deben aparecer en una respuesta servida a A:
      * los uuids y los textos distintivos del registro (los que no coinciden
      * con el registro equivalente de A).
@@ -705,7 +813,7 @@ class CrossTenantRouteSweepTest extends TestCase
                 continue;
             }
 
-            if (Str::isUuid($value) || (in_array($column, ['name', 'title', 'subject', 'display_name', 'external_id', 'label'], true) && mb_strlen($value) >= 8)) {
+            if (Str::isUuid($value) || (in_array($column, self::FINGERPRINT_TEXT_COLUMNS, true) && mb_strlen($value) >= 8)) {
                 $this->fingerprintsB[] = $value;
             }
         }
