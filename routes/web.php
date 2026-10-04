@@ -35,6 +35,7 @@ use App\Http\Controllers\Decisions\RulesPageController;
 use App\Http\Controllers\Decisions\RuleTestController;
 use App\Http\Controllers\DemoRequestController;
 use App\Http\Controllers\Drivers\DriverPageController;
+use App\Http\Controllers\Drivers\HosPanelController;
 use App\Http\Controllers\Incidents\IncidentAIVerdictController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -227,6 +228,8 @@ Route::prefix('{current_team}')
 
         // Driver pages (read-only; DriverPolicy gates access).
         Route::get('drivers', [DriverPageController::class, 'index'])->name('drivers.index');
+        // Monitoreo HOS (EE. UU.) de la flota: segmento literal antes del binding.
+        Route::get('drivers/hos', [HosPanelController::class, 'index'])->name('drivers.hos.index');
         Route::get('drivers/{driver}', [DriverPageController::class, 'show'])->name('drivers.show');
 
         // Integrations management page + actions. The GET renders the Inertia
