@@ -3,6 +3,7 @@
 namespace App\Infrastructure\AI\Clef;
 
 use App\Domains\AI\Data\ClefDecision;
+use App\Support\SystemLog;
 
 /**
  * Una evaluación de un evento con un modelo Clef: arma estado y preguntas,
@@ -21,9 +22,34 @@ class ClefEventDecider
      */
     public function decide(string $model, array $snapshot, array $images): ClefDecision
     {
-        $withImages = $images !== [];
+        $state = $this->stateBuilder->fromSnapshot($snapshot);
 
-        $response = $this->client->run($model, $this->stateBuilder->fromSnapshot($snapshot), ClefQuestionSchema::for($withImages), $images);
+        // Cloudflare estima los tokens de cada imagen por su contenido: un
+        // evento con imágenes densas puede pasar la ventana de 65K aunque
+        // pese poco (413). Se reintenta con la mitad hasta quedar en texto.
+        while (true) {
+            try {
+                $response = $this->client->run($model, $state, ClefQuestionSchema::for($images !== []), $images);
+
+                break;
+            } catch (ClefRequestFailedException $e) {
+                if ($e->reason !== 'http_413' || $images === []) {
+                    throw $e;
+                }
+
+                $before = count($images);
+                $images = array_slice($images, 0, intdiv($before, 2));
+
+                SystemLog::skipped(
+                    'ai.clef_shadow.image_skipped',
+                    reason: 'context_window',
+                    input: ['model' => $model],
+                    calc: ['images_before' => $before, 'images_after' => count($images)],
+                );
+            }
+        }
+
+        $withImages = $images !== [];
         $answers = $response->answers;
 
         $mediaAnswers = $withImages

@@ -19,7 +19,7 @@ use Illuminate\Support\Carbon;
  *
  * - El payload se guarda con la forma del webhook (`eventType` + `data`), así
  *   la normalización aplica exactamente las mismas reglas de mapeo
- *   (`data.conditions.0.description == 'Panic Button'`, etc.) y la ruta
+ *   (`data.conditions.*.triggerId == 1034`, etc.) y la ruta
  *   rápida de emergencias abre el incidente igual.
  * - Dedup simétrico con el webhook por la identidad del incidente
  *   ({@see ResolveAlertIncidentIdentity}): si ya hay un raw event del tenant

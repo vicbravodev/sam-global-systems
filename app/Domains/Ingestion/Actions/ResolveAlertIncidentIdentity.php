@@ -49,22 +49,43 @@ class ResolveAlertIncidentIdentity
             return null;
         }
 
-        $details = $incident['conditions'][0]['details'] ?? null;
-        $subject = null;
+        return sha1('cfg|'.$configurationId.'|'.$happenedAt.'|'.(self::subject($incident) ?? ''));
+    }
 
-        if (is_array($details)) {
+    /**
+     * Unidad (o, si no hay, conductor) del primer `details` que la traiga, en
+     * cualquier condición y con cualquier disparador (`panicButton`,
+     * `tamperingDetected`, …).
+     *
+     * @param  array<mixed>  $incident
+     */
+    private static function subject(array $incident): ?string
+    {
+        $conditions = $incident['conditions'] ?? null;
+
+        if (! is_array($conditions)) {
+            return null;
+        }
+
+        foreach ($conditions as $condition) {
+            $details = is_array($condition) ? ($condition['details'] ?? null) : null;
+
+            if (! is_array($details)) {
+                continue;
+            }
+
             foreach ($details as $detail) {
-                if (is_array($detail)) {
-                    $subject = self::string($detail['vehicle']['id'] ?? null) ?? self::string($detail['driver']['id'] ?? null);
-                }
+                $subject = is_array($detail)
+                    ? self::string($detail['vehicle']['id'] ?? null) ?? self::string($detail['driver']['id'] ?? null)
+                    : null;
 
                 if ($subject !== null) {
-                    break;
+                    return $subject;
                 }
             }
         }
 
-        return sha1('cfg|'.$configurationId.'|'.$happenedAt.'|'.($subject ?? ''));
+        return null;
     }
 
     /**
