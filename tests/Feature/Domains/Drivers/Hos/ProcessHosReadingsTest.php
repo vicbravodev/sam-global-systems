@@ -91,6 +91,8 @@ class ProcessHosReadingsTest extends TestCase
     public function test_it_resolves_when_the_clock_resets(): void
     {
         $this->process($this->enrollment($this->reading('driving', break: 1500)));
+        // Parado: el reloj de pausa no se mueve hasta cumplir 30 min seguidos.
+        $this->process($this->enrollment($this->reading('offDuty', break: 1500)), '2026-10-04 12:39:00');
         $counts = $this->process($this->enrollment($this->reading('offDuty', break: 28800)), '2026-10-04 12:40:00');
 
         $episode = HosEpisode::withoutGlobalScopes()->where('situation', HosSituation::BreakDue)->sole();
@@ -100,6 +102,16 @@ class ProcessHosReadingsTest extends TestCase
         $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->where('situation', HosSituation::RestComplete)->count());
         $this->assertSystemLogged('hos.episode.resolved');
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_stale_state_is_not_used_as_the_previous_reading(): void
+    {
+        // Último sondeo hace 2 días con la pausa casi agotada; vuelve hoy descansado.
+        $this->process($this->enrollment($this->reading('offDuty', break: 600)), '2026-10-02 12:00:00');
+        $this->process($this->enrollment($this->reading('offDuty', break: 28800)));
+
+        $this->assertSame(0, HosEpisode::withoutGlobalScopes()->where('situation', HosSituation::RestComplete)->count());
+        $this->assertSame(28800, HosDriverState::withoutGlobalScopes()->sole()->break_remaining_s);
     }
 
     public function test_status_since_only_moves_on_a_status_change(): void

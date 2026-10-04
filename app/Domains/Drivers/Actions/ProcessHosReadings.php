@@ -28,6 +28,15 @@ use Illuminate\Support\Facades\DB;
  */
 class ProcessHosReadings
 {
+    /**
+     * Oldest stored state still usable as the "before" of a transition. Polls
+     * run every minute; a driver coming back after hours or days (vehicle
+     * parked, left the set, failed polls) must not be compared with an old
+     * snapshot, or the natural reset of their clocks would read as a pause
+     * just served (false rest_complete).
+     */
+    public const int STALE_STATE_SECONDS = 300;
+
     public function __construct(private readonly HosSituationDetector $detector) {}
 
     /**
@@ -63,8 +72,12 @@ class ProcessHosReadings
                 $state = $states->get($driver->id);
                 $open = $openEpisodes->get($driver->id, collect())->keyBy(fn (HosEpisode $e) => $e->situation->value);
 
+                $previous = $state?->observed_at !== null && $state->observed_at->gte($now->toImmutable()->subSeconds(self::STALE_STATE_SECONDS))
+                    ? $state->toReading($reading->externalDriverId, $reading->externalVehicleId)
+                    : null;
+
                 $detection = $this->detector->detect(
-                    $state?->toReading($reading->externalDriverId, $reading->externalVehicleId),
+                    $previous,
                     $reading,
                     $config,
                     $open->map(fn (HosEpisode $e) => $e->opened_at)->all(),
