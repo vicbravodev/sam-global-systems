@@ -46,7 +46,7 @@ class PreviewHosEnrollment
             foreach ($integrations as $integration) {
                 try {
                     [$readings, $readFrom] = $this->providerCache->readings($integration);
-                    $tags = $draft->tagIds === [] ? [] : $this->providerCache->tags($integration);
+                    $tags = $draft->tagIds === [] ? [] : $this->providerCache->previewTags($integration);
                 } catch (ProviderRequestFailed|ProviderRequestFailedException $e) {
                     SystemLog::degraded('hos.preview.computed', reason: 'provider_error', input: $input + [
                         'integration_id' => $integration->id,

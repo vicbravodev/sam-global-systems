@@ -12,7 +12,8 @@ use App\Support\TenantContext;
 /**
  * Etiquetas de Samsara del tenant para el selector de la sección HOS, de la
  * caché que comparte con el sondeo. Si Samsara falla, la sección sigue
- * usable (lo ya elegido se conserva) y se marca `failed`.
+ * usable (lo ya elegido se conserva) y se marca `failed`; las etiquetas de
+ * las integraciones que sí respondieron se devuelven igual.
  */
 class ListHosTags
 {
@@ -36,28 +37,31 @@ class ListHosTags
             }
 
             $tags = [];
+            $failed = false;
 
             foreach ($integrations as $integration) {
                 try {
-                    foreach ($this->providerCache->tags($integration) as $tag) {
+                    foreach ($this->providerCache->previewTags($integration) as $tag) {
                         $tags[$tag['id']] ??= $tag;
                     }
                 } catch (ProviderRequestFailed|ProviderRequestFailedException $e) {
+                    $failed = true;
+
                     SystemLog::degraded('hos.tags.listed', reason: 'provider_error', input: $input + [
                         'integration_id' => $integration->id,
                     ], error: $e);
-
-                    return ['tags' => [], 'failed' => true, 'hasIntegration' => true];
                 }
             }
 
             $options = HosTagOptions::present(array_values($tags));
 
-            SystemLog::ok('hos.tags.listed', input: $input, calc: [
-                'integrations_count' => $integrations->count(),
-            ], result: ['tags_count' => count($options)], debug: true);
+            if (! $failed) {
+                SystemLog::ok('hos.tags.listed', input: $input, calc: [
+                    'integrations_count' => $integrations->count(),
+                ], result: ['tags_count' => count($options)], debug: true);
+            }
 
-            return ['tags' => $options, 'failed' => false, 'hasIntegration' => true];
+            return ['tags' => $options, 'failed' => $failed, 'hasIntegration' => true];
         });
     }
 }

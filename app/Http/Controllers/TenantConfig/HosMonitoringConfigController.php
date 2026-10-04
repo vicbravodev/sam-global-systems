@@ -60,6 +60,9 @@ class HosMonitoringConfigController extends Controller
 
         $draft = HosMonitoringConfig::fromArray($selection, (array) config('hos.defaults'));
 
-        return response()->json(['data' => $preview->execute($current_team->id, $draft)]);
+        $result = $preview->execute($current_team->id, $draft);
+
+        // `skipped` es un mapa razón → conteo: vacío sigue siendo `{}`, no `[]`.
+        return response()->json(['data' => ['skipped' => (object) $result['skipped']] + $result]);
     }
 }

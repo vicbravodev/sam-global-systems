@@ -3,9 +3,12 @@
 namespace Tests\Feature\Domains\Drivers\Hos;
 
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Drivers\DriversServiceProvider;
+use App\Domains\Drivers\Jobs\SyncHosClocksJob;
 use App\Domains\Drivers\Support\HosMonitoringConfig;
 use App\Domains\Drivers\Support\HosProviderCache;
 use App\Domains\Integrations\Data\HosClockReading;
+use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
@@ -205,5 +208,120 @@ class HosEnrollmentPreviewTest extends TestCase
         $this->preview($mine, ['included_asset_ids' => [$foreign->id]])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['included_asset_ids.0']);
+    }
+
+    /** Un chofer en /fleet/hos/clocks, sin relojes (nada que avisar). */
+    private static function clocksBody(): array
+    {
+        return ['data' => [[
+            'driver' => ['id' => '58072405'],
+            'currentVehicle' => ['id' => '281'],
+            'currentDutyStatus' => ['hosStatusType' => 'onDuty'],
+        ]], 'pagination' => ['endCursor' => '', 'hasNextPage' => false]];
+    }
+
+    private function clocksCalls(): int
+    {
+        return count(Http::recorded(fn ($request) => str_contains($request->url(), '/fleet/hos/clocks')));
+    }
+
+    public function test_an_empty_skipped_map_is_a_json_object(): void
+    {
+        $integration = $this->hosIntegration();
+        app(HosProviderCache::class)->putReadings($integration, []);
+
+        $response = $this->preview($integration, [])->assertOk()->assertJsonPath('data.trucks', 0);
+
+        $this->assertStringContainsString('"skipped":{}', (string) $response->getContent());
+    }
+
+    public function test_after_a_samsara_failure_the_next_preview_does_not_call_again(): void
+    {
+        $integration = $this->hosIntegration();
+        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::response([], 503)]);
+
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
+
+        $this->assertSame(1, $this->clocksCalls());
+        $this->assertTrue(Cache::has(HosProviderCache::failureKey($integration->team_id, $integration->id)));
+        $this->assertCount(2, $this->systemLogEntries('hos.preview.computed'));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_poll_is_not_held_back_by_a_failed_preview(): void
+    {
+        $integration = $this->hosIntegration();
+        $this->hosDriver($integration);
+        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::sequence()
+            ->push([], 503)
+            ->push(self::clocksBody()),
+        ]);
+
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        $this->assertSame(2, $this->clocksCalls());
+        $this->assertSystemLogged('hos.poll.completed');
+        // La lectura que dejó el sondeo sirve aunque el fallo siga recordado.
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', false);
+        $this->assertSame(2, $this->clocksCalls());
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_connection_failure_answers_a_degraded_preview(): void
+    {
+        $integration = $this->hosIntegration();
+        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::failedConnection()]);
+
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
+
+        $this->assertSystemLogged('hos.preview.computed', fn (array $context): bool => ($context['reason'] ?? null) === 'provider_error');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_tags_of_the_integrations_that_answered_survive_a_later_failure(): void
+    {
+        $integration = $this->hosIntegration();
+        $second = TenantIntegration::withoutGlobalScopes()->create([
+            'team_id' => $integration->team_id, 'provider_id' => $integration->provider_id, 'name' => 'Samsara 2',
+            'status' => 'active', 'auth_type' => 'api_key', 'credentials_encrypted' => '',
+        ]);
+        IntegrationCredential::create(['tenant_integration_id' => $second->id, 'key' => 'api_token', 'value_encrypted' => 'sk-test-2']);
+        Http::fake(['api.samsara.com/tags*' => Http::sequence()
+            ->push(['data' => [['id' => '1', 'name' => 'USA', 'drivers' => [['id' => '7']]]], 'pagination' => ['endCursor' => '', 'hasNextPage' => false]])
+            ->push([], 503),
+        ]);
+
+        $this->actingAs($this->ownerOf($integration))
+            ->getJson(route('tenant-config.hos.tags', ['current_team' => $this->slugOf($integration)]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', '1')
+            ->assertJsonPath('meta.failed', true);
+
+        $this->assertSystemLogged('hos.tags.listed', fn (array $context): bool => ($context['reason'] ?? null) === 'provider_error');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_tags_and_preview_are_rate_limited_per_tenant(): void
+    {
+        $integration = $this->hosIntegration();
+        $this->fakeTags();
+        $owner = $this->ownerOf($integration);
+        $url = route('tenant-config.hos.tags', ['current_team' => $this->slugOf($integration)]);
+
+        for ($i = 0; $i < DriversServiceProvider::HOS_PREVIEW_PER_MINUTE; $i++) {
+            $this->actingAs($owner)->getJson($url)->assertOk();
+        }
+
+        $this->actingAs($owner)->getJson($url)->assertTooManyRequests();
+        $this->preview($integration, [])->assertTooManyRequests();
+
+        // Otro tenant tiene su propio cupo.
+        $other = $this->hosIntegration();
+        $this->actingAs($this->ownerOf($other))
+            ->getJson(route('tenant-config.hos.tags', ['current_team' => $this->slugOf($other)]))
+            ->assertOk();
     }
 }
