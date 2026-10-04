@@ -9,8 +9,9 @@ Hoy un `AlertIncident` sin regla de mapeo:
 1. Se normaliza como `unmapped` (queda en la vista "Sin mapear" de Eventos). Bien.
 2. `AlertOnUnmappedProviderAlert` lo escala con `AlertPipelineFailure::forUnmappedAlert`
    ("alerta sin clasificar, posible pánico") a los responsables del tenant.
-3. La IA lo evalúa (`unmapped` no se omite a propósito), con costo y con la
-   posibilidad de abrir un incidente.
+3. No pasa por la IA: un `unmapped` sólo despacha `EventUnmapped`, nunca
+   `EventNormalized` (corregido al implementar; la primera versión de este spec
+   decía lo contrario).
 
 Eso es correcto para un payload que **no podemos leer** (podría ser un pánico
 malformado). Pero un cliente con geocercas, velocidad o fallas de motor
@@ -23,8 +24,8 @@ Distinguir dos casos de `AlertIncident` sin regla:
 
 | Caso | Cómo se reconoce | Qué hace SAM |
 |---|---|---|
-| **Ilegible** | ninguna condición trae un `triggerId` entero | Igual que hoy: se registra, se escala como posible pánico y la IA lo evalúa |
-| **Reconocido, sin clasificar** | al menos una condición trae `triggerId`, y ninguno es de emergencia | Se registra en "Sin mapear" para que alguien cree la regla. **No** se escala y **no** pasa por la IA |
+| **Ilegible** | ninguna condición trae un `triggerId` entero | Igual que hoy: se registra y se escala como posible pánico |
+| **Reconocido, sin clasificar** | al menos una condición trae `triggerId`, y ninguno es de emergencia | Se registra en "Sin mapear" para que alguien cree la regla. **No** se escala |
 
 Un `triggerId` de emergencia sin regla (hoy sólo 1034, si alguien desactivara la
 regla) se trata como ilegible: se escala. Fallar hacia el lado seguro.
@@ -52,17 +53,13 @@ los disparadores del raw event:
 - `recognized` → `SystemLog::skipped('normalization.unmapped_alert.skipped', reason: 'recognized_non_emergency_trigger', calc: ['trigger_ids' => [...]])` y termina.
 - `unreadable` / `emergency` → escala como hoy (`normalization.unmapped_alert.escalated`), con `trigger_class` en el `calc`.
 
-### IA (`AIEvaluationGate`)
+### Payload del `unmapped`
 
-Nuevo motivo de omisión `skip_recognized_provider_alert`: el evento es `unmapped`,
-su `external_event_type` está en `pipeline.unmapped_alert_types` y sus disparadores
-(`provider_trigger_ids` del payload normalizado; para `unmapped` el payload
-normalizado es el crudo, así que se lee con `SamsaraAlertTrigger::fromPayload`)
-se clasifican `recognized`. El gate ya registra el motivo en su log.
-
-Consecuencia (igual que las categorías omitidas): sin evaluación no hay decisión
-ni incidente. El evento sigue visible en Eventos → "Sin mapear" y cuenta en el KPI
-`unmapped` de la página.
+El payload normalizado de un `unmapped` (hoy, el crudo tal cual) gana
+`external_event_type` y `provider_trigger_ids`, para que la vista "Sin mapear" y
+cualquier consumidor no tengan que releer el raw event. Sin evaluación de IA no
+hay decisión ni incidente (como hasta hoy); el evento sigue visible en Eventos →
+"Sin mapear" y cuenta en el KPI `unmapped` de la página.
 
 ### Poll de respaldo
 
@@ -73,8 +70,7 @@ y con el spec 1 las configuraciones que consulta son las de pánico.
 
 - `normalization.unmapped_alert.skipped` gana el motivo
   `recognized_non_emergency_trigger` (documentar en `docs/SAM/logging.md`).
-- `normalization.unmapped_alert.escalated` gana `calc.trigger_class`.
-- `ai.gate.*` (código existente del gate) gana el motivo `skip_recognized_provider_alert`.
+- `normalization.unmapped_alert.escalated` gana `calc.trigger_class` y `calc.trigger_ids`.
 
 ## Tests
 
@@ -84,8 +80,7 @@ y con el spec 1 las configuraciones que consulta son las de pánico.
 - `UnmappedProviderAlertTest`: geocerca (`triggerId` 5016) sin regla → no escala,
   log `recognized_non_emergency_trigger`; payload sin `conditions` → escala como
   hoy; tipo externo fuera de `unmapped_alert_types` → como hoy.
-- `AIEvaluationGateTest`: geocerca sin regla se omite; alerta ilegible se evalúa;
-  un `unmapped` que no es de alertas (otro tipo externo) se evalúa como hoy.
+- La geocerca sin regla no despacha `EventNormalized` (no llega a la IA).
 - Fuga de tenant: el escalado de un ilegible avisa sólo a los responsables del
   tenant del raw event (el test existente se extiende con un segundo tenant).
 - `assertSystemLogged` + `assertNoSensitiveDataLogged` en los nuevos motivos.
