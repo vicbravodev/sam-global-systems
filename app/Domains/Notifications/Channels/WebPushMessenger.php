@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Minishlink\WebPush\Subscription;
 use Minishlink\WebPush\WebPush;
 use RuntimeException;
+use Throwable;
 
 /**
  * Envoltura de minishlink/web-push para que PushNotificationDriver no dependa
@@ -56,6 +57,7 @@ class WebPushMessenger
 
         $byEndpoint = [];
         $hosts = [];
+        $outcomes = [];
 
         foreach ($targets as $target) {
             $byEndpoint[$target->endpoint] = $target->subscriptionId;
@@ -65,18 +67,28 @@ class WebPushMessenger
                 $hosts[$host] = true;
             }
 
-            $webPush->queueNotification(
-                Subscription::create([
-                    'endpoint' => $target->endpoint,
-                    'publicKey' => $target->publicKey,
-                    'authToken' => $target->authToken,
-                    'contentEncoding' => $target->contentEncoding,
-                ]),
-                $payload,
-            );
-        }
+            if (! $this->hasValidKeys($target)) {
+                // Una suscripción malformada no tumba el lote: sólo ella falla.
+                $outcomes[] = new WebPushOutcome($target->subscriptionId, false, false, null, 'invalid_subscription');
 
-        $outcomes = [];
+                continue;
+            }
+
+            try {
+                $webPush->queueNotification(
+                    Subscription::create([
+                        'endpoint' => $target->endpoint,
+                        'publicKey' => $target->publicKey,
+                        'authToken' => $target->authToken,
+                        'contentEncoding' => $target->contentEncoding,
+                    ]),
+                    $payload,
+                );
+            } catch (Throwable) {
+                unset($byEndpoint[$target->endpoint]);
+                $outcomes[] = new WebPushOutcome($target->subscriptionId, false, false, null, 'invalid_subscription');
+            }
+        }
 
         foreach ($webPush->flush() as $report) {
             $outcomes[] = new WebPushOutcome(
@@ -89,6 +101,19 @@ class WebPushMessenger
         }
 
         return $outcomes;
+    }
+
+    /**
+     * El cifrado (en flush) revienta con llaves que no son base64url válido
+     * del tamaño esperado y tumbaría el lote entero: se descartan antes.
+     */
+    private function hasValidKeys(WebPushTarget $target): bool
+    {
+        $publicKey = base64_decode(strtr($target->publicKey, '-_', '+/'), true);
+        $authToken = base64_decode(strtr($target->authToken, '-_', '+/'), true);
+
+        return $publicKey !== false && strlen($publicKey) === 65
+            && $authToken !== false && strlen($authToken) >= 16;
     }
 
     /**
