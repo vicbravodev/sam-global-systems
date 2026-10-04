@@ -1,4 +1,5 @@
 {
+    "id": "/",
     "name": "SAM",
     "short_name": "SAM",
     "description": "Monitoreo de tu flota y alertas en tiempo real",
