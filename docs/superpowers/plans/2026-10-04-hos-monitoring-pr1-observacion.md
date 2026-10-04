@@ -2479,10 +2479,10 @@ class SyncHosClocksJobTest extends TestCase
         return [$driver, $asset];
     }
 
-    private function fakeSamsara(int $breakMs = 1593045): void
+    /** `$thenFail`: la segunda lectura de relojes responde 503 (un segundo Http::fake no reemplaza al primero). */
+    private function fakeSamsara(int $breakMs = 1593045, bool $thenFail = false): void
     {
-        Http::fake([
-            'api.samsara.com/fleet/hos/clocks*' => Http::response([
+        $clocks = Http::sequence()->push([
                 'data' => [[
                     'driver' => ['id' => '58072405', 'name' => 'Chofer Uno'],
                     'currentVehicle' => ['id' => '281', 'name' => 'T-0321 USA'],
@@ -2496,7 +2496,14 @@ class SyncHosClocksJobTest extends TestCase
                     ],
                 ]],
                 'pagination' => ['endCursor' => '', 'hasNextPage' => false],
-            ]),
+            ]);
+
+        if ($thenFail) {
+            $clocks->push([], 503);
+        }
+
+        Http::fake([
+            'api.samsara.com/fleet/hos/clocks*' => $clocks,
             'api.samsara.com/tags*' => Http::response([
                 'data' => [['id' => '4738197', 'name' => 'USA', 'vehicles' => [], 'drivers' => [['id' => '58072405']]]],
                 'pagination' => ['endCursor' => '', 'hasNextPage' => false],
@@ -2527,10 +2534,8 @@ class SyncHosClocksJobTest extends TestCase
     {
         $integration = $this->tenant();
         $this->link($integration, '58072405', '281');
-        $this->fakeSamsara();
+        $this->fakeSamsara(thenFail: true);
         app()->call([new SyncHosClocksJob($integration), 'handle']);
-
-        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::response([], 503)]);
         app()->call([new SyncHosClocksJob($integration), 'handle']);
 
         $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->count());
