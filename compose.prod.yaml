@@ -12,6 +12,9 @@
 #     web    -> APP_URL                      puerto 8080
 #     soketi -> VITE_PUSHER_HOST (ws.)       puerto 6001
 #     rustfs -> RUSTFS_PUBLIC_ENDPOINT       puerto 9000 (URLs prefirmadas)
+# - Nightwatch: web/horizon/scheduler envían al agente `nightwatch-agent` por la
+#   red interna. El agente no lleva dominio ni entra a dokploy-network: nunca
+#   debe ser alcanzable desde fuera.
 
 # Rotación de los logs de Docker (pestaña Logs de Dokploy): sin tope, el
 # driver json-file crece hasta llenar el disco.
@@ -44,6 +47,8 @@ services:
             # esté sano.
             AUTORUN_ENABLED: 'true'
             AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+            NIGHTWATCH_INGEST_URI: 'nightwatch-agent:2407'
+            NIGHTWATCH_SERVER: web
         stop_grace_period: 30s
         depends_on:
             valkey:
@@ -64,6 +69,8 @@ services:
             AUTORUN_ENABLED: 'true'
             AUTORUN_LARAVEL_MIGRATION: 'false'
             AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+            NIGHTWATCH_INGEST_URI: 'nightwatch-agent:2407'
+            NIGHTWATCH_SERVER: horizon
         # SIGTERM = Horizon termina los jobs en curso antes de salir. El
         # margen cubre el job más largo de las colas `long`/`telematics`.
         stop_signal: SIGTERM
@@ -86,6 +93,8 @@ services:
             AUTORUN_ENABLED: 'true'
             AUTORUN_LARAVEL_MIGRATION: 'false'
             AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+            NIGHTWATCH_INGEST_URI: 'nightwatch-agent:2407'
+            NIGHTWATCH_SERVER: scheduler
         stop_signal: SIGTERM
         stop_grace_period: 60s
         depends_on:
@@ -97,6 +106,26 @@ services:
             timeout: 10s
             retries: 3
             start_period: 30s
+
+    # Agente de Laravel Nightwatch: recibe los eventos de web/horizon/scheduler
+    # por TCP (2407) y los envía a Nightwatch. `v1` sigue la versión mayor del
+    # paquete laravel/nightwatch. Si cae, la app sigue funcionando: sólo se
+    # pierde monitoreo (y lo narra `observability.nightwatch.unrecoverable`).
+    nightwatch-agent:
+        image: 'laravelphp/nightwatch-agent:v1'
+        restart: unless-stopped
+        logging: *logging
+        environment:
+            NIGHTWATCH_TOKEN: '${NIGHTWATCH_TOKEN:?NIGHTWATCH_TOKEN requerido}'
+            NIGHTWATCH_AGENT_LOG_LEVEL: error
+        networks:
+            - default
+        healthcheck:
+            test: ['CMD', 'php', 'nightwatch-status']
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 5s
 
     valkey:
         image: 'valkey/valkey:9.1-alpine'
