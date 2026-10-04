@@ -6,9 +6,13 @@ use App\Contracts\AI\EventEvaluationAgent;
 use App\Contracts\AI\MediaAssessmentAgent;
 use App\Contracts\NullImplementations\NullEventEvaluationAgent;
 use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
+use App\Domains\AI\Commands\ClefBackfillCommand;
+use App\Domains\AI\Commands\ClefReportCommand;
+use App\Domains\AI\Commands\LabelEventsCommand;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
+use App\Domains\AI\Listeners\DispatchClefShadowEvaluation;
 use App\Domains\AI\Listeners\EvaluateMediaOnEventMediaAvailable;
 use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
 use App\Domains\AI\Listeners\RecordOperatorVerdictOnIncidentResolved;
@@ -54,12 +58,22 @@ class AIServiceProvider extends ServiceProvider
     {
         Gate::policy(AIEventEvaluation::class, AIEvaluationPolicy::class);
 
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ClefBackfillCommand::class,
+                ClefReportCommand::class,
+                LabelEventsCommand::class,
+            ]);
+        }
+
         Event::listen(EventContextBuilt::class, EvaluateOnEventContextBuilt::class);
         Event::listen(EventMediaAvailable::class, EvaluateMediaOnEventMediaAvailable::class);
         Event::listen(AIEvaluationCompleted::class, BroadcastAIEvaluationCompleted::class);
         // Backfill assessments for media that persisted before this evaluation
         // existed (extraction and text evaluation race on separate queues).
         Event::listen(AIEvaluationCompleted::class, AssessPendingMediaOnEvaluationCompleted::class);
+        // Medición temporal Clef vs GPT; se apaga sola (ai.clef.shadow_until).
+        Event::listen(AIEvaluationCompleted::class, DispatchClefShadowEvaluation::class);
         // "Descartar como falso positivo" = etiqueta humana para la IA.
         Event::listen(IncidentResolved::class, RecordOperatorVerdictOnIncidentResolved::class);
 
