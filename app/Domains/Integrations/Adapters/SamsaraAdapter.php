@@ -1336,7 +1336,13 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'name' => mb_substr($name, 0, 255),
             'isEnabled' => true,
             'scope' => ['all' => true],
-            'triggers' => [['triggerTypeId' => SamsaraAlertTrigger::PanicButton->value]],
+            // Samsara exige triggerParams en el 1034 (sin ellos: 400 "invalid
+            // trigger"). Sólo pulsaciones: la pérdida de energía del botón no
+            // es un pánico y llegaría como falsa emergencia.
+            'triggers' => [[
+                'triggerTypeId' => SamsaraAlertTrigger::PanicButton->value,
+                'triggerParams' => ['panicButton' => ['isFilteringOutPowerLoss' => true]],
+            ]],
             'actions' => [self::webhookAction($webhookId)],
         ]);
 

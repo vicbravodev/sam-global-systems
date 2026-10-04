@@ -103,7 +103,8 @@ class SamsaraWebhookAdminAdapterTest extends TestCase
             && $r['name'] === 'SAM – Botón de pánico'
             && $r['isEnabled'] === true
             && $r['scope'] === ['all' => true]
-            && $r['triggers'] === [['triggerTypeId' => 1034]]
+            // Samsara rechaza el 1034 sin triggerParams (400 "invalid trigger").
+            && $r['triggers'] === [['triggerTypeId' => 1034, 'triggerParams' => ['panicButton' => ['isFilteringOutPowerLoss' => true]]]]
             && $r['actions'] === [['actionTypeId' => 4, 'actionParams' => ['webhooks' => ['webhookIds' => ['23918'], 'payloadType' => 'enriched']]]]);
     }
 
