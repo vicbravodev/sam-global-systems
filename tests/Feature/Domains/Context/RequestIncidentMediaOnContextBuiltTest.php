@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Context;
 
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Context\Enums\MediaRequestStatus;
 use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventContextBuilt;
@@ -10,7 +11,6 @@ use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaRequest;
 use App\Domains\Context\Models\OperationalContextProfile;
-use App\Domains\Assets\Models\Asset;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
