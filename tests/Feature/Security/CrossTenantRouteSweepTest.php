@@ -100,6 +100,8 @@ class CrossTenantRouteSweepTest extends TestCase
     private const EXCLUDED_ROUTES = [
         'GET /' => 'Landing pública.',
         'GET up' => 'Health check público.',
+        'GET demo' => 'Formulario público "Pedir una demo": sin datos de tenant.',
+        'POST demo' => 'Formulario público "Pedir una demo": crea una fila de plataforma (sin team_id) que sólo lee la consola de super-admin (DemoRequestTest).',
         'GET bienvenida/{token}' => 'Alta de cliente por enlace con token secreto (público por diseño).',
         'POST bienvenida' => 'Alta de cliente por enlace con token secreto (público por diseño).',
         'GET invitations/{invitation}' => 'Invitación por código secreto; aceptar exige que el email coincida (tests de InvitationAcceptance).',

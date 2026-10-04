@@ -14,7 +14,9 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Channels\WebPushMessenger;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Tenancy\Enums\DemoRequestStatus;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\DemoRequest;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Support\TenantContactReadiness;
 use App\Domains\TenantConfig\Models\TenantSetting;
@@ -170,7 +172,7 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * @return array{tenantsPastDue: int}
+     * @return array{tenantsPastDue: int, demoRequestsNew: int}
      */
     private function adminBadges(): array
     {
@@ -184,6 +186,8 @@ class HandleInertiaRequests extends Middleware
 
         return [
             'tenantsPastDue' => (int) ($counts[SubscriptionStatus::PastDue->value] ?? 0),
+            // Prospectos que pidieron demo y nadie ha contactado todavía.
+            'demoRequestsNew' => DemoRequest::query()->where('status', DemoRequestStatus::New)->count(),
         ];
     }
 }

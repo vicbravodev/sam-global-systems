@@ -10,7 +10,7 @@ export function CtaSection() {
                     despierto.
                 </h2>
                 <div className="mt-12 flex flex-col gap-8 sm:flex-row sm:items-center sm:gap-12">
-                    <PrimaryButton href={DEMO_HREF} large>
+                    <PrimaryButton href={DEMO_HREF} large inertia>
                         Pedir una demo
                     </PrimaryButton>
                     <p className="max-w-sm text-base leading-relaxed text-brand-ink-2">
