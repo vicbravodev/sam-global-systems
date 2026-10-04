@@ -6,12 +6,14 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
+use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Enums\AssetUnresolvedReason;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
+use App\Domains\Normalization\Events\NormalizedEventUpdated;
 use App\Domains\Normalization\Events\UnmonitoredAssetEmergencyReceived;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
@@ -21,7 +23,10 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\Conditions\FlatConditionMatcher;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class NormalizeRawEvent
@@ -266,6 +271,16 @@ class NormalizeRawEvent
 
         ['asset_id' => $assetId, 'unresolved_reason' => $unresolvedReason] = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 
+        // Un safety event que ya tiene fila es la MISMA entidad con otro
+        // estado o etiqueta: se actualiza en sitio (aunque su unidad ya no
+        // esté vigilada: el evento ya se admitió).
+        $providerEventKey = self::providerEventKey($rawEvent);
+        $existing = $providerEventKey === null ? null : $this->findProviderEntity($rawEvent, $providerEventKey);
+
+        if ($existing !== null && $existing->raw_event_id !== $rawEvent->id) {
+            return $this->updateProviderEntity($existing, $rawEvent, $rule, $eventType, $category, $severity, $payload, $assetId, $unresolvedReason);
+        }
+
         // Una emergencia (pánico, colisión, vuelco) SIEMPRE se atiende, esté o
         // no vigilada la unidad (decisión 2026-09-28): la prioridad es la
         // persona. Ese día la unidad se cobra como extra (tracto-día + recargo)
@@ -281,27 +296,46 @@ class NormalizeRawEvent
 
         $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 
-        $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
-            ['raw_event_id' => $rawEvent->id],
-            [
-                'team_id' => $rawEvent->team_id,
-                'trace_id' => $rawEvent->trace_id,
-                'provider_id' => $rawEvent->provider_id,
-                'asset_id' => $assetId,
-                'driver_id' => $driverId,
-                'event_type_id' => $eventType->id,
-                'event_category_id' => $category->id,
-                'event_severity_id' => $severity->id,
-                'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
-                'processed_at' => now(),
-                'payload_normalized_json' => [
-                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload, $rule),
-                    ...($unmonitored ? ['unmonitored_asset' => true] : []),
-                    ...self::unresolvedAssetMarker($unresolvedReason),
+        try {
+            $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
+                ['raw_event_id' => $rawEvent->id],
+                [
+                    'team_id' => $rawEvent->team_id,
+                    'trace_id' => $rawEvent->trace_id,
+                    'provider_id' => $rawEvent->provider_id,
+                    'asset_id' => $assetId,
+                    'driver_id' => $driverId,
+                    'event_type_id' => $eventType->id,
+                    'event_category_id' => $category->id,
+                    'event_severity_id' => $severity->id,
+                    'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
+                    'processed_at' => now(),
+                    'payload_normalized_json' => [
+                        ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload, $rule),
+                        ...($unmonitored ? ['unmonitored_asset' => true] : []),
+                        ...self::unresolvedAssetMarker($unresolvedReason),
+                    ],
+                    'status' => NormalizedEventStatus::Normalized,
+                    ...self::providerStateAttributes($providerEventKey, $payload),
                 ],
-                'status' => NormalizedEventStatus::Normalized,
-            ],
-        );
+            );
+        } catch (UniqueConstraintViolationException $e) {
+            // Otro worker creó la entidad entre la búsqueda y la inserción
+            // (dos estados del mismo evento a la vez): esto es un cambio de
+            // estado sobre esa fila.
+            $winner = $providerEventKey === null ? null : $this->findProviderEntity($rawEvent, $providerEventKey);
+
+            if ($winner === null) {
+                throw $e;
+            }
+
+            SystemLog::ok('normalization.safety_event.update_race', input: [
+                'raw_event_id' => $rawEvent->id,
+                'normalized_event_id' => $winner->id,
+            ], result: ['resolved_as' => 'update']);
+
+            return $this->updateProviderEntity($winner, $rawEvent, $rule, $eventType, $category, $severity, $payload, $assetId, $unresolvedReason);
+        }
 
         $rawEvent->markAsProcessed();
 
@@ -336,6 +370,187 @@ class NormalizeRawEvent
         }
 
         return $normalizedEvent;
+    }
+
+    /**
+     * Identidad de la entidad del proveedor: sólo los safety events del feed
+     * (`deduplication_key` `safety:{id}:{estado}` con `external_event_id`).
+     */
+    private static function providerEventKey(RawEvent $rawEvent): ?string
+    {
+        $externalId = $rawEvent->external_event_id;
+
+        if ($externalId === null || $externalId === '' || ! str_starts_with((string) $rawEvent->deduplication_key, IngestSafetyEvent::KEY_PREFIX)) {
+            return null;
+        }
+
+        return IngestSafetyEvent::KEY_PREFIX.$externalId;
+    }
+
+    private function findProviderEntity(RawEvent $rawEvent, string $providerEventKey): ?NormalizedEvent
+    {
+        return NormalizedEvent::query()
+            ->where('team_id', $rawEvent->team_id)
+            ->where('provider_event_key', $providerEventKey)
+            ->first();
+    }
+
+    /**
+     * Columnas de estado en origen. Todo null fuera de los safety events.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{provider_event_key: string|null, provider_state: string|null, provider_updated_at: Carbon|null, provider_dismissed_at: Carbon|null}
+     */
+    private static function providerStateAttributes(?string $providerEventKey, array $payload): array
+    {
+        if ($providerEventKey === null) {
+            return ['provider_event_key' => null, 'provider_state' => null, 'provider_updated_at' => null, 'provider_dismissed_at' => null];
+        }
+
+        $state = Arr::get($payload, 'eventState');
+        $state = is_string($state) && $state !== '' ? mb_substr($state, 0, 32) : null;
+        $updatedAt = self::providerTime(Arr::get($payload, 'updatedAtTime'));
+
+        return [
+            'provider_event_key' => $providerEventKey,
+            'provider_state' => $state,
+            'provider_updated_at' => $updatedAt,
+            'provider_dismissed_at' => $state === 'dismissed' ? ($updatedAt ?? Carbon::now()) : null,
+        ];
+    }
+
+    private static function providerTime(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Un cambio en origen de un safety event ya normalizado: actualiza la fila
+     * (estado, etiqueta, tipo, payload) y apunta al raw más reciente. No vuelve
+     * a correr contexto, media ni IA ({@see NormalizedEventUpdated}); sólo si
+     * la revisión lo convierte en emergencia se despacha {@see EventNormalized}
+     * para que la ruta rápida abra el incidente. Un estado más viejo que el
+     * guardado (reproceso) no pisa nada.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function updateProviderEntity(
+        NormalizedEvent $existing,
+        RawEvent $rawEvent,
+        EventMappingRule $rule,
+        EventType $eventType,
+        EventCategory $category,
+        EventSeverity $severity,
+        array $payload,
+        ?int $assetId,
+        ?AssetUnresolvedReason $unresolvedReason,
+    ): NormalizedEvent {
+        $attributes = self::providerStateAttributes(self::providerEventKey($rawEvent), $payload);
+        $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
+        $input = ['raw_event_id' => $rawEvent->id, 'normalized_event_id' => $existing->id];
+
+        $outcome = DB::transaction(function () use ($existing, $rawEvent, $rule, $eventType, $category, $severity, $payload, $assetId, $unresolvedReason, $attributes, $driverId): array {
+            $current = NormalizedEvent::query()
+                ->where('team_id', $rawEvent->team_id)
+                ->whereKey($existing->id)
+                ->lockForUpdate()
+                ->first() ?? $existing;
+
+            $calc = [
+                'state_from' => $current->provider_state,
+                'state_to' => $attributes['provider_state'],
+                'incoming_updated_at' => $attributes['provider_updated_at']?->toIso8601String(),
+                'current_updated_at' => $current->provider_updated_at?->toIso8601String(),
+                'current_raw_event_id' => $current->raw_event_id,
+            ];
+
+            if (self::isStale($current, $rawEvent, $attributes['provider_updated_at'])) {
+                return ['event' => $current, 'stale' => true, 'calc' => $calc, 'became_emergency' => false];
+            }
+
+            $previousTypeCode = EventType::query()->whereKey($current->event_type_id)->value('code');
+            $previousCategoryCode = EventCategory::query()->whereKey($current->event_category_id)->value('code');
+            $wasEmergency = self::isEmergencyCode(is_string($previousCategoryCode) ? $previousCategoryCode : null, is_string($previousTypeCode) ? $previousTypeCode : null);
+            $unmonitored = $this->assetIsSwitchedOff($assetId);
+
+            $current->fill([
+                'raw_event_id' => $rawEvent->id,
+                'asset_id' => $assetId ?? $current->asset_id,
+                'driver_id' => $driverId ?? $current->driver_id,
+                'event_type_id' => $eventType->id,
+                'event_category_id' => $category->id,
+                'event_severity_id' => $severity->id,
+                'processed_at' => now(),
+                'payload_normalized_json' => [
+                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload, $rule),
+                    ...($unmonitored ? ['unmonitored_asset' => true] : []),
+                    ...self::unresolvedAssetMarker($assetId === null ? $unresolvedReason : null),
+                ],
+                'status' => NormalizedEventStatus::Normalized,
+                ...$attributes,
+            ])->save();
+
+            $becameEmergency = ! $wasEmergency && $this->isEmergency($eventType, $category);
+
+            return [
+                'event' => $current,
+                'stale' => false,
+                'calc' => [
+                    ...$calc,
+                    'label_changed' => $previousTypeCode !== $eventType->code,
+                    'became_emergency' => $becameEmergency,
+                ],
+                'became_emergency' => $becameEmergency,
+            ];
+        });
+
+        /** @var NormalizedEvent $event */
+        $event = $outcome['event'];
+        $rawEvent->markAsProcessed();
+        PipelineTrace::add(['normalized_event_id' => $event->id]);
+
+        if ($outcome['stale']) {
+            SystemLog::skipped('normalization.safety_event.update_skipped', reason: 'stale_state', input: $input, calc: $outcome['calc']);
+
+            return $event;
+        }
+
+        SystemLog::ok('normalization.safety_event.updated', input: $input, calc: $outcome['calc'], result: [
+            'event_type_code' => $eventType->code,
+            'provider_state' => $event->provider_state,
+            'dismissed' => $event->provider_dismissed_at !== null,
+        ]);
+
+        NormalizedEventUpdated::dispatch($event, $outcome['calc']['state_from']);
+
+        if ($outcome['became_emergency']) {
+            EventNormalized::dispatch($event);
+        }
+
+        return $event;
+    }
+
+    /**
+     * El cambio que llega es más viejo que el guardado: por `updatedAtTime`
+     * del proveedor y, si no se puede comparar, por orden de ingesta.
+     */
+    private static function isStale(NormalizedEvent $current, RawEvent $rawEvent, ?Carbon $incomingUpdatedAt): bool
+    {
+        $currentUpdatedAt = $current->provider_updated_at;
+
+        if ($incomingUpdatedAt !== null && $currentUpdatedAt !== null && ! $incomingUpdatedAt->equalTo($currentUpdatedAt)) {
+            return $incomingUpdatedAt->lessThan($currentUpdatedAt);
+        }
+
+        return $rawEvent->id < $current->raw_event_id;
     }
 
     /**

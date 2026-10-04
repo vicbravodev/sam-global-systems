@@ -21,6 +21,7 @@ class NormalizedEvent extends Model
 
     protected $fillable = [
         'raw_event_id',
+        'provider_event_key',
         'team_id',
         'trace_id',
         'provider_id',
@@ -34,7 +35,13 @@ class NormalizedEvent extends Model
         'payload_normalized_json',
         'context_json',
         'status',
+        'provider_state',
+        'provider_updated_at',
+        'provider_dismissed_at',
     ];
+
+    /** Fila vieja de un evento del proveedor reemplazada por la entidad. */
+    public const string PROVIDER_STATE_SUPERSEDED = 'superseded';
 
     /**
      * @return BelongsTo<RawEvent, $this>
@@ -111,6 +118,23 @@ class NormalizedEvent extends Model
     }
 
     /**
+     * Eventos que cuentan como comportamiento: fuera los descartados en origen
+     * (falsos positivos) y las filas viejas reemplazadas por la entidad del
+     * mismo evento. Lo usan el riesgo del conductor y el historial reciente.
+     *
+     * @param  Builder<NormalizedEvent>  $query
+     * @return Builder<NormalizedEvent>
+     */
+    public function scopeCountable(Builder $query): Builder
+    {
+        return $query
+            ->whereNull($query->qualifyColumn('provider_dismissed_at'))
+            ->where(fn (Builder $q) => $q
+                ->whereNull($q->qualifyColumn('provider_state'))
+                ->orWhere($q->qualifyColumn('provider_state'), '!=', self::PROVIDER_STATE_SUPERSEDED));
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -121,6 +145,8 @@ class NormalizedEvent extends Model
             'context_json' => 'array',
             'occurred_at' => 'datetime',
             'processed_at' => 'datetime',
+            'provider_updated_at' => 'datetime',
+            'provider_dismissed_at' => 'datetime',
         ];
     }
 

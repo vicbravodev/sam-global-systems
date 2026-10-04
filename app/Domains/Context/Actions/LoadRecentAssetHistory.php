@@ -60,6 +60,7 @@ class LoadRecentAssetHistory
         }
 
         $events = NormalizedEvent::query()
+            ->countable()
             ->where('asset_id', $assetId)
             ->whereBetween('occurred_at', [$windowStart, $windowEnd])
             ->with(['eventSeverity', 'eventType'])
@@ -126,6 +127,7 @@ class LoadRecentAssetHistory
         ?int $excludeEventId,
     ): array {
         $events = NormalizedEvent::query()
+            ->countable()
             ->where('asset_id', $assetId)
             ->when($excludeEventId !== null, fn ($query) => $query->whereKeyNot($excludeEventId))
             ->whereBetween('occurred_at', [
