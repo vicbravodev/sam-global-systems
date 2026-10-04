@@ -129,6 +129,8 @@ Route::prefix('{current_team}')
 
         Route::get('settings/hos', [HosMonitoringConfigController::class, 'show'])->name('api.tenant-config.hos.show');
         Route::put('settings/hos', [HosMonitoringConfigController::class, 'update'])->name('api.tenant-config.hos.update');
+        Route::get('settings/hos/tags', [HosMonitoringConfigController::class, 'tags'])->name('api.tenant-config.hos.tags');
+        Route::post('settings/hos/preview', [HosMonitoringConfigController::class, 'preview'])->name('api.tenant-config.hos.preview');
 
         Route::get('decisions/rules', [DecisionRuleController::class, 'index'])->name('api.decisions.rules.index');
         Route::post('decisions/rules', [DecisionRuleController::class, 'store'])->name('api.decisions.rules.store');

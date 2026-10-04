@@ -13,6 +13,7 @@ use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Drivers\Models\HosEpisode;
 use App\Domains\Drivers\Support\HosMonitoringConfig;
+use App\Domains\Drivers\Support\HosProviderCache;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -293,5 +294,18 @@ class SyncHosClocksJobTest extends TestCase
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $b->team_id)->count());
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/fleet/messages') && $request['driverIds'] === [77000001]);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_successful_poll_leaves_its_reading_for_the_config_preview(): void
+    {
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        $this->fakeSamsara();
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        $cached = Cache::get(HosProviderCache::readingsKey($integration->team_id, $integration->id));
+        $this->assertSame('58072405', $cached[0]['external_driver_id']);
+        $this->assertSame('281', $cached[0]['external_vehicle_id']);
     }
 }

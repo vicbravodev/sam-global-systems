@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\TenantConfig;
 
 use App\Domains\Drivers\Actions\BuildHosConfigForm;
+use App\Domains\Drivers\Actions\ListHosTags;
+use App\Domains\Drivers\Actions\PreviewHosEnrollment;
 use App\Domains\Drivers\Actions\SaveHosMonitoringConfig;
 use App\Domains\Drivers\Models\HosDriverState;
+use App\Domains\Drivers\Support\HosMonitoringConfig;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\TenantConfig\PreviewHosEnrollmentRequest;
 use App\Http\Requests\TenantConfig\UpdateHosMonitoringConfigRequest;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
@@ -35,5 +39,27 @@ class HosMonitoringConfigController extends Controller
         $save->execute($current_team->id, $validated, $request->user()?->id, $request->ip(), $request->userAgent());
 
         return response()->json(['data' => $form->execute($current_team->id, true)]);
+    }
+
+    public function tags(Team $current_team, ListHosTags $listTags): JsonResponse
+    {
+        $this->authorize('viewConfig', HosDriverState::class);
+
+        $result = $listTags->execute($current_team->id);
+
+        return response()->json([
+            'data' => $result['tags'],
+            'meta' => ['failed' => $result['failed'], 'hasIntegration' => $result['hasIntegration']],
+        ]);
+    }
+
+    public function preview(PreviewHosEnrollmentRequest $request, Team $current_team, PreviewHosEnrollment $preview): JsonResponse
+    {
+        /** @var array<string, mixed> $selection */
+        $selection = $request->validated();
+
+        $draft = HosMonitoringConfig::fromArray($selection, (array) config('hos.defaults'));
+
+        return response()->json(['data' => $preview->execute($current_team->id, $draft)]);
     }
 }

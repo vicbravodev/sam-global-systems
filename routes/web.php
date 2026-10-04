@@ -301,6 +301,8 @@ Route::prefix('{current_team}')
         // Monitoreo HOS (EE. UU.): sección `?seccion=hos`. HosMonitoringPolicy
         // exige la feature `hos_monitoring` además del permiso.
         Route::put('settings/tenant-config/hos', [HosMonitoringConfigController::class, 'update'])->name('tenant-config.hos.update');
+        Route::get('settings/tenant-config/hos/tags', [HosMonitoringConfigController::class, 'tags'])->name('tenant-config.hos.tags');
+        Route::post('settings/tenant-config/hos/preview', [HosMonitoringConfigController::class, 'preview'])->name('tenant-config.hos.preview');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

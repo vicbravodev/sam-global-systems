@@ -6,6 +6,7 @@ use App\Domains\Drivers\Actions\AdvanceHosEpisodes;
 use App\Domains\Drivers\Actions\ProcessHosReadings;
 use App\Domains\Drivers\Actions\ResolveHosEnrollment;
 use App\Domains\Drivers\Actions\ResolveHosMonitoringConfig;
+use App\Domains\Drivers\Support\HosProviderCache;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailed;
@@ -20,7 +21,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * One HOS poll of one Samsara integration: clocks (+ tags when the tenant
@@ -49,6 +49,7 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(
         ProviderAdapter $providerAdapter,
+        HosProviderCache $providerCache,
         ResolveHosMonitoringConfig $resolveConfig,
         ResolveHosEnrollment $resolveEnrollment,
         ProcessHosReadings $processReadings,
@@ -57,7 +58,7 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
         $teamId = $this->integration->team_id;
         $input = ['team_id' => $teamId, 'integration_id' => $this->integration->id];
 
-        TenantContext::for($teamId, function () use ($providerAdapter, $resolveConfig, $resolveEnrollment, $processReadings, $advanceEpisodes, $teamId, $input): void {
+        TenantContext::for($teamId, function () use ($providerAdapter, $providerCache, $resolveConfig, $resolveEnrollment, $processReadings, $advanceEpisodes, $teamId, $input): void {
             $config = $resolveConfig->execute($teamId);
 
             if ($config === null) {
@@ -68,11 +69,7 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
 
             try {
                 $readings = $providerAdapter->fetchHosClocks($this->integration);
-                $tags = $config->tagIds === [] ? [] : Cache::remember(
-                    "hos:tags:{$teamId}:{$this->integration->id}",
-                    (int) config('hos.tags_cache_seconds', 300),
-                    fn () => $providerAdapter->fetchTags($this->integration),
-                );
+                $tags = $config->tagIds === [] ? [] : $providerCache->tags($this->integration);
             } catch (ProviderRequestFailed|ProviderRequestFailedException $e) {
                 SystemLog::degraded('hos.poll.failed', reason: match (true) {
                     $e instanceof ProviderUnauthorized => 'unauthorized',
@@ -82,6 +79,10 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
 
                 return;
             }
+
+            // La vista previa de la configuración lee esta misma lectura en vez
+            // de pegarle a Samsara en cada tecla.
+            $providerCache->putReadings($this->integration, $readings);
 
             $now = now()->toImmutable();
             $enrollment = $resolveEnrollment->execute($this->integration, $config, $readings, $tags);
