@@ -116,6 +116,18 @@ class ClefShadowComparisonQueryTest extends TestCase
         $this->assertSame(0, $all['gpt@clef-flash']['n']);
     }
 
+    public function test_types_no_longer_evaluated_by_ai_are_excluded(): void
+    {
+        $team = Team::factory()->create();
+        $this->shadow($this->makeEvaluationOfType($team, 'after_hours_movement'), 'real_event', 0.9);
+        $this->shadow($this->makeEvaluation($team), 'noise', 0.1);
+
+        $all = app(ClefShadowComparisonQuery::class)->execute($team->id, now()->subDay())['all'];
+
+        $this->assertSame(1, $all['gpt']['n']);
+        $this->assertSame(1, $all['clef']['n']);
+    }
+
     public function test_failed_rows_are_counted_apart(): void
     {
         $team = Team::factory()->create();
