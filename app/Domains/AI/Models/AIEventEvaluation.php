@@ -80,6 +80,14 @@ class AIEventEvaluation extends Model
     }
 
     /**
+     * @return HasMany<AIShadowEvaluation, $this>
+     */
+    public function shadowEvaluations(): HasMany
+    {
+        return $this->hasMany(AIShadowEvaluation::class, 'ai_event_evaluation_id');
+    }
+
+    /**
      * @return HasMany<AIDecisionSignal, $this>
      */
     public function decisionSignals(): HasMany
