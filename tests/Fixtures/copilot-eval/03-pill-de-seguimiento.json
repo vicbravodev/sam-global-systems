@@ -1,0 +1,8 @@
+{
+    "name": "Tocar la primera pill: debe leerse como pregunta del usuario y responderse sin \"Sí\"",
+    "turns": [
+        { "ask": "¿Cómo está la flota ahora mismo?", "expect_tools_any": ["fleet_overview", "find_assets", "rank_assets"] },
+        { "ask_followup": 0, "forbid_regex": ["^\\s*(sí|si)\\b[.,:]"] },
+        { "ask_followup": 0, "forbid_regex": ["^\\s*(sí|si)\\b[.,:]"] }
+    ]
+}
