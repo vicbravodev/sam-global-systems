@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Seeders;
 
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\Team;
 use Database\Seeders\SamsaraTestSeeder;
@@ -23,7 +23,7 @@ class SamsaraTestSeederTest extends TestCase
 
         $setting = TenantSetting::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('setting_key', RequestPanicMediaOnContextBuilt::SETTING_KEY)
+            ->where('setting_key', RequestIncidentMediaOnContextBuilt::SETTING_KEY)
             ->firstOrFail();
 
         $this->assertTrue((bool) ($setting->value_json['value'] ?? false));
@@ -33,7 +33,7 @@ class SamsaraTestSeederTest extends TestCase
 
         $this->assertSame(1, TenantSetting::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('setting_key', RequestPanicMediaOnContextBuilt::SETTING_KEY)
+            ->where('setting_key', RequestIncidentMediaOnContextBuilt::SETTING_KEY)
             ->count());
     }
 }

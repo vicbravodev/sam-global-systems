@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use App\Domains\Access\Models\Role;
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\Integrations\Enums\IntegrationProviderStatus;
 use App\Domains\Integrations\Enums\IntegrationProviderType;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -145,7 +145,7 @@ class SamsaraTestSeeder extends Seeder
         TenantSetting::withoutGlobalScopes()->updateOrCreate(
             [
                 'team_id' => $team->id,
-                'setting_key' => RequestPanicMediaOnContextBuilt::SETTING_KEY,
+                'setting_key' => RequestIncidentMediaOnContextBuilt::SETTING_KEY,
             ],
             [
                 'setting_group' => SettingGroup::Operational,

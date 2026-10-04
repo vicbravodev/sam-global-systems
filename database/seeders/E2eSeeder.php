@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -75,7 +75,7 @@ class E2eSeeder extends Seeder
 
         TenantSetting::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('setting_key', RequestPanicMediaOnContextBuilt::SETTING_KEY)
+            ->where('setting_key', RequestIncidentMediaOnContextBuilt::SETTING_KEY)
             ->update(['value_json' => ['value' => false]]);
 
         User::query()->where('email', SuperAdminSeeder::SUPER_ADMIN_EMAIL)->firstOrFail()->forceFill([

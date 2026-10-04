@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Seeders;
 
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\TenantConfig\Models\TenantSetting;
@@ -109,7 +109,7 @@ class E2eSeederTest extends TestCase
 
         $setting = TenantSetting::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('setting_key', RequestPanicMediaOnContextBuilt::SETTING_KEY)
+            ->where('setting_key', RequestIncidentMediaOnContextBuilt::SETTING_KEY)
             ->sole();
 
         $this->assertSame(['value' => false], $setting->value_json);

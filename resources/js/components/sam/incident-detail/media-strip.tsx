@@ -32,6 +32,7 @@ import type {
     IncidentMediaRetrieval,
 } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
+import { contextCaptureLabel, emptyMediaMessage } from './lib';
 import { mediaResultLabel } from './media-verdict';
 
 const PENDING_REQUEST_STATUSES = ['pending', 'sent', 'processing'];
@@ -136,6 +137,11 @@ function MediaThumb({
                     <span className="grid size-7 place-items-center rounded-full bg-black/60 text-white">
                         <Play size={13} strokeWidth={2} className="ml-0.5" />
                     </span>
+                </span>
+            )}
+            {item.context && (
+                <span className="absolute top-1 left-1 rounded bg-black/70 px-1 text-3xs text-white">
+                    {contextCaptureLabel(item.camera, item.offsetSeconds)}
                 </span>
             )}
             <VerdictBadge result={result} />
@@ -307,8 +313,10 @@ export function MediaStrip({
             {media.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border py-6 text-fg-3">
                     <FileQuestion size={20} strokeWidth={1.5} />
-                    <span className="text-xs">
-                        Sin media disponible para este evento.
+                    <span className="px-4 text-center text-xs">
+                        {emptyMediaMessage(
+                            requests.map((request) => request.status),
+                        )}
                     </span>
                 </div>
             ) : (
@@ -332,7 +340,12 @@ export function MediaStrip({
                     <DialogHeader>
                         <DialogTitle>
                             Media #{openItem?.id} ·{' '}
-                            {openItem?.mediaType ?? 'media'}
+                            {openItem?.context
+                                ? contextCaptureLabel(
+                                      openItem.camera,
+                                      openItem.offsetSeconds,
+                                  )
+                                : (openItem?.mediaType ?? 'media')}
                             {openIndex !== null && media.length > 1 && (
                                 <span className="ml-2 font-mono text-xs font-normal text-fg-3">
                                     {openIndex + 1} / {media.length}

@@ -42,6 +42,9 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      */
     private const MAX_PAGES = 50;
 
+    /** Tope de páginas al listar media subida (ventana máxima de 1 día). */
+    private const UPLOADED_MEDIA_MAX_PAGES = 10;
+
     /** Samsara rejects driver-app messages longer than this. */
     public const int DRIVER_MESSAGE_MAX_LENGTH = 2500;
 
@@ -957,23 +960,52 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $pairs[] = 'triggerReasons='.urlencode($reason);
         }
 
-        try {
-            $response = $this->client($token)->get('/cameras/media?'.implode('&', $pairs));
-        } catch (\Throwable $e) {
-            SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'connection_failed', input: ['vehicle_id' => $externalAssetId], error: $e);
+        $items = [];
+        $cursor = null;
+        $page = 0;
 
-            return ['items' => []];
-        }
+        // Las fotos periódicas (una por cámara cada ~2 min) llenan la ventana:
+        // se siguen los cursores, con tope para que una respuesta rara no
+        // encadene peticiones sin fin. Una página que falla corta el listado
+        // pero conserva lo ya leído.
+        do {
+            $query = implode('&', $cursor === null ? $pairs : [...$pairs, 'after='.urlencode($cursor)]);
 
-        if (! $response->successful()) {
-            SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'provider_rejected', input: ['vehicle_id' => $externalAssetId, 'http_status' => $response->status(), 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $response->json('message')), 200), 'provider_request_id' => $response->json('requestId')]);
+            try {
+                $response = $this->client($token)->get('/cameras/media?'.$query);
+            } catch (\Throwable $e) {
+                SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'connection_failed', input: ['vehicle_id' => $externalAssetId, 'page' => $page + 1], error: $e);
 
-            return ['items' => []];
-        }
+                return ['items' => $items];
+            }
 
+            if (! $response->successful()) {
+                SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'provider_rejected', input: ['vehicle_id' => $externalAssetId, 'page' => $page + 1, 'http_status' => $response->status(), 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $response->json('message')), 200), 'provider_request_id' => $response->json('requestId')]);
+
+                return ['items' => $items];
+            }
+
+            $items = [...$items, ...$this->mapUploadedMedia((array) $response->json('data.media', []))];
+
+            $endCursor = $response->json('pagination.endCursor');
+            $cursor = (bool) $response->json('pagination.hasNextPage', false) && is_string($endCursor) && $endCursor !== ''
+                ? $endCursor
+                : null;
+            $page++;
+        } while ($cursor !== null && $page < self::UPLOADED_MEDIA_MAX_PAGES);
+
+        return ['items' => $items];
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $mediaList
+     * @return list<array{input: string|null, status: string, url: string|null, media_type: string|null, trigger_reason: string|null, start_time: string|null}>
+     */
+    private function mapUploadedMedia(array $mediaList): array
+    {
         $items = [];
 
-        foreach ((array) $response->json('data.media', []) as $media) {
+        foreach ($mediaList as $media) {
             $media = (array) $media;
             $url = Arr::get($media, 'urlInfo.url');
 
@@ -989,7 +1021,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             ];
         }
 
-        return ['items' => $items];
+        return $items;
     }
 
     private function scalarString(mixed $value): ?string

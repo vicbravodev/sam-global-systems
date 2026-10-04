@@ -125,8 +125,8 @@ export function EmergenciesSection({
             >
                 <FormCard>
                     <Field
-                        label="Pedir el video automáticamente"
-                        help="SAM pide a la cámara el video del momento en cuanto llega el evento. Usa la cuota de descargas de video de tu proveedor."
+                        label="Traer fotos y video automáticamente"
+                        help="En todo evento que puede abrir un incidente, SAM trae el video y las fotos que la cámara ya subió alrededor del momento, sin gastar cuota. Si en un pánico la cámara no subió nada en 5 minutos, pide un clip de 20 segundos de ambas cámaras: eso sí usa la cuota de descargas de video de tu proveedor."
                         htmlFor="tc-auto-request"
                     >
                         <div className="flex items-center gap-2.5">
