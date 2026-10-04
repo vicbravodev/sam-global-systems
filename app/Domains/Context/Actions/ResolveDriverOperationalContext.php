@@ -32,6 +32,7 @@ class ResolveDriverOperationalContext
         $windowStart = $windowEnd->copy()->subMinutes(60);
 
         $recentRiskEventsCount = NormalizedEvent::query()
+            ->countable()
             ->where('driver_id', $driverId)
             ->whereBetween('occurred_at', [$windowStart, $windowEnd])
             ->whereHas('eventSeverity', fn ($q) => $q->whereIn('code', ['high', 'critical']))

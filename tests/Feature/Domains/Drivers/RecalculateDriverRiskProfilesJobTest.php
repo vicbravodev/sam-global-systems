@@ -190,4 +190,33 @@ class RecalculateDriverRiskProfilesJobTest extends TestCase
         $this->assertEquals(2.0, (float) $profile->risk_score);
         $this->assertSame(0, $profile->harsh_events_count);
     }
+
+    public function test_events_dismissed_at_the_provider_or_superseded_do_not_count(): void
+    {
+        $driver = Driver::factory()->create(['team_id' => $this->teamId]);
+        $type = $this->makeEventType('harsh_braking');
+
+        $this->addEvents($driver, 'harsh_braking', 2);
+        // Falso positivo descartado en Samsara y fila vieja de un mismo evento.
+        NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'driver_id' => $driver->id,
+            'event_type_id' => $type->id,
+            'occurred_at' => now()->subDays(5),
+            'provider_state' => 'dismissed',
+            'provider_dismissed_at' => now()->subDays(4),
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'driver_id' => $driver->id,
+            'event_type_id' => $type->id,
+            'occurred_at' => now()->subDays(5),
+            'provider_state' => NormalizedEvent::PROVIDER_STATE_SUPERSEDED,
+        ]);
+
+        $this->runJob();
+
+        $profile = DriverRiskProfile::query()->where('driver_id', $driver->id)->sole();
+        $this->assertSame(2, $profile->harsh_events_count);
+    }
 }

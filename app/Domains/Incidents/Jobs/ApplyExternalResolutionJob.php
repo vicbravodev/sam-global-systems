@@ -86,12 +86,37 @@ class ApplyExternalResolutionJob implements ShouldQueue
      * original panic). Fallback: open incidents for the same asset/driver inside
      * the incident dedup window, mirroring CreateIncidentFromEvent.
      *
-     * @return array{incidents: list<Incident>, strategy: 'external_event_id'|'asset_window'|'none', external_event_id_present: bool, window_minutes: ?int}
+     * A provider entity (a safety event, `provider_event_key`) is updated in
+     * place, so its incident is linked to THIS row (`same_event`); rows from
+     * before the entity still match by provider event id. It never falls back
+     * to the asset window: a harsh braking dismissed at Samsara must not mark
+     * an unrelated open panic of the same truck as resolved.
+     *
+     * @return array{incidents: list<Incident>, strategy: 'same_event'|'external_event_id'|'asset_window'|'none', external_event_id_present: bool, window_minutes: ?int}
      */
     private function findOpenIncidents(NormalizedEvent $event): array
     {
         $externalEventId = $event->rawEvent()->withoutGlobalScopes()->value('external_event_id');
         $externalEventIdPresent = $externalEventId !== null;
+
+        if ($event->provider_event_key !== null) {
+            $incidents = Incident::query()
+                ->where('team_id', $event->team_id)
+                ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
+                ->where(fn ($q) => $q
+                    ->where('related_event_id', $event->id)
+                    ->orWhereHas('eventLinks', fn ($links) => $links->where('normalized_event_id', $event->id)))
+                ->get();
+
+            if ($incidents->isNotEmpty()) {
+                return [
+                    'incidents' => array_values($incidents->all()),
+                    'strategy' => 'same_event',
+                    'external_event_id_present' => $externalEventIdPresent,
+                    'window_minutes' => null,
+                ];
+            }
+        }
 
         if ($externalEventId !== null) {
             $incidents = Incident::query()
@@ -113,7 +138,7 @@ class ApplyExternalResolutionJob implements ShouldQueue
             }
         }
 
-        if ($event->asset_id === null && $event->driver_id === null) {
+        if ($event->provider_event_key !== null || ($event->asset_id === null && $event->driver_id === null)) {
             return ['incidents' => [], 'strategy' => 'none', 'external_event_id_present' => $externalEventIdPresent, 'window_minutes' => null];
         }
 
