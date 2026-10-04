@@ -10,6 +10,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\PushSubscription;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Domains\Notifications\Support\MessagingSuppressions;
@@ -134,6 +135,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
             $suppressed = $address !== null && $address !== '' ? MessagingSuppressions::reasonFor($type, $address) : null;
             $invalid = match (true) {
                 $address === null || $address === '' => "no {$type->value} address (missing phone/email) for recipient",
+                $type === ChannelType::Push && ! PushSubscription::existsFor($teamId, (int) $address) => 'no device subscribed for push',
                 $suppressed !== null => "address unavailable for {$type->value}",
                 default => ChannelAddress::invalidReason($type, $address),
             };
@@ -144,6 +146,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 $walk[] = ['channel_type' => $type->value, 'outcome' => match (true) {
                     $delivery === null => 'race_lost',
                     $address === null || $address === '' => 'no_address',
+                    $type === ChannelType::Push && $suppressed === null => 'no_push_device',
                     $suppressed !== null => 'suppressed',
                     default => 'invalid_address',
                 }];

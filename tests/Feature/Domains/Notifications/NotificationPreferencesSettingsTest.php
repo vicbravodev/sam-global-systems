@@ -72,8 +72,9 @@ class NotificationPreferencesSettingsTest extends TestCase
                     'channelOptions',
                     fn ($options) => collect($options)->contains(['value' => 'sms', 'label' => 'SMS'])
                         && collect($options)->contains(['value' => 'whatsapp', 'label' => 'WhatsApp'])
-                        // SAM no entrega Push/Slack/Webhook: no se ofrecen.
-                        && collect($options)->pluck('value')->intersect(['push', 'slack', 'webhook'])->isEmpty(),
+                        && collect($options)->contains(['value' => 'push', 'label' => 'Avisos al dispositivo'])
+                        // SAM no entrega Slack/Webhook: no se ofrecen.
+                        && collect($options)->pluck('value')->intersect(['slack', 'webhook'])->isEmpty(),
                 ),
         );
     }

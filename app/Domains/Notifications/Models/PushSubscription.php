@@ -51,6 +51,19 @@ class PushSubscription extends Model
         return hash('sha256', $endpoint);
     }
 
+    /**
+     * ¿El usuario tiene al menos un dispositivo suscrito en ese team? Es la
+     * "dirección" del canal de avisos al dispositivo: sin dispositivo no hay
+     * a dónde mandar y el canal ni se intenta.
+     */
+    public static function existsFor(int $teamId, int $userId): bool
+    {
+        return self::query()
+            ->where('team_id', $teamId)
+            ->where('user_id', $userId)
+            ->exists();
+    }
+
     protected static function booted(): void
     {
         static::saving(function (self $subscription): void {
