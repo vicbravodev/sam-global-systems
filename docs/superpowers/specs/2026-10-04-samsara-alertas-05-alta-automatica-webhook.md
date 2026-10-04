@@ -71,10 +71,11 @@ Migración sobre `webhook_endpoints`:
 - `createWebhook(TenantIntegration, string $name, string $url): array{id: string, secret: string}`
 - `deleteWebhook(TenantIntegration, string $webhookId): void` (404 = ya no existe, ok)
 - `createPanicAlertConfiguration(TenantIntegration, string $name, string $webhookId): string` (id)
+- `pointAlertConfigurationToWebhook(TenantIntegration, string $configurationId, string $webhookId): void` (rotación)
 - `deleteAlertConfiguration(TenantIntegration, string $configurationId): void`
 
-Los errores 401/403 lanzan `ProviderUnauthorized` (ya existe); el resto,
-`ProviderRequestFailedException`. El `secretKey` nunca se registra.
+Todos los errores lanzan `ProviderRequestFailedException`; 401/403 se
+distinguen con `isUnauthorized()`. El `secretKey` nunca se registra.
 
 ### Acción `ProvisionSamsaraWebhook`
 
@@ -124,9 +125,10 @@ una URL que responde 404.
    `previous_secret_expires_at = now + 10 min`.
 4. Borra el webhook viejo.
 
-`HandleWebhook` valida con el secret vigente y, si falla y la gracia no venció,
-con `previous_secret` (log `secret_variant: previous`). Un job diario limpia
-`previous_secret` vencidos.
+`ValidateWebhookSignature` valida con el secret vigente y, si falla y la gracia
+no venció, con `previous_secret` (log `webhook.signature.previous_secret_used`).
+Una llave vencida simplemente deja de aceptarse; no hace falta un job de limpieza
+(se reemplaza en la siguiente rotación).
 
 ### Integraciones (UI)
 

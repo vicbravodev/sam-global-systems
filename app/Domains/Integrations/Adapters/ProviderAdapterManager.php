@@ -71,6 +71,31 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $this->forIntegration($integration)->fetchAlertIncidents($integration, $configurationIds, $startTime, $cursor);
     }
 
+    public function createWebhook(TenantIntegration $integration, string $name, string $url): array
+    {
+        return $this->forIntegration($integration)->createWebhook($integration, $name, $url);
+    }
+
+    public function deleteWebhook(TenantIntegration $integration, string $webhookId): void
+    {
+        $this->forIntegration($integration)->deleteWebhook($integration, $webhookId);
+    }
+
+    public function createPanicAlertConfiguration(TenantIntegration $integration, string $name, string $webhookId): string
+    {
+        return $this->forIntegration($integration)->createPanicAlertConfiguration($integration, $name, $webhookId);
+    }
+
+    public function pointAlertConfigurationToWebhook(TenantIntegration $integration, string $configurationId, string $webhookId): void
+    {
+        $this->forIntegration($integration)->pointAlertConfigurationToWebhook($integration, $configurationId, $webhookId);
+    }
+
+    public function deleteAlertConfiguration(TenantIntegration $integration, string $configurationId): void
+    {
+        $this->forIntegration($integration)->deleteAlertConfiguration($integration, $configurationId);
+    }
+
     public function requestMedia(
         TenantIntegration $integration,
         string $externalAssetId,

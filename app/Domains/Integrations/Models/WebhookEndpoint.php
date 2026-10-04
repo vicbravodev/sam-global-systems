@@ -23,7 +23,33 @@ class WebhookEndpoint extends Model
         'last_valid_received_at',
         'last_rejected_at',
         'last_rejection_reason',
+        'setup_mode',
+        'setup_status',
+        'setup_error',
+        'provider_webhook_id',
+        'provider_alert_configuration_id',
+        'provisioned_at',
+        'previous_secret',
+        'previous_secret_expires_at',
     ];
+
+    /** El cliente creó el webhook en Samsara y pegó la Secret Key. */
+    public const string SETUP_MANUAL = 'manual';
+
+    /** SAM creó el webhook y su alerta de pánico con el token del cliente. */
+    public const string SETUP_AUTOMATIC = 'automatic';
+
+    public const string SETUP_STATUS_PENDING = 'pending';
+
+    public const string SETUP_STATUS_PROVISIONED = 'provisioned';
+
+    /** El token no tiene Write Webhooks / Write Alerts: queda el flujo manual. */
+    public const string SETUP_STATUS_MISSING_PERMISSIONS = 'missing_permissions';
+
+    public const string SETUP_STATUS_FAILED = 'failed';
+
+    /** Minutos que la Secret Key anterior sigue valiendo tras una rotación. */
+    public const int ROTATION_GRACE_MINUTES = 10;
 
     /** Vocabulario de `signatureHealth()`. */
     public const string HEALTH_PENDING_SECRET = 'pending_secret';
@@ -42,6 +68,7 @@ class WebhookEndpoint extends Model
 
     protected $hidden = [
         'secret',
+        'previous_secret',
     ];
 
     /**
@@ -64,6 +91,27 @@ class WebhookEndpoint extends Model
     public function hasSecret(): bool
     {
         return $this->secret !== null && $this->secret !== '';
+    }
+
+    public function isProvisioned(): bool
+    {
+        return $this->setup_mode === self::SETUP_AUTOMATIC
+            && $this->setup_status === self::SETUP_STATUS_PROVISIONED
+            && $this->provider_webhook_id !== null;
+    }
+
+    /**
+     * La Secret Key anterior a una rotación, mientras dure la gracia: Samsara
+     * pudo firmar con ella entregas que siguen en vuelo.
+     */
+    public function previousSecretInGrace(): ?string
+    {
+        if ($this->previous_secret === null || $this->previous_secret === ''
+            || $this->previous_secret_expires_at === null || $this->previous_secret_expires_at->isPast()) {
+            return null;
+        }
+
+        return $this->previous_secret;
     }
 
     /**
@@ -161,6 +209,9 @@ class WebhookEndpoint extends Model
             'last_rejected_at' => 'datetime',
             'secret_configured_at' => 'datetime',
             'secret' => 'encrypted',
+            'provisioned_at' => 'datetime',
+            'previous_secret' => 'encrypted',
+            'previous_secret_expires_at' => 'datetime',
         ];
     }
 

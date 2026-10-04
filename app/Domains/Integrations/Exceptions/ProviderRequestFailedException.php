@@ -49,4 +49,10 @@ class ProviderRequestFailedException extends RuntimeException
     {
         return $this->status === 429;
     }
+
+    /** Token inválido, revocado o sin el permiso (scope) que pide la llamada. */
+    public function isUnauthorized(): bool
+    {
+        return in_array($this->status, [401, 403], true);
+    }
 }
