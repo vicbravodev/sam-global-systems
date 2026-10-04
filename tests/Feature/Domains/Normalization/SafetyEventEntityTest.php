@@ -250,4 +250,25 @@ class SafetyEventEntityTest extends TestCase
         $this->assertSame([$plain->id], $ids);
         $this->assertNotContains($superseded->id, $ids);
     }
+
+    public function test_a_dismissal_never_resolves_another_tenants_incident_for_the_same_provider_event(): void
+    {
+        $other = Team::factory()->create();
+        $this->assetFor($other);
+
+        $this->normalize($this->delivery('needsReview', 'Crash', '2026-10-04T10:00:05Z', $other, self::VEHICLE_ID.'-'.$other->id));
+        $theirs = NormalizedEvent::withoutGlobalScopes()->where('team_id', $other->id)->sole();
+        $theirIncident = Incident::withoutGlobalScopes()->where('related_event_id', $theirs->id)->sole();
+
+        $this->normalize($this->delivery('needsReview', 'Crash', '2026-10-04T10:00:05Z'));
+        $mine = NormalizedEvent::withoutGlobalScopes()->where('team_id', $this->team->id)->sole();
+        $myIncident = Incident::withoutGlobalScopes()->where('related_event_id', $mine->id)->sole();
+
+        $dismissed = $this->delivery('dismissed', 'Crash', '2026-10-04T10:30:00Z');
+        $this->assertNoTenantLeak($this->team, fn () => $this->normalize($dismissed));
+
+        $this->assertNotNull($myIncident->fresh()?->external_resolved_at);
+        $this->assertNull($theirIncident->fresh()?->external_resolved_at);
+        $this->assertSame('needsReview', $theirs->fresh()?->provider_state);
+    }
 }
