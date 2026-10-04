@@ -89,6 +89,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Eco de safety events en alertas de Samsara
+    |--------------------------------------------------------------------------
+    |
+    | Alertas que Samsara dispara POR un safety event ("A safety event
+    | occurred", "Harsh Event", "severely speeding"): llegan por webhook en
+    | segundos, el safety event llega por poll con su etiqueta y media.
+    | CorrelateSafetyAlertEcho los enlaza si son de la misma unidad a
+    | ± window_seconds; si el eco llega primero, pide el poll de safety events
+    | de la integración con poll_delay_seconds de retraso (Samsara tarda en
+    | publicarlo en el stream).
+    |
+    */
+
+    'safety_alert_echo' => [
+        'window_seconds' => (int) env('PIPELINE_SAFETY_ALERT_ECHO_WINDOW_SECONDS', 120),
+        'poll_delay_seconds' => (int) env('PIPELINE_SAFETY_ALERT_ECHO_POLL_DELAY_SECONDS', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Retención de datos operativos
     |--------------------------------------------------------------------------
     |

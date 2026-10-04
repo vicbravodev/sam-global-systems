@@ -49,7 +49,7 @@ export default function EventShow({
 
                 <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <div className="flex min-w-0 flex-col gap-4">
-                        <FactsCard event={event} />
+                        <FactsCard event={event} teamSlug={teamSlug} />
                         <MediaCard media={media} />
                         <JsonBlock
                             title="Payload normalizado"

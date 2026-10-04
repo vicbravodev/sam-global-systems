@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Domains\Integrations\Enums\IntegrationProviderStatus;
 use App\Domains\Integrations\Enums\IntegrationProviderType;
 use App\Domains\Integrations\Models\IntegrationProvider;
+use App\Domains\Normalization\Enums\SamsaraAlertTrigger;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
@@ -19,6 +20,9 @@ class NormalizationSeeder extends Seeder
      *
      * @var list<array{conditions: array<string, int|string>, type: string, priority: int}>
      */
+    /** Below panic (20), tampering (15) and camera obstructed (10). */
+    public const int SAFETY_ECHO_PRIORITY = 5;
+
     public const array ALERT_INCIDENT_RULES = [
         ['conditions' => ['data.conditions.*.triggerId' => 1034], 'type' => 'panic_button', 'priority' => 20],
         ['conditions' => ['data.conditions.*.triggerId' => 1045], 'type' => 'tampering', 'priority' => 15],
@@ -120,6 +124,8 @@ class NormalizationSeeder extends Seeder
             ['code' => 'did_not_yield', 'name' => 'No cedió el paso', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'railroad_crossing_violation', 'name' => 'Violación de cruce ferroviario', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'other_violation', 'name' => 'Otra infracción', 'category' => 'safety', 'severity' => 'medium'],
+            // Eco en AlertIncident de un safety event (spec alertas 03): nunca abre incidente.
+            ['code' => 'provider_safety_alert', 'name' => 'Alerta de seguridad de Samsara', 'category' => 'safety', 'severity' => 'low'],
 
             // Compliance
             ['code' => 'camera_obstructed', 'name' => 'Cámara obstruida', 'category' => 'compliance', 'severity' => 'high'],
@@ -210,6 +216,37 @@ class NormalizationSeeder extends Seeder
                     'is_active' => true,
                 ],
             );
+        }
+
+        // Alerts Samsara fires BECAUSE of a safety event: the same fact also
+        // comes through the safety-events poll with its label and media. They
+        // are recorded as echoes (safety category: no AI, no incident) and
+        // correlated with their safety event. One rule per trigger (conditions
+        // are an AND of equalities); conditions are compared in PHP because the
+        // jsonb column cannot go in a WHERE.
+        if (isset($eventTypes['provider_safety_alert'])) {
+            $echoType = $eventTypes['provider_safety_alert'];
+            $existing = EventMappingRule::query()
+                ->where('provider_id', $samsara->id)
+                ->where('external_event_type', 'AlertIncident')
+                ->where('mapped_event_type_id', $echoType->id)
+                ->get();
+
+            foreach (SamsaraAlertTrigger::safetyEchoes() as $trigger) {
+                $conditions = ['data.conditions.*.triggerId' => $trigger->value];
+                $rule = $existing->first(fn (EventMappingRule $r) => $r->external_conditions_json === $conditions);
+
+                if ($rule === null) {
+                    EventMappingRule::create([
+                        'provider_id' => $samsara->id,
+                        'external_event_type' => 'AlertIncident',
+                        'external_conditions_json' => $conditions,
+                        'mapped_event_type_id' => $echoType->id,
+                        'priority' => self::SAFETY_ECHO_PRIORITY,
+                        'is_active' => true,
+                    ]);
+                }
+            }
         }
 
         // Safety Event behavior label rules (stream API, direct match).
