@@ -719,6 +719,7 @@ Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `eval
 | `asset_inactive` | info | el activo está `inactive` o `maintenance`; calc `asset_status` |
 | `not_moving` | debug | `speed_kph = null`, `speed_kph < moving_threshold_kph` o `motion_state_moving = false` |
 | `stale_position` | debug | `position_age_s >= freshness_s` (`position_age_s` va truncado a segundos: la comparación real es con la edad exacta, `> freshness_s`) |
+| `inside_safe_geofence` | info | la unidad está dentro (`inside`, nunca `near_boundary`) de una geocerca del tenant cuya categoría está en `telematics.after_hours_safe_geofence_categories` (por defecto `base`, `client_site`): actividad esperada, no se alerta; calc `safe_geofence_category`, `safe_geofence_categories` |
 | `cooldown_active` | debug | `last_alert_age_s < cooldown_s` |
 | ok (`raised`) | info | evento interno `after_hours_movement` guardado y encolado |
 
