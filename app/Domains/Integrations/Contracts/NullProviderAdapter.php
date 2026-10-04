@@ -98,4 +98,14 @@ class NullProviderAdapter implements ProviderAdapter
     public function pointAlertConfigurationToWebhook(TenantIntegration $integration, string $configurationId, string $webhookId): void {}
 
     public function deleteAlertConfiguration(TenantIntegration $integration, string $configurationId): void {}
+
+    public function fetchHosClocks(TenantIntegration $integration): array
+    {
+        return [];
+    }
+
+    public function fetchTags(TenantIntegration $integration): array
+    {
+        return [];
+    }
 }

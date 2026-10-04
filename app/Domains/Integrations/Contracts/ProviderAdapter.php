@@ -3,10 +3,12 @@
 namespace App\Domains\Integrations\Contracts;
 
 use App\Domains\Assets\Enums\TelematicsFeed;
+use App\Domains\Integrations\Data\HosClockReading;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejected;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
+use App\Domains\Integrations\Exceptions\ProviderRequestFailed;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
@@ -200,4 +202,23 @@ interface ProviderAdapter
      *                                               worker validates. Null = now.
      */
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool;
+
+    /**
+     * Current Hours-of-Service clocks of every driver the provider reports
+     * (Samsara `GET /fleet/hos/clocks`). Throws the typed
+     * {@see ProviderRequestFailed}
+     * family on failure — a partial listing would look like drivers leaving
+     * the monitored set, so callers must discard the whole cycle instead.
+     *
+     * @return array<int, HosClockReading>
+     */
+    public function fetchHosClocks(TenantIntegration $integration): array;
+
+    /**
+     * Every tag of the provider org with its direct members (Samsara
+     * `GET /tags`). Same failure contract as {@see fetchHosClocks()}.
+     *
+     * @return array<int, array{id: string, name: string, parent_id: string|null, vehicle_ids: array<int, string>, driver_ids: array<int, string>}>
+     */
+    public function fetchTags(TenantIntegration $integration): array;
 }
