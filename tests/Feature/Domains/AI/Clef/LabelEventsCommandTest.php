@@ -82,6 +82,19 @@ class LabelEventsCommandTest extends TestCase
         $this->assertNotNull(AIEventEvaluation::withoutGlobalScopes()->find($noise->id)?->operator_verdict);
     }
 
+    public function test_event_whose_latest_version_is_labeled_is_not_offered_again(): void
+    {
+        $team = Team::factory()->create();
+        $user = $this->member($team);
+        $v1 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 1]);
+        $v2 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 2, 'operator_verdict' => OperatorVerdict::Confirmed]);
+        $v2->forceFill(['normalized_event_id' => $v1->normalized_event_id])->save();
+
+        $this->artisan('ai:label-events', ['--team' => $team->id, '--user' => $user->email])
+            ->expectsOutputToContain('No hay eventos pendientes')
+            ->assertSuccessful();
+    }
+
     public function test_rejects_user_outside_the_team(): void
     {
         $team = Team::factory()->create();
