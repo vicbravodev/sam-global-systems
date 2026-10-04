@@ -157,6 +157,16 @@ Quién puede qué dentro de un tenant, y los cambios de quién entra. Sólo ids,
 |---|---|---|---|
 | `storage.object.operation_failed` | failed | `storage_unavailable` | `operation` y el contexto del llamador, `error` |
 
+### Observabilidad (`observability`)
+
+Laravel Nightwatch (`App\Providers\NightwatchServiceProvider`). Las tres van al canal `json`, nunca al de Nightwatch: describen justo que Nightwatch no está recibiendo.
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `observability.nightwatch.ingest_capped` | skipped | `daily_cap_reached` | `day`; calc `daily_event_cap` (`NIGHTWATCH_DAILY_EVENT_CAP`), `ingested_today`. Una línea por día: a partir de ahí los lotes se descartan hasta el día siguiente |
+| `observability.nightwatch.budget_unavailable` | degraded | `cache_unavailable` | `day`; calc `daily_event_cap`; `error`. La caché no responde: los lotes pasan sin tope. Una línea por proceso |
+| `observability.nightwatch.unrecoverable` | failed | `nightwatch_exception` | calc `log_interval_seconds`; `error` (agente inalcanzable, token inválido). Como mucho una línea por minuto por proceso |
+
 ### Auditoría (`audit`)
 
 | Código | Outcome | Reason posibles | Campos clave |
