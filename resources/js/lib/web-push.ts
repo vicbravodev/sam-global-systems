@@ -1,4 +1,6 @@
+import { router } from '@inertiajs/react';
 import { deleteJson, postJson } from '@/lib/sam-fetch';
+import { logout } from '@/routes';
 import {
     destroy as destroySubscription,
     store as storeSubscription,
@@ -159,6 +161,46 @@ export async function unsubscribeDevice(): Promise<void> {
         endpoint: subscription.endpoint,
     });
     await subscription.unsubscribe();
+}
+
+const LOGOUT_FORGET_TIMEOUT_MS = 1500;
+
+async function forgetThisDevice(): Promise<void> {
+    if (!('serviceWorker' in navigator)) {
+        return;
+    }
+
+    // getRegistration (no register): cerrar sesión no instala nada nuevo.
+    if (!(await navigator.serviceWorker.getRegistration('/'))) {
+        return;
+    }
+
+    await unsubscribeDevice();
+}
+
+/**
+ * Antes de cerrar sesión da de baja este navegador (en el servidor mientras
+ * la sesión sigue viva, y en el propio navegador): quien cierra sesión deja
+ * de recibir avisos aquí. Es de mejor esfuerzo: nunca falla ni tarda más de
+ * 1.5 s, así cerrar sesión no se traba.
+ */
+export async function forgetDeviceOnLogout(): Promise<void> {
+    await Promise.race([
+        forgetThisDevice().catch(() => undefined),
+        new Promise<void>((resolve) => {
+            window.setTimeout(resolve, LOGOUT_FORGET_TIMEOUT_MS);
+        }),
+    ]);
+}
+
+/**
+ * Cierra sesión olvidando antes este dispositivo. Para los botones de
+ * "Cerrar sesión" (el clic debe hacer `preventDefault` del enlace).
+ */
+export async function logoutForgettingDevice(): Promise<void> {
+    await forgetDeviceOnLogout();
+    router.flushAll();
+    router.post(logout());
 }
 
 /**
