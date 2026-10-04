@@ -3,8 +3,8 @@
 namespace App\Domains\Ingestion\Notifications;
 
 use App\Domains\Ingestion\Models\PipelineFailureAlert;
+use App\Support\SamMailMessage;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -46,7 +46,7 @@ class PipelineFailureNotification extends Notification
         return ['mail', 'database'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         $d = $this->details;
         $unmappedAlert = $d['kind'] === PipelineFailureAlert::KIND_UNMAPPED_ALERT;
@@ -61,35 +61,37 @@ class PipelineFailureNotification extends Notification
             ? ($d['external_event_type'] ?? 'alerta')
             : ($d['event_type_code'] ?? 'evento');
 
-        $mail = (new MailMessage)
+        $rows = [
+            'Tenant' => $d['team_name'] ?? 'Sin tenant resoluble',
+            'Tipo' => $type,
+            'Activo' => $d['asset_name'] ?? ($d['asset_id'] !== null ? "#{$d['asset_id']}" : 'Sin resolver'),
+            'Hora del evento' => $d['occurred_at'] ?? 'Desconocida',
+            'Hora del fallo' => $d['failed_at'],
+            'Raw event' => $d['raw_event_id'] ?? '—',
+            'Evento normalizado' => $d['normalized_event_id'] ?? '—',
+        ];
+
+        if ($this->audience === self::AUDIENCE_PLATFORM) {
+            $rows['Etapa'] = $d['stage'].' ('.$d['kind'].')';
+            $rows['Rescates agotados'] = $d['reprocess_attempts'];
+
+            if ($d['error_class'] !== null) {
+                $rows['Error'] = $d['error_class'].' — '.($d['error_message'] ?? '');
+            }
+        }
+
+        return (new SamMailMessage)
             ->error()
             ->subject("[SAM] {$what}: {$type}".($d['team_name'] !== null ? " · {$d['team_name']}" : ''))
+            ->eyebrow($this->audience === self::AUDIENCE_PLATFORM ? 'Alerta de plataforma' : 'Alerta de tu flota')
+            ->greeting($what)
             ->line(match (true) {
                 $webhookMissed => 'El respaldo de SAM encontró en el proveedor una emergencia (p. ej. un botón de pánico) que el webhook nunca entregó. El incidente ya se abrió por el respaldo, pero el webhook de la integración no está funcionando: revisa la Secret Key y el estado del webhook en Integraciones.',
                 $unmappedAlert => 'Llegó una alerta del proveedor (posible emergencia, p. ej. un botón de pánico) que SAM no pudo clasificar, así que no se abrió incidente. Revísala de inmediato en la plataforma del proveedor y confirma con la unidad.',
                 $d['is_emergency'] => 'Un evento de emergencia no pudo procesarse automáticamente. Revísalo de inmediato en la plataforma y confirma con la unidad.',
                 default => 'Un evento no pudo procesarse automáticamente.',
             })
-            ->line('Tenant: '.($d['team_name'] ?? 'sin tenant resoluble'))
-            ->line('Tipo: '.$type)
-            ->line('Activo: '.($d['asset_name'] ?? ($d['asset_id'] !== null ? "#{$d['asset_id']}" : 'sin resolver')))
-            ->line('Hora del evento: '.($d['occurred_at'] ?? 'desconocida'))
-            ->line('Hora del fallo: '.$d['failed_at'])
-            ->line('Raw event: '.($d['raw_event_id'] ?? '—').' · Evento normalizado: '.($d['normalized_event_id'] ?? '—'));
-
-        if ($this->audience === self::AUDIENCE_PLATFORM) {
-            $mail->line('Etapa: '.$d['stage'].' ('.$d['kind'].')');
-
-            if ($d['reprocess_attempts'] !== null) {
-                $mail->line("Rescates agotados: {$d['reprocess_attempts']}");
-            }
-
-            if ($d['error_class'] !== null) {
-                $mail->line('Error: '.$d['error_class'].' — '.($d['error_message'] ?? ''));
-            }
-        }
-
-        return $mail;
+            ->details($rows, 'Detalle del evento');
     }
 
     /**

@@ -87,7 +87,8 @@ class DemoRequestTest extends TestCase
         $this->assertInstanceOf(MailMessage::class, $mail);
         $this->assertStringContainsString('Transportes del Norte', (string) $mail->subject);
         $this->assertSame([['ana@transnorte.mx', 'Ana Prospecto']], $mail->replyTo);
-        $this->assertContains('Correo: ana@transnorte.mx', $mail->introLines);
+        $this->assertSame('ana@transnorte.mx', $mail->detailRows()['Correo'] ?? null);
+        $this->assertStringContainsString('ana@transnorte.mx', (string) $mail->render());
         $this->assertSame(route('admin.demo-requests.index'), $mail->actionUrl);
     }
 

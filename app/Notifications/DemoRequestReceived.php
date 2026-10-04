@@ -3,8 +3,8 @@
 namespace App\Notifications;
 
 use App\Domains\Tenancy\Models\DemoRequest;
+use App\Support\SamMailMessage;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -32,26 +32,25 @@ class DemoRequestReceived extends Notification
         return ['mail'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         $request = $this->demoRequest;
 
-        $mail = (new MailMessage)
+        return (new SamMailMessage)
             ->subject("[SAM] Nueva solicitud de demo: {$request->company}")
             ->replyTo($request->email, $request->name)
-            ->greeting('Nueva solicitud de demo')
-            ->line('Un prospecto pidió una demo desde el sitio. Contáctalo y marca el seguimiento en la consola.')
-            ->line("Nombre: {$request->name}")
-            ->line("Empresa: {$request->company}")
-            ->line("Correo: {$request->email}")
-            ->line('Teléfono: '.($request->phone ?? 'no lo dejó'))
-            ->line("Tamaño de flota: {$request->fleet_size} unidades");
-
-        if ($request->message !== null && $request->message !== '') {
-            $mail->line('Mensaje: '.$request->message);
-        }
-
-        return $mail
+            ->tone(SamMailMessage::TONE_SUCCESS)
+            ->eyebrow('Nuevo prospecto')
+            ->greeting("{$request->company} quiere conocer SAM")
+            ->line("{$request->name} pidió una demo desde el sitio para una flota de {$request->fleet_size} unidades. Contáctalo y marca el seguimiento en la consola.")
+            ->details([
+                'Nombre' => $request->name,
+                'Empresa' => $request->company,
+                'Correo' => $request->email,
+                'Teléfono' => $request->phone ?? 'No lo dejó',
+                'Tamaño de flota' => "{$request->fleet_size} unidades",
+                'Mensaje' => $request->message,
+            ], 'Datos de contacto')
             ->action('Ver en la consola', route('admin.demo-requests.index'))
             ->line('Responde a este correo para escribirle directamente al prospecto.');
     }
