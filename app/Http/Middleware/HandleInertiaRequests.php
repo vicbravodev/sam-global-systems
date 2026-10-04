@@ -9,6 +9,7 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Drivers\Models\Driver;
+use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -145,6 +146,8 @@ class HandleInertiaRequests extends Middleware
             'incidents' => $gate->allows('viewAny', Incident::class),
             'events' => $gate->allows('viewAny', NormalizedEvent::class),
             'drivers' => $gate->allows('viewAny', Driver::class),
+            'hos' => $gate->allows('viewAny', HosDriverState::class),
+            'hosConfig' => $gate->allows('viewConfig', HosDriverState::class),
             'rules' => $gate->allows('viewAny', DecisionRule::class),
             'automation' => $gate->allows('viewAny', AutomationWorkflow::class),
             'analytics' => $gate->allows('viewAny', KpiRecord::class),

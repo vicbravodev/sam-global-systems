@@ -227,6 +227,10 @@ export interface NavPermissions {
     incidents: boolean;
     events: boolean;
     drivers: boolean;
+    /** Monitoreo HOS: feature `hos_monitoring` + `drivers.view`. */
+    hos: boolean;
+    /** Sección HOS de la configuración: feature + `config.view`. */
+    hosConfig: boolean;
     rules: boolean;
     automation: boolean;
     analytics: boolean;
