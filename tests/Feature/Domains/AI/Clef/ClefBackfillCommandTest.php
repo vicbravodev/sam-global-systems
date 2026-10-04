@@ -1,0 +1,93 @@
+<?php
+
+namespace Tests\Feature\Domains\AI\Clef;
+
+use App\Domains\AI\Enums\EvaluationMode;
+use App\Domains\AI\Enums\OperatorVerdict;
+use App\Domains\AI\Jobs\ShadowEvaluateWithClefJob;
+use App\Domains\AI\Models\AIShadowEvaluation;
+use App\Models\Team;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
+use Tests\Feature\Domains\AI\Clef\Concerns\BuildsClefFixtures;
+use Tests\TestCase;
+
+class ClefBackfillCommandTest extends TestCase
+{
+    use AssertsSystemLog, BuildsClefFixtures, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Queue::fake([ShadowEvaluateWithClefJob::class]);
+        config(['services.cloudflare.account_id' => 'acc', 'services.cloudflare.auth_token' => 'tok', 'ai.clef.models' => ['clef', 'clef-flash']]);
+    }
+
+    public function test_dispatches_pending_evaluations_verdicted_first_and_reports_cost(): void
+    {
+        $team = Team::factory()->create();
+        $plain = $this->makeEvaluation($team);
+        $verdicted = $this->makeEvaluation($team, evaluation: ['operator_verdict' => OperatorVerdict::Confirmed]);
+        $this->makeEvaluation($team, evaluation: ['evaluation_mode' => EvaluationMode::RulesOnly]);
+        $done = $this->makeEvaluation($team);
+        AIShadowEvaluation::factory()->create(['ai_event_evaluation_id' => $done->id, 'model' => 'clef']);
+        AIShadowEvaluation::factory()->create(['ai_event_evaluation_id' => $done->id, 'model' => 'clef-flash']);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])
+            ->expectsOutputToContain('2 evaluaciones')
+            ->assertSuccessful();
+
+        $pushed = [];
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, function (ShadowEvaluateWithClefJob $job) use (&$pushed) {
+            $pushed[] = $job->evaluationId;
+
+            return $job->source === 'backfill';
+        });
+        $this->assertSame([$verdicted->id, $plain->id], $pushed);
+        $this->assertSystemLogged('ai.clef_backfill.planned', fn (array $c) => $c['calc']['evaluations'] === 2 && abs($c['calc']['estimated_cost'] - 0.00185) < 0.00001);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_partially_evaluated_evaluation_is_still_pending(): void
+    {
+        $evaluation = $this->makeEvaluation(Team::factory()->create());
+        AIShadowEvaluation::factory()->create(['ai_event_evaluation_id' => $evaluation->id, 'model' => 'clef']);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertSuccessful();
+
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, 1);
+    }
+
+    public function test_asks_for_confirmation_without_force(): void
+    {
+        $this->makeEvaluation(Team::factory()->create());
+
+        $this->artisan('ai:clef-backfill')
+            ->expectsConfirmation('¿Lanzar el backfill?', 'no')
+            ->assertSuccessful();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_refuses_without_credentials(): void
+    {
+        config(['services.cloudflare.auth_token' => null]);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertFailed();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_team_option_only_touches_that_team(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+        $this->makeEvaluation($teamA);
+        $this->makeEvaluation($teamB);
+
+        $this->artisan('ai:clef-backfill', ['--team' => $teamA->id, '--force' => true])->assertSuccessful();
+
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, 1);
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, fn (ShadowEvaluateWithClefJob $job) => $job->teamId === $teamA->id);
+    }
+}

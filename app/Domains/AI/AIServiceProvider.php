@@ -6,6 +6,7 @@ use App\Contracts\AI\EventEvaluationAgent;
 use App\Contracts\AI\MediaAssessmentAgent;
 use App\Contracts\NullImplementations\NullEventEvaluationAgent;
 use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
+use App\Domains\AI\Commands\ClefBackfillCommand;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
@@ -54,6 +55,12 @@ class AIServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(AIEventEvaluation::class, AIEvaluationPolicy::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ClefBackfillCommand::class,
+            ]);
+        }
 
         Event::listen(EventContextBuilt::class, EvaluateOnEventContextBuilt::class);
         Event::listen(EventMediaAvailable::class, EvaluateMediaOnEventMediaAvailable::class);
