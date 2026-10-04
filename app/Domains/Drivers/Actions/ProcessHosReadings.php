@@ -15,6 +15,7 @@ use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Applies one successful HOS poll of a tenant: stores each monitored
@@ -35,9 +36,16 @@ class ProcessHosReadings
     public function execute(int $teamId, HosMonitoringConfig $config, HosEnrollment $enrollment, CarbonInterface $now): array
     {
         return TenantContext::for($teamId, function () use ($teamId, $config, $enrollment, $now): array {
-            $counts = ['monitored' => count($enrollment->enrolled), 'opened' => 0, 'resolved' => 0, 'unenrolled' => 0, 'app_disconnected' => 0];
+            // Un chofer por llamada: la primera fila gana.
+            $enrolled = [];
+            foreach ($enrollment->enrolled as $row) {
+                $enrolled[$row['driver']->id] ??= $row;
+            }
+            $enrolled = array_values($enrolled);
 
-            $driverIds = array_map(fn (array $row) => $row['driver']->id, $enrollment->enrolled);
+            $counts = ['monitored' => count($enrolled), 'opened' => 0, 'resolved' => 0, 'unenrolled' => 0, 'app_disconnected' => 0];
+
+            $driverIds = array_map(fn (array $row) => $row['driver']->id, $enrolled);
 
             $states = HosDriverState::query()
                 ->where('team_id', $teamId)
@@ -51,7 +59,7 @@ class ProcessHosReadings
                 ->get()
                 ->groupBy('driver_id');
 
-            foreach ($enrollment->enrolled as ['reading' => $reading, 'driver' => $driver, 'asset' => $asset]) {
+            foreach ($enrolled as ['reading' => $reading, 'driver' => $driver, 'asset' => $asset]) {
                 $state = $states->get($driver->id);
                 $open = $openEpisodes->get($driver->id, collect())->keyBy(fn (HosEpisode $e) => $e->situation->value);
 
@@ -63,19 +71,36 @@ class ProcessHosReadings
                     $now,
                 );
 
-                foreach ($detection->resolve as $situation => $resolution) {
-                    $this->resolve($open->get($situation), $resolution, $now, $reading);
-                    $counts['resolved']++;
-                }
+                // Atómico por chofer: o se aplica todo su sondeo o nada.
+                $delta = DB::transaction(function () use ($detection, $open, $reading, $teamId, $driver, $asset, $config, $now, $state): array {
+                    $d = ['opened' => 0, 'resolved' => 0, 'app_disconnected' => 0];
 
-                foreach ($detection->open as $situation) {
-                    if ($this->open($teamId, $driver->id, $asset->id, $situation, $reading, $config, $now)) {
-                        $counts['opened']++;
+                    foreach ($detection->resolve as $situation => $resolution) {
+                        $episode = $open->get($situation);
+
+                        if ($episode === null) {
+                            continue;
+                        }
+
+                        $this->resolve($episode, $resolution, $now, $reading);
+                        $d['resolved']++;
                     }
-                }
 
-                if ($this->storeState($teamId, $driver->id, $asset->id, $state, $reading, $now)) {
-                    $counts['app_disconnected']++;
+                    foreach ($detection->open as $situation) {
+                        if ($this->open($teamId, $driver->id, $asset->id, $situation, $reading, $config, $now)) {
+                            $d['opened']++;
+                        }
+                    }
+
+                    if ($this->storeState($teamId, $driver->id, $asset->id, $state, $reading, $now)) {
+                        $d['app_disconnected']++;
+                    }
+
+                    return $d;
+                });
+
+                foreach ($delta as $key => $n) {
+                    $counts[$key] += $n;
                 }
             }
 
@@ -99,14 +124,16 @@ class ProcessHosReadings
     private function open(int $teamId, int $driverId, int $assetId, HosSituation $situation, HosClockReading $reading, HosMonitoringConfig $config, CarbonInterface $now): bool
     {
         try {
-            $episode = HosEpisode::query()->create([
+            // Savepoint: en PostgreSQL un error de unicidad aborta la transacción
+            // entera si no se aísla.
+            $episode = DB::transaction(fn () => HosEpisode::query()->create([
                 'team_id' => $teamId,
                 'driver_id' => $driverId,
                 'asset_id' => $assetId,
                 'situation' => $situation,
                 'opened_at' => $now,
                 'snapshot_json' => $reading->toArray(),
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             // Otro sondeo solapado ya lo abrió: el índice parcial es la defensa.
             SystemLog::skipped('hos.episode.opened', reason: 'already_open', input: [

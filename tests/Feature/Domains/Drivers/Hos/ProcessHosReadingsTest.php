@@ -17,11 +17,12 @@ use App\Models\Team;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\AssertsSystemLog;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class ProcessHosReadingsTest extends TestCase
 {
-    use AssertsSystemLog, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private Team $team;
 
@@ -123,6 +124,7 @@ class ProcessHosReadingsTest extends TestCase
         $this->assertSame(1, $counts['app_disconnected']);
         $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->count());
         $this->assertCount(1, array_filter($this->systemLogEntries(), fn ($e) => $e['code'] === 'hos.driver.app_disconnected'));
+        $this->assertSame('empty_duty_status', $this->assertSystemLogged('hos.driver.app_disconnected')['reason']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -133,5 +135,57 @@ class ProcessHosReadingsTest extends TestCase
 
         $this->assertSame(1, $counts['unenrolled']);
         $this->assertSame(HosEpisodeResolution::Unenrolled, HosEpisode::withoutGlobalScopes()->sole()->resolution);
+        $resolved = $this->assertSystemLogged('hos.episode.resolved');
+        $this->assertSame('unenrolled', $resolved['result']['resolution']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_same_driver_enrolled_twice_is_processed_once(): void
+    {
+        $r = $this->reading('driving', break: 1500);
+        $counts = $this->process($this->enrollment($r, $r));
+
+        $this->assertSame(1, $counts['monitored']);
+        $this->assertSame(1, $counts['opened']);
+        $this->assertSame(1, HosDriverState::withoutGlobalScopes()->count());
+        $this->assertSame(1, HosEpisode::withoutGlobalScopes()->count());
+    }
+
+    public function test_first_poll_with_empty_status_creates_a_disconnected_state(): void
+    {
+        $counts = $this->process($this->enrollment($this->reading(null)));
+
+        $state = HosDriverState::withoutGlobalScopes()->sole();
+        $this->assertNull($state->duty_status);
+        $this->assertSame('2026-10-04 12:00:00', $state->app_disconnected_since->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-10-04 12:00:00', $state->observed_at->format('Y-m-d H:i:s'));
+        $this->assertSame(1, $counts['app_disconnected']);
+        $logged = $this->assertSystemLogged('hos.driver.app_disconnected');
+        $this->assertSame('empty_duty_status', $logged['reason']);
+        $this->assertSame($this->team->id, $logged['input']['team_id']);
+    }
+
+    public function test_unenrolling_never_touches_another_teams_episodes(): void
+    {
+        $other = Team::factory()->create();
+        $otherDriver = Driver::factory()->create(['team_id' => $other->id]);
+        $otherAsset = Asset::factory()->create(['team_id' => $other->id]);
+
+        $this->process($this->enrollment($this->reading('driving', break: 1500)));
+
+        $otherState = HosDriverState::withoutGlobalScopes()->create([
+            'team_id' => $other->id, 'driver_id' => $otherDriver->id, 'asset_id' => $otherAsset->id,
+            'duty_status' => HosDutyStatus::Driving, 'break_remaining_s' => 1500, 'observed_at' => '2026-10-04 11:00:00',
+        ]);
+        $otherEpisode = HosEpisode::withoutGlobalScopes()->create([
+            'team_id' => $other->id, 'driver_id' => $otherDriver->id, 'asset_id' => $otherAsset->id,
+            'situation' => HosSituation::BreakDue, 'opened_at' => '2026-10-04 11:00:00', 'snapshot_json' => [],
+        ]);
+
+        $counts = $this->assertNoTenantLeak($this->team, fn () => $this->process(new HosEnrollment([], []), '2026-10-04 12:01:00'));
+
+        $this->assertSame(1, $counts['unenrolled']);
+        $this->assertNull($otherEpisode->fresh()->resolved_at);
+        $this->assertSame('2026-10-04 11:00:00', $otherState->fresh()->observed_at->format('Y-m-d H:i:s'));
     }
 }
