@@ -6,6 +6,7 @@ use App\Infrastructure\AI\Clef\ClefClient;
 use App\Infrastructure\AI\Clef\ClefRequestFailedException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Domains\AI\Clef\Concerns\BuildsClefFixtures;
 use Tests\TestCase;
 
@@ -86,6 +87,37 @@ class ClefClientTest extends TestCase
     {
         $body = $this->clefResponse('noise');
         unset($body['result']['answers']['severity']);
+        Http::fake(['api.cloudflare.com/*' => Http::response($body)]);
+
+        $this->expectExceptionObject(new ClefRequestFailedException('malformed_response', false));
+
+        app(ClefClient::class)->run('clef', ['a' => 1], $this->questions);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string, 2: mixed}>
+     */
+    public static function malformedFields(): array
+    {
+        return [
+            'choice sin probabilities' => ['classification', 'probabilities', null],
+            'probabilities no numéricas' => ['classification', 'probabilities', ['noise' => 'alta']],
+            'score no numérico' => ['severity', 'score', 'alto'],
+            'score fuera de rango' => ['severity', 'score', 7.0],
+            'noul ausente' => ['needs_human_now', 'noul', null],
+            'noul fuera de rango' => ['needs_human_now', 'noul', 1.5],
+        ];
+    }
+
+    #[DataProvider('malformedFields')]
+    public function test_invalid_answer_fields_are_malformed(string $question, string $field, mixed $value): void
+    {
+        $body = $this->clefResponse('noise');
+        if ($value === null) {
+            unset($body['result']['answers'][$question][$field]);
+        } else {
+            $body['result']['answers'][$question][$field] = $value;
+        }
         Http::fake(['api.cloudflare.com/*' => Http::response($body)]);
 
         $this->expectExceptionObject(new ClefRequestFailedException('malformed_response', false));

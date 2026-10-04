@@ -61,11 +61,7 @@ class ClefClient
         foreach ($questions as $id => $question) {
             $answer = $result['answers'][$id] ?? null;
 
-            if (! is_array($answer) || ($answer['type'] ?? null) !== $question['type']) {
-                throw new ClefRequestFailedException('malformed_response', false);
-            }
-
-            if ($question['type'] === 'choice' && ! array_key_exists((string) ($answer['choice'] ?? ''), (array) $question['criteria'])) {
+            if (! is_array($answer) || ($answer['type'] ?? null) !== $question['type'] || ! $this->answerIsValid($question, $answer)) {
                 throw new ClefRequestFailedException('malformed_response', false);
             }
         }
@@ -79,6 +75,46 @@ class ClefClient
             outputTokens: (int) ($usage['output_tokens'] ?? 0),
             latencyMs: $latencyMs,
         );
+    }
+
+    /**
+     * Valida los campos que el pipeline lee de cada tipo de respuesta: un
+     * `choice` con su opción y probabilidades numéricas, un `score` numérico
+     * dentro de sus niveles y un `noul` entre 0 y 1.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<mixed>  $answer
+     */
+    private function answerIsValid(array $question, array $answer): bool
+    {
+        $criteria = (array) ($question['criteria'] ?? []);
+
+        return match ($question['type']) {
+            'choice' => array_key_exists((string) ($answer['choice'] ?? ''), $criteria)
+                && $this->probabilitiesAreNumeric($answer['probabilities'] ?? null),
+            'score' => is_numeric($answer['score'] ?? null)
+                && (float) $answer['score'] >= 0.0
+                && (float) $answer['score'] <= count($criteria) - 1,
+            'noul' => is_numeric($answer['noul'] ?? null)
+                && (float) $answer['noul'] >= 0.0
+                && (float) $answer['noul'] <= 1.0,
+            default => false,
+        };
+    }
+
+    private function probabilitiesAreNumeric(mixed $probabilities): bool
+    {
+        if (! is_array($probabilities) || $probabilities === []) {
+            return false;
+        }
+
+        foreach ($probabilities as $value) {
+            if (! is_numeric($value)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function isTimeout(ConnectionException $e): bool
