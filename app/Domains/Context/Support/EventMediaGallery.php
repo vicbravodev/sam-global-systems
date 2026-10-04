@@ -61,6 +61,21 @@ final class EventMediaGallery
         return array_values($entries);
     }
 
+    /**
+     * Fotos antes que clips y, dentro de cada grupo, en orden de captura: el
+     * operador ve primero lo que carga al instante.
+     *
+     * @param  list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>  $entries
+     * @return list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>
+     */
+    public static function photosFirst(array $entries): array
+    {
+        usort($entries, fn (array $a, array $b): int => [self::isVideo($a['media']), $a['media']->id]
+            <=> [self::isVideo($b['media']), $b['media']->id]);
+
+        return $entries;
+    }
+
     public static function isVideo(EventMediaContext $media): bool
     {
         return in_array($media->media_type?->value, ['video', 'clip'], true)
