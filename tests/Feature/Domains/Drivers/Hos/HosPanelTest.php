@@ -132,7 +132,70 @@ class HosPanelTest extends TestCase
             ->assertJsonPath('data.rows.*.driver.fullName', ['A Infracción', 'B Límite', 'C Aviso', 'D Holgado', 'E Descansando'])
             ->assertJsonPath('data.rows.*.urgency', ['violation', 'at_limit', 'warning', 'ok', 'ok'])
             ->assertJsonPath('data.rows.2.openEpisodes.0.situation', 'break_due')
-            ->assertJsonPath('data.summary', ['total' => 5, 'violation' => 1, 'at_limit' => 1, 'warning' => 1, 'ok' => 2]);
+            ->assertJsonPath('data.summary', ['total' => 5, 'violation' => 1, 'at_limit' => 1, 'warning' => 1, 'ok' => 2, 'stale' => 0]);
+    }
+
+    public function test_stale_rows_stay_listed_but_out_of_the_urgency_counts(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $this->enable($team);
+
+        $this->monitored($team, 'A Infracción vieja', ['violation_s' => 120, 'observed_at' => now()->subMinutes(10)]);
+        $this->monitored($team, 'B Al día', ['duty_status' => HosDutyStatus::Driving, 'break_remaining_s' => 7200]);
+
+        $this->actingAs($owner)
+            ->getJson("/api/{$team->slug}/drivers/hos")
+            ->assertOk()
+            ->assertJsonPath('data.rows.*.stale', [true, false])
+            ->assertJsonPath('data.summary', ['total' => 2, 'violation' => 0, 'at_limit' => 0, 'warning' => 0, 'ok' => 1, 'stale' => 1]);
+    }
+
+    public function test_the_fleet_tells_when_samsara_stopped_answering(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $this->enable($team);
+
+        $this->actingAs($owner)
+            ->getJson("/api/{$team->slug}/drivers/hos")
+            ->assertOk()
+            ->assertJsonPath('data.rows', [])
+            ->assertJsonPath('data.lastObservedAt', null);
+
+        $older = now()->subHours(3)->startOfSecond();
+        $newest = now()->subHours(2)->startOfSecond();
+        $this->monitored($team, 'Uno', ['observed_at' => $older]);
+        $this->monitored($team, 'Dos', ['observed_at' => $newest]);
+
+        // Otro tenant con una lectura más reciente no cuenta.
+        $other = User::factory()->create()->currentTeam;
+        $this->monitored($other, 'Ajeno', ['observed_at' => now()->subHour()]);
+
+        $this->actingAs($owner)
+            ->getJson("/api/{$team->slug}/drivers/hos")
+            ->assertOk()
+            ->assertJsonPath('data.rows', [])
+            ->assertJsonPath('data.lastObservedAt', $newest->toIso8601String());
+    }
+
+    public function test_deleted_drivers_leave_the_fleet_and_episodes_carry_no_incident_id(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $this->enable($team);
+
+        $kept = $this->monitored($team, 'Sigue', ['duty_status' => HosDutyStatus::Driving]);
+        HosEpisode::factory()->create(['driver_id' => $kept->id, 'situation' => HosSituation::BreakDue]);
+        $gone = $this->monitored($team, 'Borrado', ['violation_s' => 300]);
+        $gone->delete();
+
+        $this->actingAs($owner)
+            ->getJson("/api/{$team->slug}/drivers/hos")
+            ->assertOk()
+            ->assertJsonPath('data.rows.*.driver.fullName', ['Sigue'])
+            ->assertJsonPath('data.summary.total', 1)
+            ->assertJsonMissingPath('data.rows.0.openEpisodes.0.incidentId');
     }
 
     public function test_the_api_mirrors_the_driver_panel(): void
@@ -187,6 +250,29 @@ class HosPanelTest extends TestCase
 
         $response->assertOk()->assertJsonPath('data.rows.*.driver.fullName', ['Mío']);
         $this->actingAs($owner)->getJson("/api/{$team->slug}/drivers/{$foreign->id}/hos")->assertNotFound();
+    }
+
+    public function test_the_fleet_page_never_shows_another_tenant(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $this->enable($team);
+        $this->monitored($team, 'Mío');
+
+        $other = User::factory()->create()->currentTeam;
+        $this->enable($other);
+        $foreign = $this->monitored($other, 'Ajeno', ['violation_s' => 300, 'observed_at' => now()->addMinute()]);
+        HosEpisode::factory()->create(['driver_id' => $foreign->id, 'situation' => HosSituation::Violation]);
+
+        $response = $this->assertNoTenantLeak($team, fn () => $this->actingAs($owner)
+            ->get(route('drivers.hos.index', ['current_team' => $team->slug])));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('drivers/hos')
+            ->where('fleet.rows', fn ($rows) => collect($rows)->pluck('driver.fullName')->all() === ['Mío'])
+            ->where('fleet.summary.violation', 0)
+            ->where('fleet.lastObservedAt', fn (?string $at) => $at !== null && now()->addMinute()->toIso8601String() !== $at)
+        );
     }
 
     public function test_the_driver_panel_ignores_notifications_and_incidents_of_another_tenant(): void
