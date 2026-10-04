@@ -1,14 +1,9 @@
 import { Form, Head, setLayoutProps } from '@inertiajs/react';
-import { REGEXP_ONLY_DIGITS } from 'input-otp';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
+import { VerificationCodeInput } from '@/components/sam/verification-code-input';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    InputOTP,
-    InputOTPGroup,
-    InputOTPSlot,
-} from '@/components/ui/input-otp';
 import { OTP_MAX_LENGTH } from '@/hooks/use-two-factor-auth';
 import { store } from '@/routes/two-factor/login';
 
@@ -59,6 +54,7 @@ export default function TwoFactorChallenge() {
                     className="space-y-4"
                     resetOnError
                     resetOnSuccess={!showRecoveryInput}
+                    onError={() => setCode('')}
                 >
                     {({ errors, processing, clearErrors }) => (
                         <>
@@ -78,26 +74,18 @@ export default function TwoFactorChallenge() {
                             ) : (
                                 <div className="flex flex-col items-center justify-center space-y-3 text-center">
                                     <div className="flex w-full items-center justify-center">
-                                        <InputOTP
+                                        <VerificationCodeInput
                                             name="code"
-                                            maxLength={OTP_MAX_LENGTH}
+                                            length={OTP_MAX_LENGTH}
                                             value={code}
-                                            onChange={(value) => setCode(value)}
+                                            onChange={setCode}
+                                            submitOnComplete
+                                            autoFocus
                                             disabled={processing}
-                                            pattern={REGEXP_ONLY_DIGITS}
-                                        >
-                                            <InputOTPGroup>
-                                                {Array.from(
-                                                    { length: OTP_MAX_LENGTH },
-                                                    (_, index) => (
-                                                        <InputOTPSlot
-                                                            key={index}
-                                                            index={index}
-                                                        />
-                                                    ),
-                                                )}
-                                            </InputOTPGroup>
-                                        </InputOTP>
+                                            aria-invalid={
+                                                errors.code !== undefined
+                                            }
+                                        />
                                     </div>
                                     <InputError message={errors.code} />
                                 </div>
