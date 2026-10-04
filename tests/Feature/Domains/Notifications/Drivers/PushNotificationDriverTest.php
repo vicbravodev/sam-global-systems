@@ -188,7 +188,24 @@ class PushNotificationDriverTest extends TestCase
         $result = $this->send($this->deliveryFor($this->user));
 
         $this->assertFalse($result->success);
+        $this->assertFalse($result->permanent);
         $this->assertSystemLogged('notifications.push.failed', fn (array $c) => $c['reason'] === 'all_failed');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_messenger_exception_is_a_retryable_provider_error(): void
+    {
+        PushSubscription::factory()->forMember($this->user, $this->team)->create();
+        $this->respond = function (array $targets): array {
+            throw new \RuntimeException('cURL error 7: Failed to connect');
+        };
+
+        $result = $this->send($this->deliveryFor($this->user));
+
+        $this->assertFalse($result->success);
+        $this->assertFalse($result->permanent);
+        $this->assertSystemLogged('notifications.push.failed', fn (array $c) => $c['reason'] === 'provider_error');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fails_without_subscriptions(): void
@@ -198,6 +215,7 @@ class PushNotificationDriverTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertNull($this->sent);
         $this->assertSystemLogged('notifications.push.failed', fn (array $c) => $c['reason'] === 'no_subscriptions');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_does_not_send_to_the_users_subscription_in_another_team(): void
@@ -222,6 +240,7 @@ class PushNotificationDriverTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertNull($this->sent);
         $this->assertSystemLogged('notifications.push.failed', fn (array $c) => $c['reason'] === 'not_member');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fails_for_a_non_numeric_address(): void

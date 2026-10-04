@@ -13,10 +13,17 @@ use App\Domains\Notifications\Data\WebPushOutcome;
 use App\Domains\Notifications\Data\WebPushTarget;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Enums\RecipientType;
+use App\Domains\Notifications\Jobs\FallbackNotificationChannelJob;
+use App\Domains\Notifications\Jobs\RetryNotificationDeliveryJob;
+use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Models\PushSubscription;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
+use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Models\Membership;
 use App\Models\Team;
@@ -153,9 +160,13 @@ class PushChannelRoutingTest extends TestCase
         $sms = $this->deliveries(ChannelType::Sms)->first();
         $this->assertNotNull($sms, 'La escalera por defecto debe incluir SMS en el nivel 0 de un crítico');
 
+        // El aviso al dispositivo sí llegó: aun así no frena el SMS.
+        $this->assertSame(DeliveryStatus::Delivered, $this->deliveries(ChannelType::Push)->sole()->status);
+
         $verdict = DeliveryEscalationGuard::explain($sms);
 
-        $this->assertNotSame('recipient_reached', $verdict['reason']);
+        $this->assertNull($verdict['reason']);
+        $this->assertFalse($verdict['calc']['reached_elsewhere']);
     }
 
     public function test_a_user_without_a_device_is_skipped_not_failed_and_gets_no_push_fallback(): void
@@ -184,5 +195,78 @@ class PushChannelRoutingTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Skipped, $this->deliveries(ChannelType::Push)->sole()->status);
         $this->assertSame([], $this->pushed);
+    }
+
+    public function test_fallback_to_push_without_a_device_in_this_team_is_skipped_as_no_push_device(): void
+    {
+        // Dispositivo del de turno, pero en OTRO team al que también pertenece.
+        $otherTeam = User::factory()->create()->currentTeam;
+        $otherTeam->members()->attach($this->onCall, ['role' => 'member']);
+        $foreignDevice = PushSubscription::factory()->forMember($this->onCall, $otherTeam)->create();
+
+        TenantNotificationPolicy::factory()->create([
+            'team_id' => $this->team->id,
+            'notification_type' => null,
+            'priority' => null,
+            'fallback_channels_json' => ['push'],
+        ]);
+        $failed = $this->failedDeliveryFor(ChannelType::Sms);
+
+        $this->assertNoTenantLeak($this->team, fn () => app()->call([new FallbackNotificationChannelJob($failed->id), 'handle']));
+
+        $this->assertSame([], $this->pushed);
+        $push = $this->deliveries(ChannelType::Push)->sole();
+        $this->assertSame(DeliveryStatus::Skipped, $push->status);
+        $context = $this->assertSystemLogged('notifications.fallback.exhausted', fn (array $c) => $c['input'] === ['failed_delivery_id' => $failed->id]);
+        $this->assertSame([['channel_type' => 'push', 'outcome' => 'no_push_device']], $context['calc']['walk']);
+        $this->assertNull($foreignDevice->fresh()->last_used_at);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_retry_does_not_re_render_a_push_once_the_device_is_gone_from_this_team(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $otherTeam->members()->attach($this->onCall, ['role' => 'member']);
+        $foreignDevice = PushSubscription::factory()->forMember($this->onCall, $otherTeam)->create();
+        $removed = PushSubscription::factory()->forMember($this->onCall, $this->team)->create();
+
+        // Entrega vieja sin payload guardado: el reintento vuelve a renderizar.
+        $failed = $this->failedDeliveryFor(ChannelType::Push);
+        $removed->delete();
+
+        $this->assertNoTenantLeak($this->team, fn () => app()->call([new RetryNotificationDeliveryJob($failed->id), 'handle']));
+
+        $this->assertSame([], $this->pushed);
+        $this->assertSame(DeliveryStatus::Skipped, $failed->fresh()->status);
+        $this->assertSystemLogged('notifications.retry.skipped', fn (array $c) => $c['reason'] === 'no_valid_address'
+            && $c['input']['delivery_id'] === $failed->id);
+        $this->assertNull($foreignDevice->fresh()->last_used_at);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * Entrega fallida (sin payload guardado) al de turno por un canal de
+     * plataforma del tipo dado, dentro del team del test.
+     */
+    private function failedDeliveryFor(ChannelType $type): NotificationDelivery
+    {
+        $notification = Notification::factory()->create(['team_id' => $this->team->id]);
+        $recipient = NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $this->team->id,
+            'recipient_type' => RecipientType::User,
+            'recipient_reference_id' => (string) $this->onCall->id,
+            'phone' => '+5215510000003',
+        ]);
+        $channel = NotificationChannel::withoutGlobalScopes()->where('channel_type', $type)->orderBy('id')->firstOrFail();
+
+        return NotificationDelivery::factory()->failed()->create([
+            'notification_id' => $notification->id,
+            'recipient_id' => $recipient->id,
+            'channel_id' => $channel->id,
+            'team_id' => $this->team->id,
+            'attempt_number' => 1,
+            'payload_json' => null,
+        ]);
     }
 }
