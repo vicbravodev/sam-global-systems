@@ -1,4 +1,5 @@
 import { CHANNEL_DELIVERY } from '@/components/sam/notifications/copy';
+import { formatNumber } from '@/lib/format';
 import { channelLabel } from '@/lib/labels';
 import { hoursMinutesLabel } from '@/lib/time';
 import type { Tone } from '@/lib/tone';
@@ -75,12 +76,15 @@ export function nearestLabel(
         : remainingLabel(row.minRemainingSeconds);
 }
 
-export function stepsLabel(steps: number): string {
-    if (steps === 0) {
-        return 'Sin escalones enviados';
+/** Cuántos avisos salieron de verdad (no el escalón en que va el episodio). */
+export function nudgesLabel(count: number): string {
+    if (count === 0) {
+        return 'Sin avisos enviados';
     }
 
-    return steps === 1 ? '1 escalón enviado' : `${steps} escalones enviados`;
+    return count === 1
+        ? '1 aviso enviado'
+        : `${formatNumber(count)} avisos enviados`;
 }
 
 export function nudgeTitle(nudge: HosNudge): string {

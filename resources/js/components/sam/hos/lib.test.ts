@@ -6,7 +6,7 @@ import {
     driverTabFromUrl,
     nearestLabel,
     nudgeTitle,
-    stepsLabel,
+    nudgesLabel,
 } from './lib';
 
 describe('clockBars', () => {
@@ -40,10 +40,11 @@ describe('textos del panel', () => {
         expect(nearestLabel({ minRemainingSeconds: null })).toBe('—');
     });
 
-    it('escalones enviados', () => {
-        expect(stepsLabel(0)).toBe('Sin escalones enviados');
-        expect(stepsLabel(1)).toBe('1 escalón enviado');
-        expect(stepsLabel(3)).toBe('3 escalones enviados');
+    it('avisos enviados (los que de verdad salieron, no el escalón)', () => {
+        expect(nudgesLabel(0)).toBe('Sin avisos enviados');
+        expect(nudgesLabel(1)).toBe('1 aviso enviado');
+        expect(nudgesLabel(3)).toBe('3 avisos enviados');
+        expect(nudgesLabel(1200)).toBe('1,200 avisos enviados');
     });
 
     it('cada entrega con su canal y su resultado', () => {

@@ -5,7 +5,7 @@ import { formatClock, relativeLabel } from '@/lib/time';
 import incidentRoutes from '@/routes/incidents';
 import type { HosEpisodeEntry, HosNudge } from '@/types/hos';
 import { HOS_RESOLUTION, HOS_SITUATION_LABELS } from './copy';
-import { deliveryLines, nudgeTitle, stepsLabel } from './lib';
+import { deliveryLines, nudgeTitle, nudgesLabel } from './lib';
 
 export interface HosEpisodeListProps {
     episodes: HosEpisodeEntry[];
@@ -82,7 +82,7 @@ function EpisodeItem({
                 {episode.resolvedAt
                     ? ` · cerró ${relativeLabel(episode.resolvedAt)}`
                     : ''}
-                {` · ${stepsLabel(episode.ladderStep)}`}
+                {` · ${nudgesLabel(episode.nudges.length)}`}
                 {episode.incident && teamSlug !== null ? (
                     <>
                         {' · '}
