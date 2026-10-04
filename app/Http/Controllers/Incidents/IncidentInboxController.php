@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Incidents;
 use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaCaptureContext;
 use App\Domains\AI\Support\MediaFileVerdicts;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Models\EventMediaContext;
@@ -463,8 +464,19 @@ class IncidentInboxController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        $occurredAt = NormalizedEvent::query()
+            ->where('team_id', $incident->team_id)
+            ->whereKey($incident->related_event_id)
+            ->value('occurred_at');
+        $eventAt = $occurredAt !== null ? Carbon::parse($occurredAt) : null;
+
         return array_map(fn (array $entry): array => [
             'id' => $entry['media']->id,
+            // Foto que la cámara tomó por su cuenta cerca del evento (periódica,
+            // inicio/fin de viaje): el operador debe saber que no es el evento.
+            'context' => (($entry['media']->metadata_json ?? [])['evidence_kind'] ?? null) === 'context',
+            'camera' => MediaCaptureContext::cameraSide($entry['media']->metadata_json ?? []),
+            'offsetSeconds' => MediaCaptureContext::captureOffsetSeconds($entry['media']->metadata_json ?? [], $eventAt),
             'mediaType' => $entry['media']->media_type?->value,
             'mimeType' => $entry['media']->mime_type,
             'url' => $entry['url'],

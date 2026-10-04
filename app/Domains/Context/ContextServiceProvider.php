@@ -8,13 +8,15 @@ use App\Domains\Context\Events\EventMediaAvailable;
 use App\Domains\Context\Listeners\EnrichContextOnEventNormalized;
 use App\Domains\Context\Listeners\ExtractMediaOnContextBuilt;
 use App\Domains\Context\Listeners\ExtractVideoFramesOnMediaAvailable;
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestMediaOnIncidentCreated;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\Geofence;
 use App\Domains\Context\Policies\EventContextPolicy;
 use App\Domains\Context\Policies\EventMediaContextPolicy;
 use App\Domains\Context\Policies\GeofencePolicy;
+use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Normalization\Events\EventNormalized;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -35,7 +37,8 @@ class ContextServiceProvider extends ServiceProvider
 
         Event::listen(EventNormalized::class, EnrichContextOnEventNormalized::class);
         Event::listen(EventContextBuilt::class, ExtractMediaOnContextBuilt::class);
-        Event::listen(EventContextBuilt::class, RequestPanicMediaOnContextBuilt::class);
+        Event::listen(EventContextBuilt::class, RequestIncidentMediaOnContextBuilt::class);
+        Event::listen(IncidentCreated::class, RequestMediaOnIncidentCreated::class);
         // Clips -> fotogramas JPEG para el modelo de visión.
         Event::listen(EventMediaAvailable::class, ExtractVideoFramesOnMediaAvailable::class);
 

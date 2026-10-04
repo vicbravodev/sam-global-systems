@@ -21,11 +21,14 @@ use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Models\EventCategory;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -775,7 +778,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
             }
 
             return $req['vehicleIds'] === 'veh-1'
-                && str_contains($req->url(), 'triggerReasons=panicButton&triggerReasons=safetyEvent');
+                && str_contains($req->url(), 'triggerReasons=panicButton&triggerReasons=safetyEvent&triggerReasons=videoRetrieval');
         });
 
         $uploaded = RawEventAttachment::where('raw_event_id', $event->raw_event_id)
@@ -1151,6 +1154,286 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Event::assertDispatched(EventMediaAvailable::class);
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
         $this->assertClosedViaUploads('fulfilled_by_sweep');
+    }
+
+    private function makeEmergencyEvent(CarbonInterface $occurredAt): NormalizedEvent
+    {
+        $category = EventCategory::factory()->emergency()->create();
+
+        return NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+            'event_category_id' => $category->id,
+            'event_type_id' => EventType::factory()->create(['code' => 'panic_button', 'category_id' => $category->id])->id,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function uploadedItem(string $trigger, string $input, CarbonInterface $startTime, string $name, string $mediaType = 'image'): array
+    {
+        return [
+            'input' => $input,
+            'mediaType' => $mediaType,
+            'triggerReason' => $trigger,
+            'startTime' => $startTime->toIso8601ZuluString(),
+            'urlInfo' => ['url' => "https://media.samsara.com/uploads/{$name}"],
+        ];
+    }
+
+    public function test_sweep_lists_event_and_context_triggers(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+        Http::fake($this->fakeNoUploadedMedia());
+
+        $this->runJob($this->makeRequest(attributes: ['sweep_only' => true]));
+
+        // Sin `rfidEvent`: una lectura de tarjeta no dice nada del evento.
+        Http::assertSent(fn ($req) => ! str_contains($req->url(), 'cameras/media?')
+            || str_contains($req->url(), 'triggerReasons=panicButton&triggerReasons=safetyEvent&triggerReasons=videoRetrieval&triggerReasons=api&triggerReasons=periodicStill&triggerReasons=tripStartStill&triggerReasons=tripEndStill'));
+    }
+
+    public function test_sweep_attaches_the_nearest_context_still_before_and_after_per_camera(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        // Caso real (#79, pasajero no autorizado 2026-10-03): Samsara entrega el
+        // safety event con url vacía para siempre, pero las fotos periódicas de
+        // ambas cámaras están a ±1 s.
+        $occurredAt = Carbon::parse('2026-10-03 18:33:54', 'UTC');
+        Carbon::setTestNow($occurredAt->copy()->addMinutes(3));
+        Queue::fake();
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        $at = fn (int $offset): Carbon => $occurredAt->copy()->addSeconds($offset);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [
+                $this->uploadedItem('periodicStill', 'dashcamInwardFacing', $at(-119), 'cab-before.jpg'),
+                $this->uploadedItem('periodicStill', 'dashcamInwardFacing', $at(1), 'cab-after.jpg'),
+                $this->uploadedItem('periodicStill', 'dashcamInwardFacing', $at(121), 'cab-after-far.jpg'),
+                $this->uploadedItem('periodicStill', 'dashcamForwardFacing', $at(-119), 'road-before.jpg'),
+                $this->uploadedItem('periodicStill', 'dashcamForwardFacing', $at(1), 'road-after.jpg'),
+                $this->uploadedItem('tripStartStill', 'dashcamForwardFacing', $at(-843), 'trip-start.jpg'),
+                $this->uploadedItem('periodicStill', 'dashcamInwardFacing', $at(-240), 'cab-out-of-window.jpg'),
+            ]]]),
+            'media.samsara.com/*' => Http::response('jpeg-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true]);
+
+        $this->runJob($request);
+
+        $stored = RawEventAttachment::where('raw_event_id', $event->raw_event_id)->get();
+        $this->assertEqualsCanonicalizing([
+            'uploaded-periodicStill-20261003-183155-driver-facing.jpg',
+            'uploaded-periodicStill-20261003-183355-driver-facing.jpg',
+            'uploaded-periodicStill-20261003-183155-road-facing.jpg',
+            'uploaded-periodicStill-20261003-183355-road-facing.jpg',
+        ], $stored->map(fn (RawEventAttachment $a): string => basename($a->storage_path))->all());
+        $this->assertTrue($stored->every(fn (RawEventAttachment $a): bool => $a->metadata_json['evidence_kind'] === 'context'));
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'far') || str_contains($req->url(), 'trip-start') || str_contains($req->url(), 'out-of-window'));
+
+        $media = EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->get();
+        $this->assertCount(4, $media);
+        $this->assertSame(
+            ['post_event_context' => 2, 'pre_event_context' => 2],
+            $media->countBy(fn (EventMediaContext $m): string => $m->media_role->value)->sortKeys()->all(),
+        );
+        // La foto de contexto se fecha con su captura real, no con el evento.
+        $this->assertTrue($media->contains(fn (EventMediaContext $m): bool => $m->captured_at->equalTo($at(-119))));
+
+        $this->assertSystemLogged('media.deferred.sweep_completed', fn (array $c) => $c['calc']['items_found'] === 7
+            && $c['calc']['available'] === 0
+            && $c['calc']['context_selected'] === 4
+            && $c['calc']['context_match_seconds'] === FetchDeferredEventMediaJob::CONTEXT_MATCH_SECONDS
+            && $c['result']['downloaded'] === 4);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_context_stills_alone_keep_a_fresh_sweep_only_request_polling(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+
+        $occurredAt = now()->subMinutes(2);
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId, 'asset_id' => $this->asset->id, 'occurred_at' => $occurredAt]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [
+                $this->uploadedItem('periodicStill', 'dashcamForwardFacing', $occurredAt->copy()->subSeconds(30), 'road.jpg'),
+            ]]]),
+            'media.samsara.com/*' => Http::response('jpeg-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinutes(2)]);
+
+        $this->runJob($request);
+
+        // El clip del evento (p. ej. el del pánico) suele subir minutos después:
+        // una foto periódica no basta para dejar de buscarlo.
+        $this->assertSame(MediaRequestStatus::Processing, $request->fresh()->status);
+        Queue::assertPushed(FetchDeferredEventMediaJob::class);
+    }
+
+    public function test_context_stills_complete_a_sweep_only_request_once_the_settle_window_passed(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+
+        $occurredAt = now()->subMinutes(16);
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId, 'asset_id' => $this->asset->id, 'occurred_at' => $occurredAt]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [
+                $this->uploadedItem('periodicStill', 'dashcamForwardFacing', $occurredAt->copy()->addSeconds(40), 'road.jpg'),
+            ]]]),
+            'media.samsara.com/*' => Http::response('jpeg-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinutes(16)]);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Completed, $fresh->status);
+        $this->assertSame('uploaded_media', $fresh->response_metadata_json['completed_via']);
+        Queue::assertNotPushed(FetchDeferredEventMediaJob::class);
+        $this->assertClosedViaUploads('fulfilled_by_context');
+    }
+
+    public function test_emergency_without_uploads_polls_fast_inside_the_grace_window(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+        Http::fake($this->fakeNoUploadedMedia());
+
+        $event = $this->makeEmergencyEvent(now()->subMinute());
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinute()]);
+
+        $this->runJob($request);
+
+        $this->assertSame(MediaRequestStatus::Processing, $request->fresh()->status);
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertSystemLogged('media.deferred.sweep_polling', fn (array $c) => $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::POLL_DELAY_SECONDS
+            && $c['calc']['emergency'] === true);
+    }
+
+    public function test_emergency_without_uploads_places_a_fallback_clip_retrieval_after_the_grace_window(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+
+        // Caso real (#97, pánico 2026-10-04): la cámara no subió nada en ±30 min.
+        $occurredAt = now()->subMinutes(6);
+        $event = $this->makeEmergencyEvent($occurredAt);
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval' => Http::response(['data' => ['retrievalId' => 'ret-fallback']]),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinutes(6)]);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Sent, $fresh->status);
+        $this->assertSame('ret-fallback', $fresh->response_metadata_json['retrieval_id']);
+        $this->assertTrue($fresh->response_metadata_json['emergency_fallback']);
+
+        Http::assertSent(fn ($req) => $req->method() === 'POST'
+            && str_contains($req->url(), 'cameras/media/retrieval')
+            && $req['mediaType'] === 'videoHighRes'
+            && $req['inputs'] === ['dashcamRoadFacing', 'dashcamDriverFacing']);
+
+        $this->assertSystemLogged('media.deferred.emergency_fallback_placed', fn (array $c) => $c['input']['event_media_request_id'] === $request->id
+            && $c['calc']['grace_seconds'] === FetchDeferredEventMediaJob::EMERGENCY_FALLBACK_AFTER_SECONDS);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_emergency_fallback_retrieval_is_polled_to_completion(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $event = $this->makeEmergencyEvent(now()->subMinutes(8));
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamRoadFacing',
+                'status' => 'available',
+                'urlInfo' => ['url' => 'https://media.samsara.com/ret-fallback/road.mp4'],
+            ]]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        $request = $this->makeRequest($event, [
+            'sweep_only' => true,
+            'status' => MediaRequestStatus::Sent,
+            'requested_at' => now()->subMinutes(8),
+            'response_metadata_json' => ['retrieval_id' => 'ret-fallback', 'emergency_fallback' => true],
+        ]);
+
+        $this->runJob($request);
+
+        $this->assertSame(MediaRequestStatus::Completed, $request->fresh()->status);
+        $this->assertSame(1, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
+        Http::assertNotSent(fn ($req) => $req->method() === 'POST');
+    }
+
+    public function test_emergency_fallback_is_never_placed_once_the_event_is_past_footage_retention(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+        Http::fake($this->fakeNoUploadedMedia());
+
+        $event = $this->makeEmergencyEvent(now()->subHours(80));
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinutes(10)]);
+
+        $this->runJob($request);
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertSystemLogged('media.deferred.emergency_fallback_skipped', fn (array $c) => $c['reason'] === 'older_than_footage_retention');
+    }
+
+    public function test_emergency_fallback_is_never_placed_for_a_camera_less_asset(): void
+    {
+        $this->makeSamsaraIntegration();
+        $this->asset->forceFill(['metadata_json' => ['has_camera' => false]])->save();
+        Queue::fake();
+        Http::fake($this->fakeNoUploadedMedia());
+
+        $event = $this->makeEmergencyEvent(now()->subMinutes(10));
+        $request = $this->makeRequest($event, ['sweep_only' => true, 'requested_at' => now()->subMinutes(10)]);
+
+        $this->runJob($request);
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertSystemLogged('media.deferred.emergency_fallback_skipped', fn (array $c) => $c['reason'] === 'asset_reports_no_camera');
+    }
+
+    public function test_non_emergency_sweep_never_places_a_fallback_retrieval(): void
+    {
+        $this->makeSamsaraIntegration();
+        Queue::fake();
+        Http::fake($this->fakeNoUploadedMedia());
+
+        $request = $this->makeRequest(attributes: ['sweep_only' => true, 'requested_at' => now()->subMinutes(30)]);
+
+        $this->runJob($request);
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertSystemLogged('media.deferred.sweep_polling', fn (array $c) => $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::SWEEP_POLL_DELAY_SECONDS);
     }
 
     public function test_failed_marks_request_failed_and_dispatches_event(): void

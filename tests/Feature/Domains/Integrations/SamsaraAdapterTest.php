@@ -447,6 +447,42 @@ class SamsaraAdapterTest extends TestCase
         });
     }
 
+    public function test_list_uploaded_media_follows_pagination_cursors(): void
+    {
+        // Con fotos periódicas en la ventana, un listado de ±30 min de una
+        // unidad en ruta trae decenas de archivos: hay que leer todas las páginas.
+        $item = fn (string $name): array => [
+            'input' => 'dashcamForwardFacing',
+            'mediaType' => 'image',
+            'triggerReason' => 'periodicStill',
+            'startTime' => '2026-06-07T01:30:00Z',
+            'urlInfo' => ['url' => "https://media.samsara.com/{$name}.jpg"],
+        ];
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::sequence()
+                ->push(['data' => ['media' => [$item('p1')]], 'pagination' => ['endCursor' => 'cur-2', 'hasNextPage' => true]])
+                ->push(['data' => ['media' => [$item('p2')]], 'pagination' => ['endCursor' => '', 'hasNextPage' => false]]),
+        ]);
+
+        $items = app(SamsaraAdapter::class)->listUploadedMedia(
+            $this->makeIntegration(),
+            'veh-1',
+            new \DateTimeImmutable('2026-06-07T01:00:00Z'),
+            new \DateTimeImmutable('2026-06-07T02:00:00Z'),
+            ['periodicStill'],
+        )['items'];
+
+        $this->assertSame(
+            ['https://media.samsara.com/p1.jpg', 'https://media.samsara.com/p2.jpg'],
+            array_column($items, 'url'),
+        );
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'after=cur-2')
+            && str_contains($request->url(), 'triggerReasons=periodicStill'));
+    }
+
     public function test_list_uploaded_media_returns_empty_items_on_provider_error(): void
     {
         Http::fake([

@@ -414,6 +414,12 @@ export interface IncidentMediaItem {
     sizeBytes: number | null;
     capturedAt: string | null;
     availabilityStatus: string | null;
+    /** Foto que la cámara tomó por su cuenta cerca del evento (no es el evento). */
+    context: boolean;
+    /** `road` | `driver` | null. */
+    camera: string | null;
+    /** Segundos entre la captura y el evento (negativo = antes). */
+    offsetSeconds: number | null;
 }
 
 export interface IncidentMediaAssessment {
