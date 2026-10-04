@@ -7,6 +7,7 @@ use App\Domains\AI\Jobs\ShadowEvaluateWithClefJob;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIShadowEvaluation;
+use App\Domains\AI\Support\ClefMeasurableEvaluations;
 use App\Domains\AI\Support\ClefShadowGate;
 use App\Domains\AI\Support\ScoredEvaluationVersion;
 use App\Infrastructure\AI\Clef\ClefQuestionSchema;
@@ -57,6 +58,7 @@ class ClefBackfillCommand extends Command
             ->when($team !== null, fn (Builder $q) => $q->where('team_id', $team))
             ->when($since !== null, fn (Builder $q) => $q->where('created_at', '>=', $since))
             ->whereIn('evaluation_mode', [EvaluationMode::AiText, EvaluationMode::Hybrid])
+            ->tap(fn (Builder $q) => ClefMeasurableEvaluations::constrain($q))
             ->whereHas('inferenceLogs')
             ->orderByDesc('evaluation_version')
             ->orderByDesc('id')
