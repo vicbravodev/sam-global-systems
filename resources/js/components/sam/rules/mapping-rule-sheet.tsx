@@ -226,9 +226,11 @@ function MappingRuleForm({
                             Para alertas genéricas como AlertIncident, indica el
                             dato que las distingue. Ej.{' '}
                             <span className="font-mono">
-                                data.conditions.0.description
+                                data.conditions.*.triggerId
                             </span>{' '}
-                            = Panic Button.
+                            = 1034 (botón de pánico). El{' '}
+                            <span className="font-mono">*</span> significa
+                            «cualquier condición».
                         </p>
                         <ConditionBuilder
                             variant="flat-equality"

@@ -10,11 +10,11 @@ use App\Domains\Decisions\Support\DecisionFactsBuilder;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Conditions\FlatConditionMatcher;
 use App\Support\Conditions\ValidConditionTree;
 use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 
 /**
  * Rule tester ("¿coincidiría?"): evaluates draft conditions against the
@@ -63,7 +63,7 @@ class RuleTestController extends Controller
         ]);
     }
 
-    public function testMapping(Request $request, Team $current_team): JsonResponse
+    public function testMapping(Request $request, Team $current_team, FlatConditionMatcher $matcher): JsonResponse
     {
         $this->authorize('viewAny', DecisionRule::class);
 
@@ -85,8 +85,9 @@ class RuleTestController extends Controller
         $matched = true;
 
         foreach ($validated['external_conditions_json'] as $dotPath => $expected) {
-            $actual = Arr::get($payload, $dotPath);
-            $passed = $actual === $expected;
+            // Mismo criterio que la normalización real (MapExternalEventType).
+            $actual = data_get($payload, $dotPath);
+            $passed = $matcher->firstFailedPath([$dotPath => $expected], $payload) === null;
             $matched = $matched && $passed;
 
             $checks[] = [

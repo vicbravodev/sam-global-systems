@@ -97,14 +97,14 @@ class AlertIncidentsPollingTest extends TestCase
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
-    private function incident(array $overrides = [], string $description = 'Panic Button', string $happenedAt = '2026-10-02T11:55:00Z'): array
+    private function incident(array $overrides = [], string $description = 'Panic Button', string $happenedAt = '2026-10-02T11:55:00Z', ?int $triggerId = 1034): array
     {
         $ms = Carbon::parse($happenedAt)->getTimestampMs();
 
         return array_merge([
             'conditions' => [[
                 'description' => $description,
-                'triggerId' => 1034,
+                'triggerId' => $triggerId,
                 'details' => ['panicButton' => [
                     'vehicle' => ['id' => self::VEHICLE_ID, 'name' => 'T-879', 'serial' => 'GYP5CUW97G'],
                     'driver' => ['id' => '51909883', 'name' => 'Chofer Prueba'],
@@ -336,7 +336,8 @@ class AlertIncidentsPollingTest extends TestCase
     public function test_an_alert_incident_that_is_not_an_emergency_is_ignored(): void
     {
         $integration = $this->makeIntegration();
-        $this->fakeSamsara([$this->incident(description: 'Camera Obstructed')]);
+        // "Camera Obstructed" no tiene triggerTypeId público: se reconoce por texto.
+        $this->fakeSamsara([$this->incident(description: 'Camera Obstructed', triggerId: null)]);
 
         $this->poll($integration);
 
@@ -350,7 +351,10 @@ class AlertIncidentsPollingTest extends TestCase
         Notification::fake();
         User::factory()->create(['global_role' => 'super_admin']);
         $integration = $this->makeIntegration();
-        $this->fakeSamsara([$this->incident(description: 'Botón de pánico')]);
+        // Sin triggerId no se puede leer qué disparó la alerta: podría ser un
+        // pánico, así que se ingiere y se escala (con 1034 ya sería pánico,
+        // diga lo que diga el texto).
+        $this->fakeSamsara([$this->incident(description: 'Botón de pánico', triggerId: null)]);
 
         $this->poll($integration);
 

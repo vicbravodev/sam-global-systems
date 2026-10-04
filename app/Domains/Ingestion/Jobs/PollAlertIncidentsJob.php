@@ -7,6 +7,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Enums\SamsaraAlertTrigger;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\RedactSensitiveLogData;
@@ -50,8 +51,8 @@ class PollAlertIncidentsJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** Samsara: Panic Button = 1034 (WorkflowTriggerObject.triggerTypeId). */
-    public const int PANIC_BUTTON_TRIGGER_TYPE_ID = 1034;
+    /** Samsara: Panic Button (WorkflowTriggerObject.triggerTypeId). */
+    public const int PANIC_BUTTON_TRIGGER_TYPE_ID = SamsaraAlertTrigger::PanicButton->value;
 
     /** `configurationIds` admite como máximo 50 ids por petición. */
     public const int MAX_CONFIGURATION_IDS = 50;
