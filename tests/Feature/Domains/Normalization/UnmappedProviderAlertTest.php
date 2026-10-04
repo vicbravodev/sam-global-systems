@@ -146,6 +146,7 @@ class UnmappedProviderAlertTest extends TestCase
         $c = $this->assertSystemLogged('normalization.unmapped_alert.escalated');
         $this->assertSame('AlertIncident', $c['input']['external_event_type']);
         $this->assertSame($raw->id, $c['input']['raw_event_id']);
+        $this->assertSame('unreadable', $c['calc']['trigger_class']);
         $sent = $this->assertSystemLogged('ingestion.failure_alert.sent');
         $this->assertSame(PipelineFailureAlert::KIND_UNMAPPED_ALERT, $sent['input']['kind']);
         $this->assertNoSensitiveDataLogged();
@@ -257,5 +258,76 @@ class UnmappedProviderAlertTest extends TestCase
 
         $failed = $this->assertSystemLogged('normalization.unmapped_alert.failed');
         $this->assertSame('exception', $failed['reason']);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $conditions
+     * @return array<string, mixed>
+     */
+    private function alertIncident(array $conditions): array
+    {
+        return [
+            'eventType' => 'AlertIncident',
+            'eventId' => 'evt-'.count($conditions),
+            'data' => ['happenedAtTime' => '2026-10-04T10:00:00Z', 'conditions' => $conditions],
+        ];
+    }
+
+    public function test_a_recognized_non_emergency_alert_is_recorded_without_alerting(): void
+    {
+        Notification::fake();
+        Event::fake([EventNormalized::class]);
+        // Geocerca configurada por el cliente en Samsara: sin regla en SAM.
+        $raw = $this->rawEvent($this->teamA, payload: $this->alertIncident([
+            ['triggerId' => 5016, 'description' => 'Geofence Entry'],
+        ]));
+
+        (new NormalizeEventJob($raw->id))->handle(app(NormalizeRawEvent::class));
+
+        // Queda en "Sin mapear" para que alguien cree la regla…
+        $normalized = NormalizedEvent::withoutGlobalScopes()->where('raw_event_id', $raw->id)->sole();
+        $this->assertSame('unmapped', $normalized->status->value);
+        $this->assertSame('AlertIncident', $normalized->payload_normalized_json['external_event_type']);
+        $this->assertSame([5016], $normalized->payload_normalized_json['provider_trigger_ids']);
+
+        // …pero no se avisa como posible pánico, ni pasa por la IA (un
+        // unmapped nunca dispara EventNormalized).
+        Notification::assertNothingSent();
+        Event::assertNotDispatched(EventNormalized::class);
+        $this->assertSame(0, PipelineFailureAlert::withoutGlobalScopes()->count());
+
+        $c = $this->assertSystemLogged('normalization.unmapped_alert.skipped', fn (array $c): bool => $c['reason'] === 'recognized_non_emergency_trigger');
+        $this->assertSame([5016], $c['calc']['trigger_ids']);
+        $this->assertSame($raw->id, $c['input']['raw_event_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_emergency_trigger_without_a_rule_still_alerts(): void
+    {
+        Notification::fake();
+        // Un pánico (1034) junto a otra condición, sin regla que lo reconozca
+        // (la de este test exige la descripción vieja).
+        $raw = $this->rawEvent($this->teamA, payload: $this->alertIncident([
+            ['triggerId' => 5016, 'description' => 'Geofence Entry'],
+            ['triggerId' => 1034, 'description' => 'Botón SOS'],
+        ]));
+
+        (new NormalizeEventJob($raw->id))->handle(app(NormalizeRawEvent::class));
+
+        $this->assertSame(1, PipelineFailureAlert::withoutGlobalScopes()->where('raw_event_id', $raw->id)->count());
+        $c = $this->assertSystemLogged('normalization.unmapped_alert.escalated');
+        $this->assertSame('emergency', $c['calc']['trigger_class']);
+    }
+
+    public function test_conditions_without_trigger_ids_are_unreadable_and_alert(): void
+    {
+        Notification::fake();
+        $raw = $this->rawEvent($this->teamA, payload: $this->alertIncident([
+            ['description' => 'Algo'],
+        ]));
+
+        (new NormalizeEventJob($raw->id))->handle(app(NormalizeRawEvent::class));
+
+        $this->assertSame(1, PipelineFailureAlert::withoutGlobalScopes()->where('raw_event_id', $raw->id)->count());
     }
 }
