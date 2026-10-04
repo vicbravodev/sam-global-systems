@@ -773,6 +773,20 @@ Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `eval
 | `drivers.risk_profile.recalculated` | ok | — | `team_id`, `driver_id`; calc `window_days` (30), `harsh_events`, `fatigue_events`, `severe_events`, `other_events`, `incidents`, `weights` (harsh 4, fatigue 8, severe 15, other 2, incident 10), `cap` (100), `level_thresholds` (low ≤ 25, medium ≤ 50, high ≤ 75, si no critical), `previous_score`; result `risk_score` = `min(cap, Σ término × peso)` redondeado a 2, `risk_level`, `previous_level`, `trend` (`baseline`/`deteriorating`/`improving`/`stable`), `alert_raised` (cruzó a high/critical: `driver.risk_deteriorated`). En **debug** cuando el nivel no cambia |
 | `drivers.risk_sweep.completed` | ok | — | barrido diario de plataforma, sin ids: calc `window_days`; result `tenants` (grupos por lote de 200), `drivers_scanned`, `skipped_no_activity` (sin eventos, incidentes ni perfil previo), `recalculated`, `alerts_raised`; `duration_ms` |
 
+### HOS (`hos`) — monitoreo de horas de servicio (EE. UU.)
+
+Spec: `docs/superpowers/specs/2026-10-04-hos-monitoring-design.md`. Nunca nombre, teléfono ni texto al chofer: sólo ids y números de los relojes.
+
+| Código | Nivel | reason | Contexto |
+|---|---|---|---|
+| `hos.poll.dispatched` | ok | — | recorrido de plataforma, sin ids: result `dispatched_count`, `feature_off_count`, `tenant_blocked_count`, `sync_disabled_count` |
+| `hos.poll.skipped` | skipped | `tenant_blocked` · `feature_disabled` | `team_id`, `integration_id`; calc `blocked_reason` cuando aplica. No se sondea: tenant suspendido/cancelado/expirado o feature `hos_monitoring` apagada al momento de correr el job |
+| `hos.poll.failed` | degraded | `unauthorized` · `rate_limited` · `provider_error` | `team_id`, `integration_id`; `error`. Incluye caída de red (`ProviderUnavailable`). Se descarta el ciclo completo (relojes o tags): no se tocan estados ni episodios para no leer un listado parcial como choferes que salieron |
+| `hos.poll.completed` | ok | — | `team_id`, `integration_id`; calc `readings_count`, `tags_count`, `tag_ids_count`, `included_count`, `excluded_count`; result `monitored`, `opened`, `resolved`, `unenrolled`, `app_disconnected` y `skipped_{razón}` (`no_vehicle`, `driver_unresolved`, `vehicle_unresolved` = desconocido o no vigilado, `excluded`, `no_match`) |
+| `hos.episode.opened` | ok / skipped | `already_open` | `team_id`, `driver_id`, `asset_id`; calc `situation`, `duty_status`, `break_remaining_s`, `drive_remaining_s`, `shift_remaining_s`, `cycle_remaining_s`, `violation_s`, `lead_s`, `cycle_lead_s` (umbral de apertura); result `episode_id`. `already_open` = un sondeo solapado ya lo abrió (índice parcial) |
+| `hos.episode.resolved` | ok | — | `team_id`, `driver_id`, `episode_id`; calc `situation`, `duty_status`, `open_seconds`; result `resolution` (`corrected` = `break_due`/`drive_limit`/`shift_limit`: el reloj volvió por encima del umbral de aviso (`lead_s`), incluido el recálculo parcial tras sleeper dividido; `cycle_limit`: el ciclo superó `cycle_lead_s` + 30 min; `violation`: sin infracción y con manejo disponible (> 0); `rest_complete`: el chofer arrancó tras su pausa; `expired` = fin de pausa sin arrancar tras `rest_complete_expire_minutes`; `unenrolled` = salió del conjunto vigilado) |
+| `hos.driver.app_disconnected` | degraded | `empty_duty_status` | `team_id`, `driver_id`, `asset_id`. Samsara devolvió status vacío: app del chofer desconectada. Se registra sólo en la transición; se conservan los últimos relojes y no se abre ni cierra nada mientras dure |
+
 ### Analítica (`analytics`)
 
 | Código | Outcome | Reason posibles | Campos clave |

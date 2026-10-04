@@ -6,6 +6,7 @@ use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Data\HosClockReading;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejected;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
@@ -339,6 +340,51 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
 
         return array_values($byAsset);
+    }
+
+    public function fetchHosClocks(TenantIntegration $integration): array
+    {
+        $readings = [];
+
+        foreach ($this->fetchAllPages($integration, '/fleet/hos/clocks', 512) as $row) {
+            $reading = HosClockReading::fromSamsara($row);
+
+            if ($reading !== null) {
+                $readings[] = $reading;
+            }
+        }
+
+        return $readings;
+    }
+
+    public function fetchTags(TenantIntegration $integration): array
+    {
+        $members = fn (mixed $list): array => array_values(array_filter(array_map(
+            fn ($member) => is_array($member) && is_scalar($member['id'] ?? null) ? (string) $member['id'] : null,
+            is_array($list) ? $list : [],
+        ), fn ($id) => $id !== null && $id !== ''));
+
+        $tags = [];
+
+        foreach ($this->fetchAllPages($integration, '/tags', 512) as $tag) {
+            $id = Arr::get($tag, 'id');
+
+            if (! is_scalar($id) || (string) $id === '') {
+                continue;
+            }
+
+            $parent = Arr::get($tag, 'parentTagId');
+
+            $tags[] = [
+                'id' => (string) $id,
+                'name' => (string) Arr::get($tag, 'name', ''),
+                'parent_id' => is_scalar($parent) && (string) $parent !== '' ? (string) $parent : null,
+                'vehicle_ids' => $members(Arr::get($tag, 'vehicles')),
+                'driver_ids' => $members(Arr::get($tag, 'drivers')),
+            ];
+        }
+
+        return $tags;
     }
 
     /**
@@ -1459,5 +1505,75 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         return null;
+    }
+
+    /**
+     * Every record of a paginated Samsara list, failing typed on any non-2xx
+     * or network error (never a partial listing: a missing page would read as data removed).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchAllPages(TenantIntegration $integration, string $path, int $limit): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            throw new ProviderUnauthorized('No hay token de API configurado para esta integración de Samsara.');
+        }
+
+        $records = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = ['limit' => $limit];
+
+            if ($cursor !== null) {
+                $query['after'] = $cursor;
+            }
+
+            try {
+                $response = $this->client($token)->get($path, $query);
+            } catch (ConnectionException $e) {
+                throw new ProviderUnavailable('Could not reach Samsara: '.SafeErrorMessage::from($e), previous: $e);
+            }
+
+            $status = $response->status();
+
+            if ($status === 429) {
+                $retryAfter = $response->header('Retry-After');
+
+                throw new ProviderRateLimited(max(0.0, (float) ($retryAfter === '' || $retryAfter === '0' ? 1 : $retryAfter)));
+            }
+
+            if ($status === 401 || $status === 403) {
+                throw new ProviderUnauthorized("Samsara rejected the API token (HTTP {$status}).");
+            }
+
+            if ($status >= 500) {
+                throw new ProviderUnavailable("Samsara returned HTTP {$status}.");
+            }
+
+            if (! $response->successful()) {
+                throw ProviderRequestFailedException::fromResponse("GET {$path}", $response);
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $records[] = (array) $record;
+            }
+
+            $cursor = $response->json('pagination.endCursor');
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+            // endCursor de Samsara es un token opaco (string no vacío o null).
+        } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
+
+        // If the loop exited with hasNext still true, we hit the page cap or lost the cursor
+        // and couldn't complete the listing — callers must discard this partial result.
+        if ($hasNext) {
+            throw new ProviderUnavailable("Samsara listing for {$path} was truncated (page cap or missing cursor).");
+        }
+
+        return $records;
     }
 }
