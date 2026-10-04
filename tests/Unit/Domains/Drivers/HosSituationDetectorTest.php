@@ -89,6 +89,45 @@ class HosSituationDetectorTest extends TestCase
         $this->assertSame(['violation' => HosEpisodeResolution::Corrected], $this->detect(null, $this->reading('offDuty', drive: 0), $open)->resolve);
     }
 
+    public function test_limit_situations_resolve_when_the_clock_goes_back_above_the_threshold(): void
+    {
+        $open = ['drive_limit' => CarbonImmutable::parse('2026-10-04 11:50:00')];
+
+        // Sleeper dividido: Samsara recalcula a un valor parcial, no a 11 h.
+        $this->assertSame(
+            ['drive_limit' => HosEpisodeResolution::Corrected],
+            $this->detect(null, $this->reading('sleeperBed', drive: 18000), $open)->resolve,
+        );
+        // Justo en el umbral de apertura sigue abierto.
+        $this->assertSame([], $this->detect(null, $this->reading('sleeperBed', drive: 1800), $open)->resolve);
+
+        $shift = ['shift_limit' => CarbonImmutable::parse('2026-10-04 11:50:00')];
+        $this->assertSame(
+            ['shift_limit' => HosEpisodeResolution::Corrected],
+            $this->detect(null, $this->reading('sleeperBed', shift: 20000), $shift)->resolve,
+        );
+        $this->assertSame([], $this->detect(null, $this->reading('offDuty', shift: 1200), $shift)->resolve);
+
+        $break = ['break_due' => CarbonImmutable::parse('2026-10-04 11:50:00')];
+        $this->assertSame(
+            ['break_due' => HosEpisodeResolution::Corrected],
+            $this->detect(null, $this->reading('offDuty', break: 1801), $break)->resolve,
+        );
+    }
+
+    public function test_cycle_limit_needs_a_margin_above_the_threshold_to_resolve(): void
+    {
+        $open = ['cycle_limit' => CarbonImmutable::parse('2026-10-03 12:00:00')];
+        $cycleLead = 5 * 3600;
+
+        $this->assertSame([], $this->detect(null, $this->reading('offDuty', cycle: $cycleLead + 600), $open)->resolve);
+        $this->assertSame([], $this->detect(null, $this->reading('offDuty', cycle: $cycleLead + 1800), $open)->resolve);
+        $this->assertSame(
+            ['cycle_limit' => HosEpisodeResolution::Corrected],
+            $this->detect(null, $this->reading('offDuty', cycle: $cycleLead + 3600), $open)->resolve,
+        );
+    }
+
     public function test_the_sleeping_partner_of_a_team_truck_opens_nothing(): void
     {
         // Equipo de dos choferes: el de sleeper con manejo/turno en 0 está cumpliendo su descanso.

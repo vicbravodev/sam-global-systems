@@ -13,10 +13,15 @@ use Carbon\CarbonInterface;
  * Pure HOS rule evaluation for one driver: given the previous and current
  * clock readings and the situations already open, which open and which end.
  *
- * Limit situations (break, drive, shift) end when their clock RESETS, not
- * when the driver goes off duty: a 5-minute stop must not close and reopen
- * the episode (duplicate reminders). The reminder ladder (PR 2) pauses while
- * the driver is not working instead. A disconnected driver app (null status)
+ * Limit situations (break, drive, shift) end when their clock goes back
+ * strictly ABOVE the warning threshold, not when the driver goes off duty.
+ * That cannot flap on a short stop: drive and shift never go up while
+ * stopped and the break clock only resets after 30 consecutive minutes, so a
+ * 5-minute stop keeps the episode open (no duplicate reminders; the reminder
+ * ladder of PR 2 pauses while the driver is not working instead). It also
+ * closes the episode when a split sleeper-berth period makes Samsara
+ * recalculate drive/shift to a partial value instead of the full one. The
+ * cycle closes only with a margin above its threshold. A disconnected driver app (null status)
  * freezes everything: an unknown state is neither a breach nor a fix.
  */
 class HosSituationDetector
@@ -26,6 +31,14 @@ class HosSituationDetector
     public const int FULL_DRIVE_SECONDS = 39600;
 
     public const int FULL_SHIFT_SECONDS = 50400;
+
+    /**
+     * Margin above the cycle threshold before cycle_limit ends: the 70 h/8 d
+     * cycle recovers hours as old days roll off, so it can hover around the
+     * threshold for a while; without a margin the episode would close and
+     * reopen (duplicate reminders).
+     */
+    public const int CYCLE_RESOLVE_MARGIN_SECONDS = 1800;
 
     /**
      * @param  array<string, CarbonInterface>  $openSituations  situation value → opened_at
@@ -55,19 +68,19 @@ class HosSituationDetector
             ],
             HosSituation::BreakDue->value => [
                 'opens' => $driving && $this->atOrBelow($current->breakRemainingSeconds, $lead),
-                'ends' => $this->atOrAbove($current->breakRemainingSeconds, self::FULL_BREAK_SECONDS),
+                'ends' => $this->above($current->breakRemainingSeconds, $lead),
             ],
             HosSituation::DriveLimit->value => [
                 'opens' => $driving && $this->atOrBelow($current->driveRemainingSeconds, $lead),
-                'ends' => $this->atOrAbove($current->driveRemainingSeconds, self::FULL_DRIVE_SECONDS),
+                'ends' => $this->above($current->driveRemainingSeconds, $lead),
             ],
             HosSituation::ShiftLimit->value => [
                 'opens' => $status->isWorking() && $this->atOrBelow($current->shiftRemainingSeconds, $lead),
-                'ends' => $this->atOrAbove($current->shiftRemainingSeconds, self::FULL_SHIFT_SECONDS),
+                'ends' => $this->above($current->shiftRemainingSeconds, $lead),
             ],
             HosSituation::CycleLimit->value => [
                 'opens' => $this->atOrBelow($current->cycleRemainingSeconds, $config->cycleLeadSeconds()),
-                'ends' => $current->cycleRemainingSeconds !== null && $current->cycleRemainingSeconds > $config->cycleLeadSeconds(),
+                'ends' => $this->above($current->cycleRemainingSeconds, $config->cycleLeadSeconds() + self::CYCLE_RESOLVE_MARGIN_SECONDS),
             ],
         ];
 
