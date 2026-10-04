@@ -4,6 +4,7 @@ namespace Tests\Feature\Domains\Drivers\Hos;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Actions\AdvanceHosEpisodes;
+use App\Domains\Drivers\Actions\LinkHosEpisodeIncident;
 use App\Domains\Drivers\Actions\SendHosNudge;
 use App\Domains\Drivers\Data\HosLadderDecision;
 use App\Domains\Drivers\Enums\HosDutyStatus;
@@ -264,6 +265,7 @@ class AdvanceHosEpisodesTest extends TestCase
         $held = $this->assertSystemLogged('hos.nudge.skipped');
         $this->assertSame('no_reading', $held['reason']);
         $this->assertTrue($held['calc']['app_disconnected']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_violation_raises_the_incident_at_once_and_tells_the_driver(): void
@@ -278,6 +280,17 @@ class AdvanceHosEpisodesTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/fleet/messages') && str_contains((string) $request['text'], 'infracción'));
         $this->assertSame('hos_limit_exceeded', RawEvent::withoutGlobalScopes()->sole()->event_type_raw);
         $this->assertNotNull($episode->fresh()->escalated_at);
+
+        $sent = $this->assertSystemLogged('hos.nudge.sent');
+        $this->assertSame($episode->id, $sent['input']['episode_id']);
+        $this->assertSame('escalate', $sent['calc']['move']);
+        $this->assertSame(0, $sent['calc']['step']);
+        $this->assertSame('violation', $sent['calc']['notice']);
+        $this->assertSame(['samsara_driver_app'], $sent['calc']['channels']);
+        $this->assertSame(Notification::withoutGlobalScopes()->sole()->id, $sent['result']['notification_id']);
+        $this->assertSystemLogged('hos.incident.raised');
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString('infracción', (string) json_encode($this->systemLogEntries()));
     }
 
     public function test_the_incident_opened_by_the_pipeline_is_linked_to_the_episode(): void
@@ -307,6 +320,8 @@ class AdvanceHosEpisodesTest extends TestCase
         $this->advance();
 
         $this->assertSame($incident->id, $episode->fresh()->incident_id);
+        $this->assertSame($incident->id, $this->assertSystemLogged('hos.incident.linked')['result']['incident_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_advancing_one_tenant_never_touches_another(): void
@@ -403,6 +418,8 @@ class AdvanceHosEpisodesTest extends TestCase
 
         $this->assertSame(1, $this->appMessages());
         $this->assertSame(3, $break->fresh()->ladder_step);
+        $this->assertSame($break->id, $this->assertSystemLogged('hos.nudge.sent')['input']['episode_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_driver_app_address_comes_from_the_episode_driver_and_integration_only(): void
@@ -435,6 +452,8 @@ class AdvanceHosEpisodesTest extends TestCase
         $this->assertSame(1, Notification::withoutGlobalScopes()->count());
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $other->team_id)->count());
         $this->assertSame(0, $otherEpisode->fresh()->ladder_step);
+        $this->assertSame($episode->id, $this->assertSystemLogged('hos.nudge.sent')['input']['episode_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_long_hos_sms_is_sent_whole_without_reply_instructions(): void
@@ -466,5 +485,85 @@ class AdvanceHosEpisodesTest extends TestCase
         $rendered = new RenderedNotification(ChannelType::Sms, '+5215512345678', null, $body);
         $result = app(AppendReplyInstructions::class)->execute($notification, NotificationRecipient::withoutGlobalScopes()->sole(), $rendered);
         $this->assertSame($body, $result->body);
+    }
+
+    public function test_a_failed_rest_notice_does_not_skip_ahead(): void
+    {
+        $this->fakeAppMessages();
+        // Fin de pausa abierto 12:00; su aviso de las 12:15 (escalón 0) no llegó.
+        $episode = $this->episode(HosSituation::RestComplete, ['ladder_step' => 1, 'next_nudge_at' => now()->addMinutes(30)]);
+        Notification::factory()->create([
+            'team_id' => $episode->team_id, 'source_type' => NotificationSourceType::HosEpisode,
+            'source_reference_id' => (string) $episode->id, 'notification_type' => 'hos.nudge',
+            'event_key' => "hos:{$episode->id}:0", 'status' => NotificationStatus::Failed,
+        ]);
+        $this->state('offDuty');
+        $this->travel(16)->minutes();
+
+        $this->advance();                                     // 12:16
+        $this->travel(1)->minutes();
+        $this->advance();                                     // 12:17
+
+        $this->assertSystemNotLogged('hos.nudge.channel_unavailable');
+        $this->assertSame(0, $this->appMessages());
+        $episode->refresh();
+        $this->assertSame(1, $episode->ladder_step);
+        $this->assertTrue($episode->next_nudge_at->equalTo(CarbonImmutable::parse('2026-10-04 12:30:00')));
+        $this->assertSame('not_due', $this->assertSystemLogged('hos.nudge.skipped')['reason']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_exhausted_ladder_without_a_unit_is_not_marked_escalated(): void
+    {
+        $this->fakeAppMessages();
+        Queue::fake([ProcessRawEventJob::class]);
+        // La unidad se borró: el pipeline interno no puede levantar el incidente.
+        $episode = $this->episode(attributes: ['asset_id' => null, 'ladder_step' => 5, 'next_nudge_at' => now()]);
+        $this->state(break: 0);
+
+        $counts = $this->advance();
+
+        $this->assertSame(1, $counts['failed']);
+        $this->assertSame(0, $counts['escalated']);
+        $episode->refresh();
+        $this->assertNull($episode->escalated_at);
+        $this->assertSame(5, $episode->ladder_step);
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+        $failed = $this->assertSystemLogged('hos.ladder.escalation_failed');
+        $this->assertSame('no_asset', $failed['reason']);
+        $this->assertSame($episode->id, $failed['input']['episode_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_one_failing_episode_does_not_stop_the_others(): void
+    {
+        $this->fakeAppMessages();
+        $broken = $this->episode(HosSituation::DriveLimit, ['escalated_at' => now(), 'ladder_step' => 6]);
+        $healthy = $this->episode();
+        $this->state(break: 0);
+        $this->app->instance(LinkHosEpisodeIncident::class, new class($broken->id) extends LinkHosEpisodeIncident
+        {
+            public function __construct(private readonly int $brokenId) {}
+
+            public function execute(HosEpisode $episode): ?Incident
+            {
+                if ($episode->id === $this->brokenId) {
+                    throw new \RuntimeException('link failed');
+                }
+
+                return parent::execute($episode);
+            }
+        });
+
+        $counts = $this->advance();
+
+        $this->assertSame(1, $counts['failed']);
+        $this->assertSame(1, $counts['notified']);
+        $this->assertSame(1, $this->appMessages());
+        $this->assertSame(3, $healthy->fresh()->ladder_step);
+        $failed = $this->assertSystemLogged('hos.ladder.episode_failed');
+        $this->assertSame($broken->id, $failed['input']['episode_id']);
+        $this->assertSame(1, $this->assertSystemLogged('hos.ladder.advanced')['result']['failed']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

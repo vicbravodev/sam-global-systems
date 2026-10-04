@@ -29,12 +29,17 @@ use Throwable;
  * Idempotent: steps are notifications keyed `hos:{episode}:{step}` and the
  * escalation a raw event keyed `hos:{episode}`. A step whose notification
  * reached nobody (failed or cancelled) does not wait for its interval: the
- * next step is due right away. While a driver has an open violation, his
- * drive/shift episodes hold (`violation_open`): the violation alone tells
- * him and raises the incident; break_due is not affected.
+ * next step is due right away (ladders only). While a driver has an open
+ * violation, his drive/shift episodes hold (`violation_open`): the violation
+ * alone tells him and raises the incident; break_due is not affected. An
+ * episode that throws is logged and counted as failed; the others still
+ * advance.
  */
 class AdvanceHosEpisodes
 {
+    /** Situations with a reminder ladder: the only ones whose next step can be brought forward. */
+    private const array LADDER_SITUATIONS = [HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit];
+
     /** Situations whose ladder pauses while the same driver has an open violation. */
     private const array HELD_BY_VIOLATION = [HosSituation::DriveLimit, HosSituation::ShiftLimit];
 
@@ -73,7 +78,22 @@ class AdvanceHosEpisodes
             $counts = ['open' => $episodes->count(), 'notified' => 0, 'escalated' => 0, 'held' => 0, 'waiting' => 0, 'failed' => 0];
 
             foreach ($episodes as $episode) {
-                $counts[$this->advance($integration, $episode, $states->get($episode->driver_id), $openViolations->get($episode->driver_id), $config, $now)]++;
+                try {
+                    $outcome = $this->advance($integration, $episode, $states->get($episode->driver_id), $openViolations->get($episode->driver_id), $config, $now);
+                } catch (Throwable $e) {
+                    // Un episodio roto no frena la escalera de los demás choferes.
+                    SystemLog::failed('hos.ladder.episode_failed', reason: 'unexpected_error', input: [
+                        'team_id' => $episode->team_id,
+                        'episode_id' => $episode->id,
+                        'driver_id' => $episode->driver_id,
+                    ], calc: [
+                        'situation' => $episode->situation->value,
+                        'ladder_step' => $episode->ladder_step,
+                    ], error: $e);
+                    $outcome = 'failed';
+                }
+
+                $counts[$outcome]++;
             }
 
             SystemLog::ok('hos.ladder.advanced', input: [
@@ -213,12 +233,25 @@ class AdvanceHosEpisodes
 
         try {
             if ($decision->channels !== [] && $decision->notice !== null) {
-                $this->sendNudge->execute($integration, $episode, $decision);
+                $notification = $this->sendNudge->execute($integration, $episode, $decision);
+
+                SystemLog::ok('hos.nudge.sent', input: $input, calc: $calc, result: [
+                    'notification_id' => $notification->id,
+                    'notification_reused' => ! $notification->wasRecentlyCreated,
+                    'next_nudge_at' => null,
+                ]);
             }
 
-            $this->raiseIncident->execute($episode, $current, $now);
+            $raised = $this->raiseIncident->execute($episode, $current, $now);
         } catch (Throwable $e) {
             SystemLog::failed('hos.nudge.failed', reason: 'escalation_error', input: $input, calc: $calc, error: $e);
+
+            return 'failed';
+        }
+
+        if (! $raised['raised'] && $raised['reason'] === 'no_asset') {
+            // Sin unidad no hay incidente: no se marca escalado, se reintenta el siguiente ciclo.
+            SystemLog::degraded('hos.ladder.escalation_failed', reason: 'no_asset', input: $input, calc: $calc);
 
             return 'failed';
         }
@@ -240,6 +273,11 @@ class AdvanceHosEpisodes
      */
     private function skipAheadAfterUndeliveredNudge(HosEpisode $episode, CarbonImmutable $now): void
     {
+        // Sólo las escaleras usan next_nudge_at como "siguiente escalón"; fin de pausa lo recalcula desde opened_at.
+        if (! in_array($episode->situation, self::LADDER_SITUATIONS, true)) {
+            return;
+        }
+
         if ($episode->ladder_step === 0 || $episode->next_nudge_at === null || $episode->next_nudge_at->lte($now)) {
             return;
         }
