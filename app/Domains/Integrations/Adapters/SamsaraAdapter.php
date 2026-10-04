@@ -1509,7 +1509,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
     /**
      * Every record of a paginated Samsara list, failing typed on any non-2xx
-     * (never a partial listing: a missing page would read as data removed).
+     * or network error (never a partial listing: a missing page would read as data removed).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -1532,7 +1532,12 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 $query['after'] = $cursor;
             }
 
-            $response = $this->client($token)->get($path, $query);
+            try {
+                $response = $this->client($token)->get($path, $query);
+            } catch (ConnectionException $e) {
+                throw new ProviderUnavailable('Could not reach Samsara: '.SafeErrorMessage::from($e), previous: $e);
+            }
+
             $status = $response->status();
 
             if ($status === 429) {

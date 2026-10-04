@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -121,6 +122,19 @@ class SamsaraHosAdapterTest extends TestCase
         $this->expectException(ProviderUnavailable::class);
 
         app(ProviderAdapter::class)->fetchTags($this->integration());
+    }
+
+    public function test_a_connection_failure_throws_unavailable(): void
+    {
+        Http::fake(['api.samsara.com/*' => Http::failedConnection()]);
+
+        try {
+            app(ProviderAdapter::class)->fetchHosClocks($this->integration());
+            $this->fail('Expected ProviderUnavailable.');
+        } catch (ProviderUnavailable $e) {
+            $this->assertStringStartsWith('Could not reach Samsara', $e->getMessage());
+            $this->assertInstanceOf(ConnectionException::class, $e->getPrevious());
+        }
     }
 
     public function test_it_maps_tags_with_members_and_parent(): void

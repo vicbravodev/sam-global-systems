@@ -63,14 +63,14 @@ class SyncHosClocksJobTest extends TestCase
         return [$driver, $asset];
     }
 
-    /** `$thenFail`: la segunda lectura de relojes responde 503 (un segundo Http::fake no reemplaza al primero). */
-    private function fakeSamsara(int $breakMs = 1593045, bool $thenFail = false, int $reads = 1): void
+    /** Respuesta de /fleet/hos/clocks con un solo chofer. */
+    private function clocks(int $breakMs = 1593045, string $status = 'driving'): array
     {
-        $reading = [
+        return [
             'data' => [[
                 'driver' => ['id' => '58072405', 'name' => 'Chofer Uno'],
                 'currentVehicle' => ['id' => '281', 'name' => 'T-0321 USA'],
-                'currentDutyStatus' => ['hosStatusType' => 'driving'],
+                'currentDutyStatus' => ['hosStatusType' => $status],
                 'violations' => ['shiftDrivingViolationDurationMs' => 0, 'cycleViolationDurationMs' => 0],
                 'clocks' => [
                     'break' => ['timeUntilBreakDurationMs' => $breakMs],
@@ -81,6 +81,20 @@ class SyncHosClocksJobTest extends TestCase
             ]],
             'pagination' => ['endCursor' => '', 'hasNextPage' => false],
         ];
+    }
+
+    private function tags(): array
+    {
+        return [
+            'data' => [['id' => '4738197', 'name' => 'USA', 'vehicles' => [], 'drivers' => [['id' => '58072405']]]],
+            'pagination' => ['endCursor' => '', 'hasNextPage' => false],
+        ];
+    }
+
+    /** `$thenFail`: la segunda lectura de relojes responde 503 (un segundo Http::fake no reemplaza al primero). */
+    private function fakeSamsara(int $breakMs = 1593045, bool $thenFail = false, int $reads = 1): void
+    {
+        $reading = $this->clocks($breakMs);
         $clocks = Http::sequence();
 
         for ($i = 0; $i < $reads; $i++) {
@@ -93,10 +107,7 @@ class SyncHosClocksJobTest extends TestCase
 
         Http::fake([
             'api.samsara.com/fleet/hos/clocks*' => $clocks,
-            'api.samsara.com/tags*' => Http::response([
-                'data' => [['id' => '4738197', 'name' => 'USA', 'vehicles' => [], 'drivers' => [['id' => '58072405']]]],
-                'pagination' => ['endCursor' => '', 'hasNextPage' => false],
-            ]),
+            'api.samsara.com/tags*' => Http::response($this->tags()),
         ]);
     }
 
@@ -130,6 +141,28 @@ class SyncHosClocksJobTest extends TestCase
         $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->count());
         $failed = $this->assertSystemLogged('hos.poll.failed');
         $this->assertSame('provider_error', $failed['reason']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_network_failure_discards_the_cycle_without_touching_episodes(): void
+    {
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        Http::fake([
+            'api.samsara.com/fleet/hos/clocks*' => Http::sequence()->push($this->clocks())->pushFailedConnection(),
+            'api.samsara.com/tags*' => Http::response($this->tags()),
+        ]);
+
+        $this->travelTo('2026-10-04 12:00:00');
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+        $this->travelTo('2026-10-04 12:01:00');
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        $episode = HosEpisode::withoutGlobalScopes()->sole();
+        $this->assertNull($episode->resolved_at);
+        $this->assertSame('2026-10-04 12:00:00', HosDriverState::withoutGlobalScopes()->sole()->observed_at->format('Y-m-d H:i:s'));
+        $this->assertSame('provider_error', $this->assertSystemLogged('hos.poll.failed')['reason']);
+        $this->assertCount(1, array_filter($this->systemLogEntries(), fn ($e) => $e['code'] === 'hos.poll.completed'));
         $this->assertNoSensitiveDataLogged();
     }
 
