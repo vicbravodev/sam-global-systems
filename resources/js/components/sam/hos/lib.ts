@@ -171,3 +171,14 @@ export function driverTabFromUrl(url: string): 'resumen' | 'hos' {
         ? 'hos'
         : 'resumen';
 }
+
+/**
+ * Props que recarga cada sondeo en el detalle del chofer: sólo `hos` y sólo
+ * con su pestaña abierta (al abrirla se hace una recarga parcial).
+ */
+export function hosReloadProps(
+    hasHos: boolean,
+    tab: 'resumen' | 'hos',
+): string[] | null {
+    return hasHos && tab === 'hos' ? ['hos'] : null;
+}

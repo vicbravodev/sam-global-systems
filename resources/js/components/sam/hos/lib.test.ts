@@ -5,6 +5,7 @@ import {
     deliveryLines,
     driverTabFromUrl,
     fleetOutageLabel,
+    hosReloadProps,
     isWorkingStatus,
     nearestLabel,
     nudgeTitle,
@@ -146,5 +147,13 @@ describe('textos del panel', () => {
         expect(driverTabFromUrl('/acme/drivers/7?pestana=otra')).toBe(
             'resumen',
         );
+    });
+});
+
+describe('hosReloadProps', () => {
+    it('el sondeo recarga hos sólo con la pestaña HOS abierta', () => {
+        expect(hosReloadProps(true, 'hos')).toEqual(['hos']);
+        expect(hosReloadProps(true, 'resumen')).toBeNull();
+        expect(hosReloadProps(false, 'hos')).toBeNull();
     });
 });

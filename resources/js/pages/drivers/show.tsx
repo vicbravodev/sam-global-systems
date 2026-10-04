@@ -1,5 +1,5 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { AssignmentsCard } from '@/components/sam/drivers/detail/assignments-card';
 import { ContactsCard } from '@/components/sam/drivers/detail/contacts-card';
@@ -8,7 +8,7 @@ import { DriverHero } from '@/components/sam/drivers/detail/driver-hero';
 import { ProfileCard } from '@/components/sam/drivers/detail/profile-card';
 import { RiskCard } from '@/components/sam/drivers/detail/risk-card';
 import { HosDriverPanel } from '@/components/sam/hos/hos-driver-panel';
-import { driverTabFromUrl } from '@/components/sam/hos/lib';
+import { driverTabFromUrl, hosReloadProps } from '@/components/sam/hos/lib';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
 import { TabBar } from '@/components/sam/tab-bar';
@@ -30,11 +30,23 @@ export default function DriverShow({
         hos !== null ? driverTabFromUrl(page.url) : 'resumen',
     );
 
-    // Cada sondeo HOS (~1 min) recarga sólo la pestaña HOS.
+    // Cada sondeo HOS (~1 min) recarga `hos` sólo con su pestaña abierta.
+    const hosReload = hosReloadProps(hos !== null, tab);
     useBroadcastReload(
-        { 'hos.clocks_updated': () => (hos === null ? null : ['hos']) },
-        { resync: hos === null ? [] : ['hos'] },
+        { 'hos.clocks_updated': () => hosReload },
+        { resync: hosReload ?? [] },
     );
+
+    const changeTab = (key: string) => {
+        const next = key === 'hos' ? 'hos' : 'resumen';
+
+        if (next === 'hos' && tab !== 'hos') {
+            // Al abrirla, una recarga parcial: pudo quedar vieja en Resumen.
+            router.reload({ only: ['hos'] });
+        }
+
+        setTab(next);
+    };
     const openEpisodes = hos?.openEpisodes.length ?? 0;
 
     return (
@@ -57,9 +69,7 @@ export default function DriverShow({
                             },
                         ]}
                         value={tab}
-                        onChange={(key) =>
-                            setTab(key === 'hos' ? 'hos' : 'resumen')
-                        }
+                        onChange={changeTab}
                     />
                 ) : null}
 
