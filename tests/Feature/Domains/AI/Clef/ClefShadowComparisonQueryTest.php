@@ -140,6 +140,17 @@ class ClefShadowComparisonQueryTest extends TestCase
         $this->assertSame(1, $all['gpt']['n']);
     }
 
+    public function test_platform_report_without_team_aggregates_every_tenant(): void
+    {
+        $this->shadow($this->makeEvaluation(Team::factory()->create()), 'noise', 0.1);
+        $this->shadow($this->makeEvaluation(Team::factory()->create()), 'noise', 0.1);
+
+        $all = app(ClefShadowComparisonQuery::class)->execute(null, now()->subDay())['all'];
+
+        $this->assertSame(2, $all['gpt']['n']);
+        $this->assertSame(2, $all['clef']['n']);
+    }
+
     public function test_by_event_type_adds_one_bucket_per_type(): void
     {
         $team = Team::factory()->create();

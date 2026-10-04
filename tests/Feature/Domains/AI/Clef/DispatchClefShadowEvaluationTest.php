@@ -7,8 +7,10 @@ use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Jobs\ShadowEvaluateWithClefJob;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Feature\Domains\AI\Clef\Concerns\BuildsClefFixtures;
 use Tests\TestCase;
@@ -78,6 +80,24 @@ class DispatchClefShadowEvaluationTest extends TestCase
 
         Queue::assertNothingPushed();
         $this->assertSystemLogged('ai.clef_shadow.skipped', fn (array $c) => $c['reason'] === 'rules_only_mode');
+    }
+
+    public function test_nothing_is_dispatched_when_the_evaluation_transaction_rolls_back(): void
+    {
+        $evaluation = $this->makeEvaluation(Team::factory()->create());
+
+        try {
+            DB::transaction(function () use ($evaluation): void {
+                AIEvaluationCompleted::dispatch($evaluation);
+
+                throw new RuntimeException('la evaluación falló antes del commit');
+            });
+        } catch (RuntimeException) {
+            // esperado
+        }
+
+        Queue::assertNothingPushed();
+        $this->assertSystemNotLogged('ai.clef_shadow.dispatched');
     }
 
     public function test_window_includes_its_last_day(): void

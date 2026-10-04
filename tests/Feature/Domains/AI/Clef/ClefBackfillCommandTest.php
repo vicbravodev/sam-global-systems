@@ -98,6 +98,25 @@ class ClefBackfillCommandTest extends TestCase
         $this->assertEqualsCanonicalizing([$latest->id, $labeled->id], $pushed);
     }
 
+    public function test_without_team_each_job_carries_its_own_evaluations_tenant(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+        $evaluationA = $this->makeEvaluation($teamA);
+        $evaluationB = $this->makeEvaluation($teamB);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertSuccessful();
+
+        $pairs = [];
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, function (ShadowEvaluateWithClefJob $job) use (&$pairs) {
+            $pairs[$job->evaluationId] = $job->teamId;
+
+            return true;
+        });
+        ksort($pairs);
+        $this->assertSame([$evaluationA->id => $teamA->id, $evaluationB->id => $teamB->id], $pairs);
+    }
+
     public function test_asks_for_confirmation_without_force(): void
     {
         $this->makeEvaluation(Team::factory()->create());
