@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { HosTagOption } from '@/types/hos';
 import { tagMembersLabel } from './config-lib';
+import { HOS_THROTTLED } from './copy';
 import type { HosTagsState } from './use-hos-tags';
 
 const DEPTH_INDENT = ['pl-3', 'pl-8', 'pl-12'];
@@ -41,8 +42,7 @@ export function HosTagPicker({
     if (tags.status === 'throttled') {
         return (
             <p className="text-xs text-fg-3" role="status">
-                Hiciste muchas consultas seguidas. Espera un minuto y recarga la
-                página; lo que ya elegiste se conserva.
+                {HOS_THROTTLED}
             </p>
         );
     }
@@ -81,7 +81,11 @@ export function HosTagPicker({
         );
 
     return (
-        <div className="flex flex-col gap-2">
+        <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label="Etiquetas de Samsara"
+        >
             <Input
                 type="search"
                 value={query}

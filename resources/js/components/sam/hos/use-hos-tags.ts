@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getJson } from '@/lib/sam-fetch';
 import type { HosTagOption } from '@/types/hos';
+import { HOS_PREVIEW_RETRY_MS } from './use-hos-preview';
 
 export type HosTagsState =
     | { status: 'loading' }
@@ -45,7 +46,10 @@ async function fetchHosTags(
     }
 }
 
-/** Etiquetas de Samsara del tenant (caché del servidor compartida con el sondeo). */
+/**
+ * Etiquetas de Samsara del tenant (caché del servidor compartida con el
+ * sondeo). Ante un 429 se reintenta sola, como la vista previa.
+ */
 export function useHosTags(url: string | null): HosTagsState {
     const [settled, setSettled] = useState<{
         url: string;
@@ -58,14 +62,28 @@ export function useHosTags(url: string | null): HosTagsState {
         }
 
         const controller = new AbortController();
+        let retry: number | undefined;
 
-        void fetchHosTags(url, controller.signal).then((state) => {
-            if (!controller.signal.aborted) {
+        const run = () => {
+            void fetchHosTags(url, controller.signal).then((state) => {
+                if (controller.signal.aborted) {
+                    return;
+                }
+
                 setSettled({ url, state });
-            }
-        });
 
-        return () => controller.abort();
+                if (state.status === 'throttled') {
+                    retry = window.setTimeout(run, HOS_PREVIEW_RETRY_MS);
+                }
+            });
+        };
+
+        run();
+
+        return () => {
+            window.clearTimeout(retry);
+            controller.abort();
+        };
     }, [url]);
 
     if (url === null) {

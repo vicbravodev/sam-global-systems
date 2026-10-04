@@ -67,15 +67,18 @@ async function fetchHosPreview(
  * `delayMs` después del último cambio y cancela la petición anterior; el
  * servidor calcula sobre la última lectura del sondeo (sin ir a Samsara).
  * Ante un 429 conserva el último resultado y reintenta pasado un rato.
+ * `attempt` lo sube el botón "Reintentar": la misma selección se vuelve a pedir.
  */
 export function useHosPreview(
     url: string | null,
     selection: HosPreviewSelection,
     delayMs = 600,
+    attempt = 0,
 ): HosPreviewState {
     const key = selectionKey(selection);
     const [settled, setSettled] = useState<{
         key: string;
+        attempt: number;
         outcome: PreviewOutcome;
         /** Último resultado bueno, de esta selección o de una anterior. */
         last: HosPreview | null;
@@ -101,6 +104,7 @@ export function useHosPreview(
 
                 setSettled((previous) => ({
                     key,
+                    attempt,
                     outcome,
                     last:
                         outcome.kind === 'ok'
@@ -121,13 +125,17 @@ export function useHosPreview(
             window.clearTimeout(retry);
             controller.abort();
         };
-    }, [url, key, delayMs]);
+    }, [url, key, delayMs, attempt]);
 
     if (url === null) {
         return { status: 'idle' };
     }
 
-    if (settled === null || settled.key !== key) {
+    if (
+        settled === null ||
+        settled.key !== key ||
+        settled.attempt !== attempt
+    ) {
         return { status: 'loading', last: settled?.last ?? null };
     }
 

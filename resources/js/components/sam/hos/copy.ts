@@ -112,3 +112,7 @@ export const HOS_SKIPPED_LABELS: Record<string, string> = {
     excluded: 'excluidos',
     no_match: 'sin etiqueta ni selección',
 };
+
+/** Mismo texto para el 429 del selector de etiquetas y de la vista previa. */
+export const HOS_THROTTLED =
+    'Hiciste muchas consultas seguidas; se actualiza sola en unos segundos. Lo que ya elegiste se conserva.';

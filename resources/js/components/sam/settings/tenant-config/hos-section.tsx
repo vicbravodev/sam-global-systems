@@ -15,7 +15,7 @@ import type {
     HosConfigDraft,
     HosDraftErrors,
 } from '@/components/sam/hos/config-lib';
-import { HOS_SITUATIONS } from '@/components/sam/hos/copy';
+import { HOS_SITUATIONS, HOS_THROTTLED } from '@/components/sam/hos/copy';
 import { HosAssetPicker } from '@/components/sam/hos/hos-asset-picker';
 import { HosLadderEditor } from '@/components/sam/hos/hos-ladder-editor';
 import { HosTagPicker } from '@/components/sam/hos/hos-tag-picker';
@@ -49,6 +49,7 @@ export function HosSection({ form }: { form: HosConfigForm }) {
     );
     const [errors, setErrors] = useState<HosDraftErrors>({});
     const [saving, setSaving] = useState(false);
+    const [previewAttempt, setPreviewAttempt] = useState(0);
     const disabled = !form.canManage || saving;
 
     const tags = useHosTags(
@@ -63,6 +64,8 @@ export function HosSection({ form }: { form: HosConfigForm }) {
             includedAssetIds: draft.includedAssetIds,
             excludedAssetIds: draft.excludedAssetIds,
         },
+        600,
+        previewAttempt,
     );
 
     const update = (patch: Partial<HosConfigDraft>) =>
@@ -166,6 +169,7 @@ export function HosSection({ form }: { form: HosConfigForm }) {
                     <PreviewLine
                         preview={preview}
                         hasIntegration={form.hasIntegration}
+                        onRetry={() => setPreviewAttempt((n) => n + 1)}
                     />
                 </FormCard>
             </SettingsSection>
@@ -335,12 +339,28 @@ export function HosSection({ form }: { form: HosConfigForm }) {
     );
 }
 
+function RetryButton({ onRetry }: { onRetry: () => void }) {
+    return (
+        <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto self-start p-0 text-xs"
+            onClick={onRetry}
+        >
+            Reintentar
+        </Button>
+    );
+}
+
 function PreviewLine({
     preview,
     hasIntegration,
+    onRetry,
 }: {
     preview: HosPreviewState;
     hasIntegration: boolean;
+    onRetry: () => void;
 }) {
     if (!hasIntegration || preview.status === 'idle') {
         return (
@@ -352,20 +372,23 @@ function PreviewLine({
 
     if (preview.status === 'error') {
         return (
-            <p className="text-xs text-fg-3" role="status">
-                No pudimos calcular quién entra ahora. Tu configuración se puede
-                guardar igual.
-            </p>
+            <div
+                className="flex flex-col gap-0.5 text-xs text-fg-3"
+                role="status"
+            >
+                <span>
+                    No pudimos calcular quién entra ahora. Tu configuración se
+                    puede guardar igual.
+                </span>
+                <RetryButton onRetry={onRetry} />
+            </div>
         );
     }
 
     const current = preview.status === 'ready' ? preview.preview : preview.last;
     const throttled =
         preview.status === 'throttled' ? (
-            <span className="text-2xs text-fg-3">
-                Hiciste muchas consultas seguidas; la vista previa se actualiza
-                sola en unos segundos.
-            </span>
+            <span className="text-2xs text-fg-3">{HOS_THROTTLED}</span>
         ) : null;
 
     if (current === null) {
@@ -386,16 +409,16 @@ function PreviewLine({
 
     if (current.failed) {
         return (
-            <p
+            <div
                 className="flex flex-col gap-0.5 text-xs text-fg-3"
                 role="status"
             >
                 <span>
-                    Samsara no respondió; vuelve a intentarlo en un minuto. Tu
-                    configuración se puede guardar igual.
+                    Samsara no respondió. Tu configuración se puede guardar
+                    igual.
                 </span>
-                {throttled}
-            </p>
+                {throttled ?? <RetryButton onRetry={onRetry} />}
+            </div>
         );
     }
 

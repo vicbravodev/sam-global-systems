@@ -127,6 +127,30 @@ describe('useHosPreview', () => {
         expect(result.current).toEqual({ status: 'ready', preview: PREVIEW });
     });
 
+    it('Reintentar vuelve a pedir la misma selección tras un error', async () => {
+        fetchMock.mockImplementationOnce(async () =>
+            respond({ message: 'x' }, 500),
+        );
+        const { result, rerender } = renderHook(
+            ({ attempt }) => useHosPreview('/preview', SELECTION, 600, attempt),
+            { initialProps: { attempt: 0 } },
+        );
+        await settle(600);
+        await settle(0);
+
+        expect(result.current).toEqual({ status: 'error' });
+
+        rerender({ attempt: 1 });
+
+        expect(result.current).toEqual({ status: 'loading', last: null });
+
+        await settle(600);
+        await settle(0);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(result.current).toEqual({ status: 'ready', preview: PREVIEW });
+    });
+
     it('un cambio cancela la petición en curso', async () => {
         const signals: (AbortSignal | null | undefined)[] = [];
         fetchMock.mockImplementation(async (_url, init) => {
