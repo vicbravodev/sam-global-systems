@@ -107,6 +107,25 @@ class HosIncidentPipelineTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_raising_as_one_tenant_never_reads_nor_touches_another(): void
+    {
+        Queue::fake();
+        [$episode, $driver] = $this->episode();
+        [$foreignEpisode] = $this->episode(HosSituation::Violation);
+        // Otro tenant ya tiene un evento interno con la misma clave: no cuenta como "ya levantado".
+        RawEvent::factory()->create(['team_id' => $foreignEpisode->team_id, 'deduplication_key' => "hos:{$episode->id}"]);
+
+        $result = $this->assertNoTenantLeak($episode->team_id, fn () => app(RaiseHosIncident::class)->execute($episode, null, now()->toImmutable()));
+
+        $this->assertTrue($result['raised']);
+        $raw = RawEvent::withoutGlobalScopes()->findOrFail($result['raw_event_id']);
+        $this->assertSame($episode->team_id, $raw->team_id);
+        $this->assertSame($driver->id, $raw->payload_json['internal']['driver_id']);
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->where('team_id', $foreignEpisode->team_id)->count());
+        Queue::assertPushed(ProcessRawEventJob::class, 1);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_a_violation_raises_hos_limit_exceeded_and_an_episode_without_unit_raises_nothing(): void
     {
         Queue::fake();
