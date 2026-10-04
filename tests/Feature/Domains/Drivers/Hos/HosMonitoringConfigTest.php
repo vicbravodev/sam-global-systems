@@ -268,6 +268,88 @@ class HosMonitoringConfigTest extends TestCase
             ->assertJsonValidationErrors(['excluded_asset_ids']);
     }
 
+    public function test_the_form_omits_deleted_units_and_legacy_channels_so_it_saves_as_presented(): void
+    {
+        $live = Asset::factory()->create(['team_id' => $this->team->id]);
+        $gone = Asset::factory()->create(['team_id' => $this->team->id]);
+        $goneExcluded = Asset::factory()->create(['team_id' => $this->team->id]);
+        $foreign = Asset::factory()->create();
+        $gone->delete();
+        $goneExcluded->delete();
+
+        TenantSetting::factory()->create([
+            'team_id' => $this->team->id,
+            'setting_key' => HosMonitoringConfig::SETTING_KEY,
+            'setting_group' => SettingGroup::Compliance,
+            'value_type' => SettingValueType::Json,
+            'value_json' => [
+                'tag_ids' => ['4738197'],
+                'included_asset_ids' => [$live->id, $gone->id, $foreign->id],
+                'excluded_asset_ids' => [$goneExcluded->id],
+                'ladder' => [
+                    ['after_minutes' => 0, 'channels' => ['email']],
+                    ['after_minutes' => 5, 'channels' => ['samsara_driver_app', 'email']],
+                    ['after_minutes' => 10, 'escalate' => 'incident'],
+                ],
+            ],
+        ]);
+
+        $form = $this->actingAs($this->user)
+            ->getJson("/api/{$this->team->slug}/settings/hos")
+            ->assertOk()
+            ->json('data.config');
+
+        $this->assertSame([$live->id], $form['includedAssetIds']);
+        $this->assertSame([], $form['excludedAssetIds']);
+        // El escalón que sólo avisaba por correo desaparece y el primero vuelve a salir en el límite.
+        $this->assertSame([
+            ['afterMinutes' => 0, 'channels' => ['samsara_driver_app'], 'escalate' => false],
+            ['afterMinutes' => 10, 'channels' => [], 'escalate' => true],
+        ], $form['ladder']);
+
+        // Lo que la pantalla presenta se guarda tal cual (como serializeDraft).
+        $this->actingAs($this->user)
+            ->putJson($this->url(), [
+                'tag_ids' => $form['tagIds'],
+                'included_asset_ids' => $form['includedAssetIds'],
+                'excluded_asset_ids' => $form['excludedAssetIds'],
+                'situations' => $form['situations'],
+                'lead_minutes' => [...$form['leadMinutes'], 0],
+                'cycle_lead_hours' => $form['cycleLeadHours'],
+                'rest_complete_nudge_minutes' => $form['restCompleteNudgeMinutes'],
+                'rest_complete_expire_minutes' => $form['restCompleteExpireMinutes'],
+                'ladder' => array_map(fn (array $step): array => [
+                    'after_minutes' => $step['afterMinutes'],
+                    'channels' => $step['channels'],
+                    'escalate' => $step['escalate'] ? 'incident' : null,
+                ], $form['ladder']),
+            ])
+            ->assertOk();
+    }
+
+    public function test_unit_and_channel_errors_read_as_text_without_field_keys(): void
+    {
+        $foreign = Asset::factory()->create();
+
+        $errors = $this->actingAs($this->user)
+            ->putJson($this->url(), $this->payload([
+                'included_asset_ids' => [$foreign->id],
+                'excluded_asset_ids' => [$foreign->id + 1000],
+                'ladder' => [
+                    ['after_minutes' => 0, 'channels' => ['email'], 'escalate' => null],
+                    ['after_minutes' => 4, 'channels' => [], 'escalate' => 'incident'],
+                ],
+            ]))
+            ->assertUnprocessable()
+            ->json('errors');
+
+        foreach (['included_asset_ids.0', 'excluded_asset_ids.0', 'ladder.0.channels.0'] as $key) {
+            $this->assertArrayHasKey($key, $errors);
+            $this->assertStringNotContainsString('_ids', $errors[$key][0]);
+            $this->assertStringNotContainsString('ladder', $errors[$key][0]);
+        }
+    }
+
     public function test_saving_never_touches_another_tenant(): void
     {
         $other = User::factory()->create()->currentTeam;

@@ -40,14 +40,19 @@ class BuildHosConfigForm
                 ->map(fn (mixed $type): string => $type instanceof ChannelType ? $type->value : (string) $type)
                 ->all();
 
+            // Sólo unidades vivas del team (el scope ya quita las borradas).
+            $assets = Asset::query()
+                ->where('team_id', $teamId)
+                ->orderBy('name')
+                ->orderBy('id')
+                ->get(['id', 'team_id', 'name', 'code', 'monitoring_state']);
+            /** @var list<int> $liveIds */
+            $liveIds = $assets->pluck('id')->map(fn (mixed $id): int => (int) $id)->all();
+
             return [
-                'config' => self::present($config),
-                'defaults' => self::present($defaults),
-                'assets' => array_values(Asset::query()
-                    ->where('team_id', $teamId)
-                    ->orderBy('name')
-                    ->orderBy('id')
-                    ->get(['id', 'team_id', 'name', 'code', 'monitoring_state'])
+                'config' => self::present($config, $liveIds),
+                'defaults' => self::present($defaults, $liveIds),
+                'assets' => array_values($assets
                     ->map(fn (Asset $asset): array => [
                         'id' => $asset->id,
                         'name' => $asset->name,
@@ -71,9 +76,15 @@ class BuildHosConfigForm
     }
 
     /**
-     * @return array{tagIds: array<int, string>, includedAssetIds: array<int, int>, excludedAssetIds: array<int, int>, situations: array<string, bool>, leadMinutes: list<int>, cycleLeadHours: list<int>, restCompleteNudgeMinutes: list<int>, restCompleteExpireMinutes: int, ladder: list<array{afterMinutes: int, channels: list<string>, escalate: bool}>}
+     * Lo que edita la pantalla, ya en la forma que acepta
+     * `UpdateHosMonitoringConfigRequest`: sin unidades borradas o ajenas y sin
+     * canales que no son del chofer (el correo de configuraciones viejas), para
+     * que guardar lo presentado nunca falle por algo que no se ve.
+     *
+     * @param  list<int>  $liveAssetIds  unidades vivas del team
+     * @return array{tagIds: list<string>, includedAssetIds: list<int>, excludedAssetIds: list<int>, situations: array<string, bool>, leadMinutes: list<int>, cycleLeadHours: list<int>, restCompleteNudgeMinutes: list<int>, restCompleteExpireMinutes: int, ladder: list<array{afterMinutes: int, channels: list<string>, escalate: bool}>}
      */
-    public static function present(HosMonitoringConfig $config): array
+    public static function present(HosMonitoringConfig $config, array $liveAssetIds): array
     {
         $situations = [];
 
@@ -82,20 +93,43 @@ class BuildHosConfigForm
         }
 
         return [
-            'tagIds' => $config->tagIds,
-            'includedAssetIds' => $config->includedAssetIds,
-            'excludedAssetIds' => $config->excludedAssetIds,
+            'tagIds' => array_values($config->tagIds),
+            'includedAssetIds' => array_values(array_intersect($config->includedAssetIds, $liveAssetIds)),
+            'excludedAssetIds' => array_values(array_intersect($config->excludedAssetIds, $liveAssetIds)),
             'situations' => $situations,
             // Sin el 0 del límite: la pantalla edita sólo los avisos previos.
             'leadMinutes' => $config->leadThresholdsMinutes(),
             'cycleLeadHours' => $config->cycleThresholdsHours(),
             'restCompleteNudgeMinutes' => $config->restNudgeMinutes(),
             'restCompleteExpireMinutes' => $config->restCompleteExpireMinutes,
-            'ladder' => array_map(fn (array $step): array => [
-                'afterMinutes' => $step['after_minutes'],
-                'channels' => $step['channels'],
-                'escalate' => $step['escalate'],
-            ], $config->ladderSteps()),
+            'ladder' => self::presentLadder($config),
         ];
+    }
+
+    /**
+     * @return list<array{afterMinutes: int, channels: list<string>, escalate: bool}>
+     */
+    private static function presentLadder(HosMonitoringConfig $config): array
+    {
+        $ladder = [];
+
+        foreach ($config->ladderSteps() as $step) {
+            $channels = $step['escalate']
+                ? []
+                : array_values(array_intersect($step['channels'], HosMonitoringConfig::DRIVER_CHANNELS));
+
+            if (! $step['escalate'] && $channels === []) {
+                continue;
+            }
+
+            $ladder[] = [
+                // El primero que queda sale al llegar al límite.
+                'afterMinutes' => $ladder === [] ? 0 : $step['after_minutes'],
+                'channels' => $channels,
+                'escalate' => $step['escalate'],
+            ];
+        }
+
+        return $ladder;
     }
 }

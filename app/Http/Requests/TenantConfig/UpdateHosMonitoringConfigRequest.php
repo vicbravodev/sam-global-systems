@@ -79,6 +79,23 @@ class UpdateHosMonitoringConfigRequest extends FormRequest
     }
 
     /**
+     * Mensajes sin llaves de campo: el primero se muestra tal cual en el aviso.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        $unit = 'Una de las unidades elegidas ya no existe o no es de tu empresa. Quítala y vuelve a guardar.';
+
+        return [
+            'tag_ids.*' => 'Una de las etiquetas elegidas no es válida. Quítala y vuelve a guardar.',
+            'included_asset_ids.*' => $unit,
+            'excluded_asset_ids.*' => $unit,
+            'ladder.*.channels.*' => 'Uno de los canales no sirve para avisarle al chofer. Elige app de Samsara, WhatsApp, SMS o llamada.',
+        ];
+    }
+
+    /**
      * @return array<int, callable(Validator): void>
      */
     public function after(): array
