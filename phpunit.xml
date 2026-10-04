@@ -98,5 +98,13 @@
         <env name="TWILIO_STATUS_CALLBACK_URL" value=""/>
         <env name="TWILIO_TTS_VOICE" value=""/>
         <env name="TWILIO_TTS_RATE" value=""/>
+        <!-- Sombra Clef apagada y sin credenciales: un .env local con la
+             medición activa no debe disparar ShadowEvaluateWithClefJob (sync)
+             tras cada evaluación, que lee media de RustFS y llama a la API
+             real de Cloudflare. Los tests de Clef la activan con config(). -->
+        <env name="AI_CLEF_SHADOW_ENABLED" value="false"/>
+        <env name="AI_CLEF_SHADOW_UNTIL" value=""/>
+        <env name="CLOUDFLARE_ACCOUNT_ID" value=""/>
+        <env name="CLOUDFLARE_AUTH_TOKEN" value=""/>
     </php>
 </phpunit>
