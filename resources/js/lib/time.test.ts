@@ -4,6 +4,7 @@ import {
     dayLabel,
     durationLabel,
     formatClock,
+    hoursMinutesLabel,
     isFresh,
     minutesSince,
     relativeLabel,
@@ -131,5 +132,19 @@ describe('dayLabel', () => {
     it('usa el día local, no el de UTC', () => {
         // 03:00 UTC del 3 de octubre = 21:00 del 2 de octubre en CDMX.
         expect(dayLabel('2026-10-03T03:00:00Z')).toBe('Ayer');
+    });
+});
+
+describe('hoursMinutesLabel', () => {
+    it.each([
+        [0, '0 min'],
+        [59, '0 min'],
+        [2700, '45 min'],
+        [3600, '1 h'],
+        [3900, '1 h 05 min'],
+        [252000, '70 h'],
+        [-30, '0 min'],
+    ])('%i s → %s', (seconds, expected) => {
+        expect(hoursMinutesLabel(seconds)).toBe(expected);
     });
 });

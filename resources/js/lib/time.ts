@@ -77,6 +77,21 @@ export function durationLabel(seconds: number): string {
     return `${Math.floor(seconds / 3600)} h`;
 }
 
+/** Tiempo que queda en un reloj: "1 h 05 min", "45 min", "0 min". */
+export function hoursMinutesLabel(seconds: number): string {
+    const totalMinutes = Math.max(0, Math.floor(seconds / 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours === 0) {
+        return `${minutes} min`;
+    }
+
+    return minutes === 0
+        ? `${hours} h`
+        : `${hours} h ${String(minutes).padStart(2, '0')} min`;
+}
+
 /** Hora corta "14:05" (o "14:05:09" con `seconds`) para columnas densas. */
 export function formatClock(
     iso: string | null | undefined,

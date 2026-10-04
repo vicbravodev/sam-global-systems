@@ -226,6 +226,24 @@ class HosPanelTest extends TestCase
         );
     }
 
+    public function test_the_fleet_page_renders_for_whoever_sees_drivers_with_the_feature(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $this->enable($team);
+        $this->monitored($team, 'Chofer Uno', ['duty_status' => HosDutyStatus::Driving, 'break_remaining_s' => 900]);
+
+        $this->actingAs($owner)
+            ->get(route('drivers.hos.index', ['current_team' => $team->slug]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('drivers/hos')
+                ->has('fleet.rows', 1)
+                ->where('fleet.rows.0.driver.fullName', 'Chofer Uno')
+                ->where('fleet.summary.total', 1)
+            );
+    }
+
     public function test_the_fleet_page_answers_403_without_the_feature(): void
     {
         $owner = User::factory()->create();
