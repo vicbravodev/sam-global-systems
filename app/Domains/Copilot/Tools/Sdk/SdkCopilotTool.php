@@ -6,6 +6,7 @@ use App\Domains\Copilot\Data\CopilotPeriod;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Data\CopilotTurnScope;
 use App\Domains\Copilot\Enums\CopilotIntent;
+use App\Domains\Copilot\Support\CopilotLocalTimes;
 use App\Domains\Copilot\Support\CopilotTurnCollector;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -21,8 +22,8 @@ use Throwable;
 /**
  * Base of every tool the Copilot agent can call. It owns what the model must
  * never control: the tenant (always the turn's scope, inside TenantContext),
- * the permission gate, argument validation, the 90-day window, the 6 KB cap
- * on what goes back to the model, the collector and the log narrative.
+ * the permission gate, argument validation, the 90-day window, the local
+ * time of every instant and the 6 KB cap on what goes back to the model, the collector and the log narrative.
  *
  * Errors never escape to the SDK: bad arguments, unknown units and tool
  * exceptions all come back to the model as `{"error": ...}` JSON.
@@ -112,7 +113,10 @@ abstract class SdkCopilotTool implements Tool
 
         $this->collector->record($callId, $this->name(), $result, $result->denied ? 'denied' : 'ok', $durationMs, $assetId);
 
-        [$payload, $truncated] = $this->compact(['facts' => $result->facts, 'highlights' => $result->highlights]);
+        [$payload, $truncated] = $this->compact([
+            'facts' => CopilotLocalTimes::localize($result->facts, $this->scope->timezone),
+            'highlights' => $result->highlights,
+        ]);
 
         if ($result->denied) {
             SystemLog::skipped('copilot.tool.denied', 'missing_permission', [...$log, 'permission' => $this->permission()]);
