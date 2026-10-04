@@ -11,6 +11,7 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Notifications\Actions\DispatchNotification;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Channels\TwilioMessenger;
+use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
@@ -277,7 +278,10 @@ class OnCallFirstRoutingTest extends TestCase
         return $sent;
     }
 
-    private function sendToOnCall(Incident $incident, string $eventKey): Notification
+    /**
+     * @param  list<string>  $channels
+     */
+    private function sendToOnCall(Incident $incident, string $eventKey, array $channels = ['sms', 'web']): Notification
     {
         return app(SendNotification::class)->execute(
             teamId: $this->team->id,
@@ -289,7 +293,7 @@ class OnCallFirstRoutingTest extends TestCase
             triggeredById: null,
             eventKey: $eventKey,
             payload: [
-                'force_channels' => ['sms', 'web'],
+                'force_channels' => $channels,
                 'recipients' => [[
                     'recipient_type' => 'user',
                     'address' => $this->onCall->email,
@@ -368,5 +372,69 @@ class OnCallFirstRoutingTest extends TestCase
 
         $this->assertSame(['+5215510000003'], $sent->to, 'el aviso de otro tenant no silencia el propio');
         $this->assertSystemNotLogged('notifications.delivery.skipped');
+    }
+
+    private function fakeTwilioCalls(): \stdClass
+    {
+        $calls = new \stdClass;
+        $calls->to = [];
+
+        $caller = Mockery::mock(TwilioVoiceCaller::class);
+        $caller->shouldReceive('createCall')->andReturnUsing(function (string $to) use ($calls) {
+            $calls->to[] = $to;
+
+            return (object) ['sid' => 'CA'.bin2hex(random_bytes(16)), 'status' => 'queued'];
+        });
+        $this->app->instance(TwilioVoiceCaller::class, $caller);
+
+        return $calls;
+    }
+
+    public function test_a_recent_sms_never_holds_back_a_more_urgent_call(): void
+    {
+        $sms = $this->fakeTwilio();
+        $calls = $this->fakeTwilioCalls();
+        NotificationChannel::factory()->sms()->create(['config_json' => ['from' => '+14155238886']]);
+        NotificationChannel::factory()->voice()->create(['config_json' => ['from' => '+14155238886']]);
+        $incident = $this->incident();
+
+        // Pánico nuevo por SMS y, segundos después, la emergencia confirmada
+        // por llamada: la llamada tiene que sonar.
+        $created = $this->sendToOnCall($incident, 'created', ['sms']);
+        $confirmed = $this->sendToOnCall($incident, 'confirmed', ['voice']);
+
+        $this->assertSame(['+5215510000003'], $sms->to);
+        $this->assertSame(['+5215510000003'], $calls->to, 'el SMS reciente no frena la llamada');
+        $this->assertSystemNotLogged('notifications.delivery.skipped');
+        $this->assertSystemLogged('notifications.paid_cooldown.bypassed', fn (array $c) => $c['input']['notification_id'] === $confirmed->id
+            && $c['calc']['channel_type'] === 'voice'
+            && $c['calc']['previous_channel_type'] === 'sms'
+            && $c['calc']['previous_notification_id'] === $created->id
+            && $c['calc']['incident_id'] === $incident->id);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_recent_call_holds_back_both_another_call_and_an_sms(): void
+    {
+        $sms = $this->fakeTwilio();
+        $calls = $this->fakeTwilioCalls();
+        NotificationChannel::factory()->sms()->create(['config_json' => ['from' => '+14155238886']]);
+        NotificationChannel::factory()->voice()->create(['config_json' => ['from' => '+14155238886']]);
+        $incident = $this->incident();
+
+        $first = $this->sendToOnCall($incident, 'call', ['voice']);
+        $this->sendToOnCall($incident, 'call_again', ['voice']);
+        $this->sendToOnCall($incident, 'sms_after_call', ['sms']);
+
+        $this->assertCount(1, $calls->to, 'ya la alcanzó la vía más fuerte');
+        $this->assertSame([], $sms->to);
+        $this->assertSystemLogged('notifications.delivery.skipped', fn (array $c) => $c['reason'] === 'paid_cooldown'
+            && $c['calc']['channel_type'] === 'voice'
+            && $c['calc']['previous_channel_type'] === 'voice'
+            && $c['calc']['previous_notification_id'] === $first->id);
+        $this->assertSystemLogged('notifications.delivery.skipped', fn (array $c) => $c['reason'] === 'paid_cooldown'
+            && $c['calc']['channel_type'] === 'sms'
+            && $c['calc']['previous_channel_type'] === 'voice');
+        $this->assertSystemNotLogged('notifications.paid_cooldown.bypassed');
     }
 }
