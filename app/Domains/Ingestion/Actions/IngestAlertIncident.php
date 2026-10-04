@@ -56,6 +56,7 @@ class IngestAlertIncident
     {
         $teamId = $integration->team_id;
         $fingerprint = $this->identity->fingerprint($incident);
+        $identityScope = $this->identity->scope($incident);
         $state = ResolveAlertIncidentIdentity::state($incident);
         // Sin identidad (campos requeridos por la spec ausentes) se usa una
         // huella del objeto: estable entre barridos, así el solape de la
@@ -77,6 +78,7 @@ class IngestAlertIncident
 
             SystemLog::skipped('ingestion.alert_incidents.skipped', reason: 'already_ingested', input: $input, calc: [
                 'identity' => $fingerprint !== null,
+                'identity_scope' => $identityScope,
                 'first_source' => $firstSource,
             ], result: ['raw_event_id' => $existing->id], debug: true);
 
@@ -113,11 +115,12 @@ class IngestAlertIncident
             eventTypeRaw: self::EVENT_TYPE,
         );
 
-        PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $input, $fingerprint, $rule, $eventTypeCode, $integration, $incident): void {
+        PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $input, $fingerprint, $identityScope, $rule, $eventTypeCode, $integration, $incident): void {
             $this->queueForProcessing->execute($rawEvent);
 
             SystemLog::ok('ingestion.alert_incidents.ingested', input: $input, calc: [
                 'identity' => $fingerprint !== null,
+                'identity_scope' => $identityScope,
                 'mapped' => $rule !== null,
                 'event_type_code' => $eventTypeCode,
             ], result: ['raw_event_id' => $rawEvent->id]);
