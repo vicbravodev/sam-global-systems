@@ -11,13 +11,17 @@ use App\Domains\Drivers\Enums\HosSituation;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\HosEpisode;
 use App\Domains\Drivers\Support\HosMonitoringConfig;
+use App\Domains\Incidents\Enums\EventRelationType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentResolved;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Integrations\Data\HosClockReading;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Models\EventType;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
@@ -151,6 +155,89 @@ class SettleHosIncidentTest extends TestCase
         $this->assertSame('violation_kept_open', $settled['result']['outcome']);
         $this->assertSame('violation', $settled['calc']['situation']);
         Event::assertNotDispatched(IncidentResolved::class);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_violation_and_a_break_sharing_one_incident_corrected_together_keep_it_open(): void
+    {
+        // El hos_unattended del descanso se plegó al incidente de la infracción.
+        $incident = $this->openIncident();
+        $violation = $this->escalatedEpisode($incident, HosSituation::Violation);
+        $break = $this->escalatedEpisode($incident);
+
+        $this->correct();                                     // un solo sondeo cierra los dos
+
+        $this->assertNotNull($violation->fresh()->resolved_at);
+        $this->assertNotNull($break->fresh()->resolved_at);
+        $this->assertFalse($incident->fresh('status')->isTerminal());
+        $this->assertSame(2, $incident->timeline()->where('title', SettleHosIncident::TIMELINE_TITLE)->count());
+        $outcomes = array_map(fn (array $entry) => $entry['context']['result']['outcome'] ?? null, $this->systemLogEntries('hos.incident.settled'));
+        $this->assertSame(['violation_kept_open', 'violation_kept_open'], $outcomes);
+        Event::assertNotDispatched(IncidentResolved::class);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_break_corrected_after_its_violation_resolved_never_closes_the_violation_incident(): void
+    {
+        $incident = $this->openIncident();
+        // La infracción ya se corrigió en un sondeo anterior (sigue vinculada).
+        $this->escalatedEpisode($incident, HosSituation::Violation)->forceFill([
+            'resolved_at' => now()->subMinutes(5), 'resolution' => HosEpisodeResolution::Corrected,
+        ])->save();
+        $this->escalatedEpisode($incident);
+
+        $this->correct();
+
+        $this->assertFalse($incident->fresh('status')->isTerminal());
+        $this->assertTrue($this->correctionNoted($incident));
+        $settled = $this->assertSystemLogged('hos.incident.settled');
+        $this->assertSame('violation_kept_open', $settled['result']['outcome']);
+        $this->assertSame('break_due', $settled['calc']['situation']);
+        $this->assertTrue($settled['calc']['violation_incident']);
+        $this->assertFalse($settled['calc']['other_open_episodes']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_incident_carrying_a_hos_limit_exceeded_event_is_never_closed_by_a_correction(): void
+    {
+        // Sin episodio de infracción vinculado: basta el evento del incidente.
+        $type = EventType::query()->where('code', 'hos_limit_exceeded')->first() ?? EventType::factory()->create(['code' => 'hos_limit_exceeded']);
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->integration->team_id, 'event_type_id' => $type->id]);
+        $incident = $this->openIncident(['related_event_id' => $event->id]);
+        $this->escalatedEpisode($incident);
+
+        $this->correct();
+
+        $this->assertFalse($incident->fresh('status')->isTerminal());
+        $this->assertSame('violation_kept_open', $this->assertSystemLogged('hos.incident.settled')['result']['outcome']);
+
+        // Igual si el evento sólo está ligado (plegado) y no es el principal.
+        $folded = $this->openIncident();
+        IncidentEventLink::factory()->create(['incident_id' => $folded->id, 'normalized_event_id' => $event->id, 'relation_type' => EventRelationType::SupportingEvent]);
+        $episode = $this->escalatedEpisode($folded, HosSituation::DriveLimit);
+        $episode->forceFill(['resolved_at' => now(), 'resolution' => HosEpisodeResolution::Corrected])->save();
+
+        $outcome = TenantContext::for($this->integration->team_id, fn () => app(SettleHosIncident::class)->execute($episode->fresh()));
+
+        $this->assertSame('violation_kept_open', $outcome);
+        $this->assertFalse($folded->fresh('status')->isTerminal());
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_another_tenants_violation_event_never_keeps_this_incident_open(): void
+    {
+        $other = $this->hosIntegration();
+        $type = EventType::query()->where('code', 'hos_limit_exceeded')->first() ?? EventType::factory()->create(['code' => 'hos_limit_exceeded']);
+        $foreignEvent = NormalizedEvent::factory()->create(['team_id' => $other->team_id, 'event_type_id' => $type->id]);
+        $incident = $this->openIncident();
+        // Un vínculo corrupto a un evento ajeno no cuenta.
+        IncidentEventLink::factory()->create(['incident_id' => $incident->id, 'normalized_event_id' => $foreignEvent->id, 'relation_type' => EventRelationType::SupportingEvent]);
+        $this->escalatedEpisode($incident);
+
+        $this->assertNoTenantLeak($this->integration->team_id, fn () => $this->correct());
+
+        $this->assertTrue($incident->fresh('status')->isTerminal());
+        $this->assertSame('resolved', $this->assertSystemLogged('hos.incident.settled')['result']['outcome']);
         $this->assertNoSensitiveDataLogged();
     }
 
