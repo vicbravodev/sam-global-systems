@@ -99,6 +99,23 @@ class ClefShadowComparisonQueryTest extends TestCase
         $this->assertSame(1.0, $all['clef']['discard_correct']);
     }
 
+    public function test_gpt_is_also_measured_on_exactly_the_events_each_model_evaluated(): void
+    {
+        $team = Team::factory()->create();
+        $paired = $this->makeEvaluation($team, evaluation: ['classification' => EventClassification::RealEvent, 'operator_verdict' => OperatorVerdict::Confirmed]);
+        $this->shadow($paired, 'real_event', 0.9);
+        // Sin fila de Clef (fuera de la ventana o de la muestra): GPT se equivocó.
+        $this->makeEvaluation($team, evaluation: ['classification' => EventClassification::Noise, 'operator_verdict' => OperatorVerdict::Confirmed]);
+
+        $all = app(ClefShadowComparisonQuery::class)->execute($team->id, now()->subDay())['all'];
+
+        $this->assertSame(0.5, $all['gpt']['recall_real']);
+        $this->assertSame(1, $all['gpt@clef']['n']);
+        $this->assertSame(1.0, $all['gpt@clef']['recall_real']);
+        $this->assertSame(1.0, $all['clef']['recall_real']);
+        $this->assertSame(0, $all['gpt@clef-flash']['n']);
+    }
+
     public function test_failed_rows_are_counted_apart(): void
     {
         $team = Team::factory()->create();

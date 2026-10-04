@@ -24,6 +24,7 @@ use Illuminate\Support\Collection;
  * - discard_correct (ahorro): de los `false_positive`, % que el modelo descartó.
  * - strict_accuracy: OperatorVerdict::agreesWith().
  * - brier: calibración de P(real_event) contra el veredicto (sólo Clef).
+ * - `gpt@{modelo}`: GPT sobre los mismos eventos que ese modelo evaluó (comparación pareada); `gpt` a secas = todos.
  */
 class ClefShadowComparisonQuery
 {
@@ -97,6 +98,12 @@ class ClefShadowComparisonQuery
 
             foreach ($models as $model) {
                 $report[$bucket][$model] = $this->metricsForModel($bucketRows, $model);
+                // GPT sobre exactamente los mismos eventos que ese modelo
+                // evaluó con éxito: la comparación justa (pareada).
+                $report[$bucket]['gpt@'.$model] = $this->metricsForGpt(array_values(array_filter(
+                    $bucketRows,
+                    fn (array $row): bool => $row['shadows']->contains(fn (AIShadowEvaluation $s): bool => $s->model === $model && $s->status === AIShadowEvaluation::STATUS_SUCCESS),
+                )));
             }
         }
 
