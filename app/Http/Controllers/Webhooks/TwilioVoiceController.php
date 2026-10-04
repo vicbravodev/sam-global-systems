@@ -65,20 +65,23 @@ class TwilioVoiceController extends Controller
         $digits = trim((string) $request->input('Digits', ''));
 
         if (! in_array($digits, ['1', '2'], true)) {
+            // Tecla equivocada (#, *, 5…): se dice y se repiten las opciones
+            // una vez; a la segunda se cierra la llamada y, sin respuesta,
+            // el protocolo sigue (reintento o escalación por el callback).
+            $retried = $request->query('retry') === '1';
+
             // Nunca los dígitos: sólo cuántos llegaron.
-            SystemLog::skipped('incidents.call_verification.answered', reason: 'invalid_digit', input: $this->logInput($row), calc: ['digits_length' => strlen($digits)]);
+            SystemLog::skipped('incidents.call_verification.answered', reason: 'invalid_digit', input: $this->logInput($row), calc: [
+                'digits_length' => strlen($digits),
+                'reprompted' => ! $retried,
+            ]);
 
-            // Invalid or absent digit: re-prompt once more on the same call.
-            $incident = Incident::query()->with('asset')->find($row->incident_id);
-
-            if ($incident === null) {
-                return $this->twiml(VerificationCallTwiml::say(['Esta alerta ya no existe.', 'Gracias.']));
+            if ($retried) {
+                return $this->twiml(VerificationCallTwiml::say(['No pudimos entender tu respuesta.', 'Vamos a avisar a tu equipo de monitoreo para que te apoye.']));
             }
 
-            return $this->twiml(VerificationCallTwiml::prompt(
-                $row,
-                $incident,
-                TwilioWebhookUrl::route('webhooks.twilio.voice.gather', ['verification' => $row->id]),
+            return $this->twiml(VerificationCallTwiml::retry(
+                TwilioWebhookUrl::route('webhooks.twilio.voice.gather', ['verification' => $row->id, 'retry' => 1]),
             ));
         }
 

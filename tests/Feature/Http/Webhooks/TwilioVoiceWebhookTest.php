@@ -94,10 +94,10 @@ class TwilioVoiceWebhookTest extends TestCase
         return $this->post($path, $params, ['X-Twilio-Signature' => $signature]);
     }
 
-    private function gather(IncidentCallVerification $verification, string $digits, ?string $authToken = self::AUTH_TOKEN): TestResponse
+    private function gather(IncidentCallVerification $verification, string $digits, ?string $authToken = self::AUTH_TOKEN, string $query = ''): TestResponse
     {
         return $this->postSigned(
-            "/api/webhooks/twilio/voice/{$verification->id}/gather",
+            "/api/webhooks/twilio/voice/{$verification->id}/gather{$query}",
             ['CallSid' => (string) $verification->call_sid, 'Digits' => $digits],
             $authToken,
         );
@@ -176,12 +176,59 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('<Gather', $response->getContent());
+        $this->assertStringContainsString('Esa opción no es válida.', $response->getContent());
+        $this->assertStringContainsString('Si es una emergencia real, presiona 1.', $response->getContent());
+        // La segunda vuelta va marcada para no preguntar en bucle.
+        $this->assertStringContainsString("voice/{$verification->id}/gather?retry=1", $response->getContent());
         $this->assertNull($verification->fresh()->outcome);
 
         $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['reason'] === 'invalid_digit'
             && $c['input'] === $this->inputOf($verification)
-            && $c['calc'] === ['digits_length' => 1]);
+            && $c['calc'] === ['digits_length' => 1, 'reprompted' => true]);
         $this->assertNoPhoneLogged();
+    }
+
+    public function test_hash_and_star_count_as_a_wrong_key_instead_of_ending_in_silence(): void
+    {
+        $verification = $this->makeVerification();
+
+        foreach (['#', '*'] as $key) {
+            $response = $this->gather($verification, $key);
+
+            $response->assertOk();
+            $this->assertStringContainsString('Esa opción no es válida.', $response->getContent());
+        }
+
+        // Y la primera pregunta ya no usa # como "terminé de marcar".
+        $this->assertStringContainsString('finishOnKey=""', $response->getContent());
+        $this->assertNull($verification->fresh()->outcome);
+    }
+
+    public function test_a_second_wrong_key_ends_the_call_and_leaves_the_protocol_running(): void
+    {
+        $verification = $this->makeVerification();
+
+        $response = $this->gather($verification, '5', query: '?retry=1');
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('<Gather', $response->getContent());
+        $this->assertStringContainsString('No pudimos entender tu respuesta.', $response->getContent());
+        $this->assertNull($verification->fresh()->outcome, 'sin respuesta válida, el callback sigue con el protocolo');
+        $this->assertNull($verification->fresh()->digits_received);
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['reason'] === 'invalid_digit'
+            && $c['calc'] === ['digits_length' => 1, 'reprompted' => false]);
+        $this->assertNoPhoneLogged();
+    }
+
+    public function test_the_right_key_after_a_wrong_one_still_counts(): void
+    {
+        $verification = $this->makeVerification();
+
+        $this->gather($verification, '#')->assertOk();
+        $this->gather($verification, '2', query: '?retry=1')->assertOk();
+
+        $this->assertSame(CallVerificationOutcome::ConfirmedFalse, $verification->fresh()->outcome);
     }
 
     public function test_invalid_signature_is_rejected_with_403(): void
