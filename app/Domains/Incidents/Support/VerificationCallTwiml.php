@@ -14,6 +14,12 @@ use App\Domains\Notifications\Support\TwilioSpeech;
  */
 class VerificationCallTwiml
 {
+    /** @var list<string> */
+    private const array OPTIONS = [
+        'Si es una emergencia real, presiona 1.',
+        'Si fue un error o una falsa alarma, presiona 2.',
+    ];
+
     public static function prompt(IncidentCallVerification $verification, Incident $incident, string $actionUrl): string
     {
         $unit = IncidentNoticeCopy::spokenUnit($incident);
@@ -21,19 +27,34 @@ class VerificationCallTwiml
             ? "Recibimos una alerta del botón de pánico en la unidad {$unit}."
             : 'Recibimos una alerta del botón de pánico en tu flota.';
 
-        $options = [
-            'Si es una emergencia real, presiona 1.',
-            'Si fue un error o una falsa alarma, presiona 2.',
-        ];
+        $options = self::OPTIONS;
 
         $action = htmlspecialchars($actionUrl, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         return '<?xml version="1.0" encoding="UTF-8"?>'
             .'<Response>'
-            .'<Gather numDigits="1" timeout="10" action="'.$action.'" method="POST">'
+            .'<Gather numDigits="1" timeout="10" finishOnKey="" action="'.$action.'" method="POST">'
             .TwilioSpeech::say(['Hola, te llamamos de SAM.', $alert, ...$options])
             .'<Pause length="1"/>'
             .TwilioSpeech::say(['Te repito.', ...$options])
+            .'</Gather>'
+            .TwilioSpeech::say(['No recibimos respuesta.', 'Vamos a avisar a tu equipo de monitoreo para que te apoye.'])
+            .'</Response>';
+    }
+
+    /**
+     * Tras una tecla equivocada: lo dice y repite sólo las opciones, una vez.
+     * La acción lleva `retry=1`; una segunda tecla equivocada cierra la
+     * llamada (TwilioVoiceController) y sigue el protocolo normal.
+     */
+    public static function retry(string $actionUrl): string
+    {
+        $action = htmlspecialchars($actionUrl, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<Response>'
+            .'<Gather numDigits="1" timeout="10" finishOnKey="" action="'.$action.'" method="POST">'
+            .TwilioSpeech::say(['Esa opción no es válida.', ...self::OPTIONS])
             .'</Gather>'
             .TwilioSpeech::say(['No recibimos respuesta.', 'Vamos a avisar a tu equipo de monitoreo para que te apoye.'])
             .'</Response>';
