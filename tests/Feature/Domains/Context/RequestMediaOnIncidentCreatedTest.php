@@ -155,6 +155,30 @@ class RequestMediaOnIncidentCreatedTest extends TestCase
         $this->assertSame([$this->team->id], EventMediaRequest::withoutGlobalScopes()->pluck('team_id')->all());
     }
 
+    public function test_an_incident_pointing_at_another_tenants_event_never_requests_its_media(): void
+    {
+        $other = User::factory()->create()->currentTeam;
+        $this->enableAutoRequest($other);
+        $this->enableAutoRequest($this->team);
+
+        $foreignEvent = NormalizedEvent::factory()->create([
+            'team_id' => $other->id,
+            'asset_id' => Asset::factory()->create(['team_id' => $other->id])->id,
+        ]);
+
+        $incident = Incident::factory()->open()->create([
+            'team_id' => $this->team->id,
+            'related_event_id' => $foreignEvent->id,
+        ]);
+
+        $this->assertNoTenantLeak($this->team, fn () => $this->react($incident));
+
+        $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+        Queue::assertNotPushed(FetchDeferredEventMediaJob::class);
+        $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'normalized_event_missing'
+            && $c['input']['incident_id'] === $incident->id);
+    }
+
     public function test_retries_on_the_context_queue(): void
     {
         $this->assertSame('context', app(RequestMediaOnIncidentCreated::class)->retryQueue());
