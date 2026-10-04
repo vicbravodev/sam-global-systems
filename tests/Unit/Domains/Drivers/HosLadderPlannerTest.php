@@ -250,6 +250,23 @@ class HosLadderPlannerTest extends TestCase
         $this->assertSame('2026-10-04 12:07:00', $this->at($due->nextNudgeAt));
     }
 
+    public function test_a_ladder_without_an_incident_step_finishes_without_escalating(): void
+    {
+        $config = ['ladder' => [
+            ['after_minutes' => 0, 'channels' => ['samsara_driver_app']],
+            ['after_minutes' => 5, 'channels' => ['voice']],
+        ]];
+        $atLimit = $this->reading(break: 0);
+
+        $last = $this->plan(HosSituation::BreakDue, 3, $atLimit, '2026-10-04 12:00:00', config: $config);
+        $this->assertSame(HosLadderMove::Notify, $last->move);
+        $this->assertNull($last->nextNudgeAt);
+
+        $done = $this->plan(HosSituation::BreakDue, 4, $atLimit, config: $config);
+        $this->assertSame(HosLadderMove::Done, $done->move);
+        $this->assertSame('ladder_finished', $done->reason);
+    }
+
     public function test_unknown_channels_in_the_tenant_ladder_are_ignored(): void
     {
         $config = ['ladder' => [

@@ -212,7 +212,7 @@ class HosLadderPlanner
         $index = max(0, $ladderStep - $leadCount);
 
         if ($index >= count($ladder)) {
-            return $this->keep(HosLadderMove::Done, 'ladder_exhausted', $ladderStep, $nextNudgeAt);
+            return $this->keep(HosLadderMove::Done, 'ladder_finished', $ladderStep, $nextNudgeAt);
         }
 
         if ($ladderStep < $leadCount || ($ladderStep === $leadCount && $nextNudgeAt === null)) {
