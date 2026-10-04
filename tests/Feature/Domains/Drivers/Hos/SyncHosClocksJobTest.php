@@ -21,6 +21,7 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
@@ -161,6 +162,29 @@ class SyncHosClocksJobTest extends TestCase
         $episode = HosEpisode::withoutGlobalScopes()->sole();
         $this->assertNull($episode->resolved_at);
         $this->assertSame('2026-10-04 12:00:00', HosDriverState::withoutGlobalScopes()->sole()->observed_at->format('Y-m-d H:i:s'));
+        $this->assertSame('provider_error', $this->assertSystemLogged('hos.poll.failed')['reason']);
+        $this->assertCount(1, array_filter($this->systemLogEntries(), fn ($e) => $e['code'] === 'hos.poll.completed'));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_tags_failure_after_the_clocks_discards_the_whole_cycle(): void
+    {
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        Http::fake([
+            // Segundo sondeo: el chofer ya cumplió la pausa; si se aplicara, cerraría el episodio.
+            'api.samsara.com/fleet/hos/clocks*' => Http::sequence()->push($this->clocks())->push($this->clocks(28800000, 'offDuty')),
+            'api.samsara.com/tags*' => Http::sequence()->push($this->tags())->push([], 503),
+        ]);
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+        Cache::flush(); // vence la caché de tags: el segundo ciclo vuelve a pedirlos
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        $episode = HosEpisode::withoutGlobalScopes()->sole();
+        $this->assertSame(HosSituation::BreakDue, $episode->situation);
+        $this->assertNull($episode->resolved_at);
+        $this->assertSame(1593, HosDriverState::withoutGlobalScopes()->sole()->break_remaining_s);
         $this->assertSame('provider_error', $this->assertSystemLogged('hos.poll.failed')['reason']);
         $this->assertCount(1, array_filter($this->systemLogEntries(), fn ($e) => $e['code'] === 'hos.poll.completed'));
         $this->assertNoSensitiveDataLogged();
