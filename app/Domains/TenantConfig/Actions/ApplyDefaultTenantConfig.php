@@ -38,6 +38,11 @@ class ApplyDefaultTenantConfig
 
     public const string RULESET_CODE = 'sam-default';
 
+    public const string HOS_RULE_CODE = 'hos-incident';
+
+    /** @var list<string> */
+    public const array HOS_EVENT_TYPES = ['hos_limit_exceeded', 'hos_unattended'];
+
     public function __construct(
         private readonly TenantConfigResolver $resolver,
         private readonly SnapshotTenantConfig $snapshotTenantConfig,
@@ -264,7 +269,27 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        return 4;
+        // Monitoreo HOS: la infracción o la escalera de avisos agotada abre
+        // incidente sin IA (el tipo está en ai.rule_resolved_event_types).
+        DecisionRule::query()->create([
+            'team_id' => $team->id,
+            'ruleset_id' => $ruleSet->id,
+            'code' => self::HOS_RULE_CODE,
+            'name' => 'Horas de servicio → incidente',
+            'description' => 'Una infracción de horas de servicio, o un chofer que no corrigió tras los avisos de SAM, abre un incidente para tu equipo de monitoreo.',
+            'scope' => RuleScope::EventType,
+            'priority' => 95,
+            'conditions_json' => [
+                'all' => [
+                    ['field' => 'event_type_code', 'operator' => 'in', 'value' => self::HOS_EVENT_TYPES],
+                ],
+            ],
+            'outcome_override' => $incident->id,
+            'stop_processing' => true,
+            'is_active' => true,
+        ]);
+
+        return 5;
     }
 
     /**
