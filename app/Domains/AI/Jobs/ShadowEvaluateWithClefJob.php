@@ -64,7 +64,7 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
         // dos veces el mismo modelo: el segundo cede y el primero cubre ambos.
         $lock = Cache::lock(self::lockKey($this->teamId, $evaluation->id), $this->timeout + 60);
 
-        if (! $lock->get()) {
+        if ($lock->get() === false) {
             SystemLog::skipped('ai.clef_shadow.skipped', reason: 'in_progress', input: ['evaluation_id' => $evaluation->id]);
 
             return;
