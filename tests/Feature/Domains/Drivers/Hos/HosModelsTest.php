@@ -8,10 +8,12 @@ use App\Domains\Drivers\Enums\HosSituation;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Drivers\Models\HosEpisode;
+use App\Domains\Incidents\Models\Incident;
 use App\Models\Team;
 use App\Support\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use LogicException;
 use Tests\TestCase;
 
 class HosModelsTest extends TestCase
@@ -57,5 +59,28 @@ class HosModelsTest extends TestCase
 
         TenantContext::for($other->id, fn () => $this->assertSame(0, HosEpisode::query()->count()));
         TenantContext::for($driver->team_id, fn () => $this->assertSame(1, HosEpisode::query()->open()->count()));
+    }
+
+    public function test_an_episode_points_only_to_an_incident_of_its_own_team(): void
+    {
+        $driver = Driver::factory()->create();
+        $episode = HosEpisode::factory()->create([
+            'team_id' => $driver->team_id,
+            'driver_id' => $driver->id,
+            'escalated_at' => '2026-10-04 12:15:00',
+        ]);
+        $mine = Incident::factory()->create(['team_id' => $driver->team_id]);
+
+        $episode->attachIncident($mine);
+
+        TenantContext::for($driver->team_id, function () use ($episode, $mine): void {
+            $fresh = $episode->fresh();
+            $this->assertSame($mine->id, $fresh->incident_id);
+            $this->assertSame('2026-10-04 12:15:00', $fresh->escalated_at->format('Y-m-d H:i:s'));
+            $this->assertTrue($fresh->incident->is($mine));
+        });
+
+        $this->expectException(LogicException::class);
+        $episode->attachIncident(Incident::factory()->create());
     }
 }

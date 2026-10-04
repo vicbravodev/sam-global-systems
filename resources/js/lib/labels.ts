@@ -87,6 +87,8 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
     tampering: 'Manipulación del equipo',
     no_seatbelt: 'Sin cinturón de seguridad',
     hos_violation: 'Violación de horas de servicio',
+    hos_limit_exceeded: 'Horas de servicio rebasadas',
+    hos_unattended: 'Horas de servicio sin atender',
     smoking_drinking: 'Fumar o beber',
     policy_violation: 'Violación de política',
     unauthorized_passenger: 'Pasajero no autorizado',
@@ -111,6 +113,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
     safety_violation: 'Violación de seguridad',
     compliance_violation: 'Violación de cumplimiento',
     operational_alert: 'Alerta operativa',
+    hos_compliance: 'Horas de servicio (HOS)',
     other: 'Otro',
 };
 
@@ -349,6 +352,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
     slack: 'Slack',
     webhook: 'Webhook',
     voice: 'Llamada de voz',
+    samsara_driver_app: 'App de Samsara',
 };
 
 export function channelLabel(code: string | null | undefined): string {

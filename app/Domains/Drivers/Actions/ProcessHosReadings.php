@@ -16,28 +16,25 @@ use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Applies one successful HOS poll of a tenant: stores each monitored
- * driver's clocks, opens and resolves HOS episodes, and closes the episodes
- * of drivers that left the monitored set. PR 1 only observes — nothing is
- * sent to anyone; the episodes are the log the reminder ladder will act on.
+ * driver's clocks, opens and resolves HOS episodes, closes the episodes of
+ * drivers that left the monitored set and, when the driver corrects an
+ * episode that already escalated, settles its incident
+ * ({@see SettleHosIncident}). The reminders are sent right after, by
+ * {@see AdvanceHosEpisodes}.
  *
  * Must only be called with a COMPLETE poll: an empty enrollment closes every
  * open episode as `unenrolled`.
  */
 class ProcessHosReadings
 {
-    /**
-     * Oldest stored state still usable as the "before" of a transition. Polls
-     * run every minute; a driver coming back after hours or days (vehicle
-     * parked, left the set, failed polls) must not be compared with an old
-     * snapshot, or the natural reset of their clocks would read as a pause
-     * just served (false rest_complete).
-     */
-    public const int STALE_STATE_SECONDS = 300;
-
-    public function __construct(private readonly HosSituationDetector $detector) {}
+    public function __construct(
+        private readonly HosSituationDetector $detector,
+        private readonly SettleHosIncident $settleIncident,
+    ) {}
 
     /**
      * @return array{monitored: int, opened: int, resolved: int, unenrolled: int, app_disconnected: int}
@@ -72,9 +69,7 @@ class ProcessHosReadings
                 $state = $states->get($driver->id);
                 $open = $openEpisodes->get($driver->id, collect())->keyBy(fn (HosEpisode $e) => $e->situation->value);
 
-                $previous = $state?->observed_at !== null && $state->observed_at->gte($now->toImmutable()->subSeconds(self::STALE_STATE_SECONDS))
-                    ? $state->toReading($reading->externalDriverId, $reading->externalVehicleId)
-                    : null;
+                $previous = $this->previousReading($state, $reading, $config, $now);
 
                 $detection = $this->detector->detect(
                     $previous,
@@ -84,8 +79,11 @@ class ProcessHosReadings
                     $now,
                 );
 
+                /** @var list<HosEpisode> $toSettle */
+                $toSettle = [];
+
                 // Atómico por chofer: o se aplica todo su sondeo o nada.
-                $delta = DB::transaction(function () use ($detection, $open, $reading, $teamId, $driver, $asset, $config, $now, $state): array {
+                $delta = DB::transaction(function () use ($detection, $open, $reading, $teamId, $driver, $asset, $config, $now, $state, &$toSettle): array {
                     $d = ['opened' => 0, 'resolved' => 0, 'app_disconnected' => 0];
 
                     foreach ($detection->resolve as $situation => $resolution) {
@@ -97,6 +95,11 @@ class ProcessHosReadings
 
                         $this->resolve($episode, $resolution, $now, $reading);
                         $d['resolved']++;
+
+                        // Ya había escalado: su incidente se atiende fuera de la transacción.
+                        if ($resolution === HosEpisodeResolution::Corrected && $episode->escalated_at !== null) {
+                            $toSettle[] = $episode;
+                        }
                     }
 
                     foreach ($detection->open as $situation) {
@@ -115,6 +118,12 @@ class ProcessHosReadings
                 foreach ($delta as $key => $n) {
                     $counts[$key] += $n;
                 }
+
+                // Tras el commit del chofer: un fallo aquí no revierte su sondeo
+                // ni el de los demás, y los eventos del cierre salen ya confirmados.
+                foreach ($toSettle as $episode) {
+                    $this->settle($episode);
+                }
             }
 
             $enrolledIds = array_flip($driverIds);
@@ -132,6 +141,45 @@ class ProcessHosReadings
 
             return $counts;
         });
+    }
+
+    /**
+     * The stored clocks are only a usable "before" of a transition while
+     * they are recent. Up to the rest-complete window (default 35 min) the
+     * last real reading is trustworthy: a break served during a short
+     * Samsara outage must not be missed. Past it, the natural reset of the
+     * clocks after hours away would read as a pause just served (false
+     * rest_complete). A disconnected app keeps refreshing `observed_at` with
+     * frozen clocks, so its age counts from `app_disconnected_since`, the
+     * last moment the clocks were real.
+     */
+    private function previousReading(?HosDriverState $state, HosClockReading $reading, HosMonitoringConfig $config, CarbonInterface $now): ?HosClockReading
+    {
+        if ($state === null) {
+            return null;
+        }
+
+        $lastRealAt = $state->app_disconnected_since ?? $state->observed_at;
+
+        if ($lastRealAt->lt($now->toImmutable()->subSeconds($config->restCompleteExpireSeconds()))) {
+            return null;
+        }
+
+        return $state->toReading($reading->externalDriverId, $reading->externalVehicleId);
+    }
+
+    private function settle(HosEpisode $episode): void
+    {
+        try {
+            $this->settleIncident->execute($episode);
+        } catch (Throwable $e) {
+            // Un incidente que no se pudo cerrar no tumba el sondeo: sigue en la bandeja.
+            SystemLog::failed('hos.incident.settled', reason: 'exception', input: [
+                'team_id' => $episode->team_id,
+                'episode_id' => $episode->id,
+                'driver_id' => $episode->driver_id,
+            ], error: $e);
+        }
     }
 
     private function open(int $teamId, int $driverId, int $assetId, HosSituation $situation, HosClockReading $reading, HosMonitoringConfig $config, CarbonInterface $now): bool

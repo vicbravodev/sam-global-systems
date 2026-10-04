@@ -15,6 +15,7 @@ class NotificationTypeLabels
 {
     /** @var array<string, string> */
     private const FIXED = [
+        'hos.nudge' => 'Recordatorio de horas de servicio al chofer',
         'incident.created' => 'Incidente nuevo (cualquier tipo)',
         'incident.sla_breached' => 'Incidente sin atender a tiempo (SLA vencido)',
         'incident.priority_raised' => 'Incidente elevado a prioridad crítica',

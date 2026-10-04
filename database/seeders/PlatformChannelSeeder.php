@@ -24,6 +24,7 @@ class PlatformChannelSeeder extends Seeder
             ['code' => 'sam_whatsapp', 'name' => 'WhatsApp SAM (Twilio)', 'provider' => 'twilio', 'channel_type' => ChannelType::Whatsapp],
             ['code' => 'sam_voice', 'name' => 'Llamadas SAM (Twilio)', 'provider' => 'twilio', 'channel_type' => ChannelType::Voice],
             ['code' => 'sam_push', 'name' => 'Avisos al dispositivo', 'provider' => 'webpush', 'channel_type' => ChannelType::Push],
+            ['code' => 'sam_samsara_driver_app', 'name' => 'App del chofer (Samsara)', 'provider' => 'samsara', 'channel_type' => ChannelType::SamsaraDriverApp],
         ];
 
         foreach ($channels as $channel) {

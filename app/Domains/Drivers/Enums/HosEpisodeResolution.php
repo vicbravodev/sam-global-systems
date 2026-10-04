@@ -6,6 +6,5 @@ enum HosEpisodeResolution: string
 {
     case Corrected = 'corrected';
     case Expired = 'expired';
-    case Incident = 'incident';
     case Unenrolled = 'unenrolled';
 }

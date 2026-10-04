@@ -10,6 +10,8 @@ use App\Domains\Notifications\Models\NotificationChannel;
  * activos (`notification_channels`, sin team_id — V2-B1). Slack o
  * Webhook existen en el enum pero no se ofrecen mientras no haya un canal de
  * plataforma que los entregue, así que ninguna pantalla los debe proponer.
+ * La app del chofer en Samsara sólo sirve a choferes (avisos HOS): nunca se
+ * ofrece para avisos al equipo.
  */
 class ProvidedChannels
 {
@@ -27,7 +29,8 @@ class ProvidedChannels
 
         return array_values(array_filter(
             ChannelType::cases(),
-            fn (ChannelType $type): bool => in_array($type->value, $active, true),
+            fn (ChannelType $type): bool => $type !== ChannelType::SamsaraDriverApp
+                && in_array($type->value, $active, true),
         ));
     }
 

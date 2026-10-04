@@ -150,6 +150,8 @@ class NormalizationSeeder extends Seeder
             // Internal monitors (Roadmap V2-C2/C3)
             ['code' => 'after_hours_movement', 'name' => 'Movimiento fuera de horario', 'category' => 'operational', 'severity' => 'high'],
             ['code' => 'suspicious_stop', 'name' => 'Parada sospechosa', 'category' => 'operational', 'severity' => 'high'],
+            ['code' => 'hos_limit_exceeded', 'name' => 'Horas de servicio rebasadas', 'category' => 'compliance', 'severity' => 'high'],
+            ['code' => 'hos_unattended', 'name' => 'Horas de servicio sin atender', 'category' => 'compliance', 'severity' => 'high'],
 
             // Unmapped: fallback para eventos sin regla de mapeo
             ['code' => 'unmapped', 'name' => 'Sin mapear', 'category' => 'operational', 'severity' => 'low'],

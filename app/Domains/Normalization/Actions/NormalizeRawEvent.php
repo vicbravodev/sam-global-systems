@@ -127,6 +127,7 @@ class NormalizeRawEvent
     ): ?NormalizedEvent {
         $severity = $eventType->defaultSeverity ?? EventSeverity::query()->orderBy('level')->firstOrFail();
         ['asset_id' => $assetId, 'unresolved_reason' => $unresolvedReason] = $this->resolveInternalAssetId($rawEvent, $payload);
+        $driverId = $this->resolveInternalDriverId($rawEvent, $payload);
 
         if ($this->assetIsSwitchedOff($assetId)) {
             // La ruta interna descarta incluso emergencias (comportamiento vigente).
@@ -143,7 +144,7 @@ class NormalizeRawEvent
                 'trace_id' => $rawEvent->trace_id,
                 'provider_id' => null,
                 'asset_id' => $assetId,
-                'driver_id' => null,
+                'driver_id' => $driverId,
                 'event_type_id' => $eventType->id,
                 'event_category_id' => $eventType->category?->id ?? $this->getUnmappedCategoryId(),
                 'event_severity_id' => $severity->id,
@@ -204,6 +205,43 @@ class NormalizeRawEvent
                 ? AssetUnresolvedReason::ForeignAssetRejected
                 : AssetUnresolvedReason::UnknownExternalId,
         ];
+    }
+
+    /**
+     * Internal monitors that know the driver (HOS) pass `internal.driver_id`.
+     * Honored only when the driver belongs to the raw event's tenant — a
+     * forged payload can never bind a foreign driver.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveInternalDriverId(RawEvent $rawEvent, array $payload): ?int
+    {
+        $driverId = Arr::get($payload, 'internal.driver_id');
+
+        if (! is_numeric($driverId)) {
+            return null;
+        }
+
+        $belongs = Driver::query()
+            ->whereKey((int) $driverId)
+            ->where('team_id', $rawEvent->team_id)
+            ->exists();
+
+        if ($belongs) {
+            return (int) $driverId;
+        }
+
+        $rejection = match ($this->classifyRejection(Driver::class, (int) $driverId, $rawEvent->team_id)) {
+            'foreign' => 'cross_tenant_internal_driver',
+            'trashed' => 'internal_driver_trashed',
+            'missing' => 'internal_driver_missing',
+        };
+
+        SystemLog::degraded('normalization.driver.rejected', reason: $rejection, input: [
+            'raw_event_id' => $rawEvent->id,
+        ], calc: ['rejection' => $rejection]);
+
+        return null;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Domains\Drivers\Support;
 
 use App\Domains\Drivers\Enums\HosSituation;
+use App\Domains\Notifications\Enums\ChannelType;
 
 /**
  * A tenant's HOS monitoring configuration: the stored `hos.monitoring`
@@ -54,7 +55,7 @@ final readonly class HosMonitoringConfig
             cycleLeadHours: $ints($value('cycle_lead_hours')),
             restCompleteNudgeMinutes: $ints($value('rest_complete_nudge_minutes')),
             restCompleteExpireMinutes: (int) $value('rest_complete_expire_minutes'),
-            ladder: array_values((array) $value('ladder')),
+            ladder: self::ladderEntries($value('ladder')),
         );
     }
 
@@ -82,5 +83,104 @@ final readonly class HosMonitoringConfig
     public function restCompleteExpireSeconds(): int
     {
         return $this->restCompleteExpireMinutes * 60;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function ladderEntries(mixed $ladder): array
+    {
+        /** @var array<int, array<string, mixed>> $entries */
+        $entries = array_values(array_filter((array) $ladder, fn (mixed $entry): bool => is_array($entry)));
+
+        return $entries;
+    }
+
+    /**
+     * The ladder, cleaned: unknown channel types dropped, entries left without
+     * a channel nor an escalation removed, sorted by `after_minutes`.
+     *
+     * @return list<array{after_minutes: int, channels: list<string>, escalate: bool}>
+     */
+    public function ladderSteps(): array
+    {
+        $steps = [];
+
+        foreach ($this->ladder as $entry) {
+            $channels = array_values(array_unique(array_filter(array_map(
+                fn (mixed $channel): ?string => is_string($channel) ? ChannelType::tryFrom($channel)?->value : null,
+                (array) ($entry['channels'] ?? []),
+            ))));
+            $escalate = ($entry['escalate'] ?? null) === 'incident';
+
+            if ($channels === [] && ! $escalate) {
+                continue;
+            }
+
+            $after = $entry['after_minutes'] ?? 0;
+
+            $steps[] = [
+                'after_minutes' => is_numeric($after) ? max(0, (int) $after) : 0,
+                'channels' => $channels,
+                'escalate' => $escalate,
+            ];
+        }
+
+        usort($steps, fn (array $a, array $b): int => $a['after_minutes'] <=> $b['after_minutes']);
+
+        return $steps;
+    }
+
+    /**
+     * Channels of informational notices (warnings, cycle, rest complete):
+     * the first ladder step that sends something — the free driver app by
+     * default.
+     *
+     * @return list<string>
+     */
+    public function informationalChannels(): array
+    {
+        foreach ($this->ladderSteps() as $step) {
+            if ($step['channels'] !== []) {
+                return $step['channels'];
+            }
+        }
+
+        return [ChannelType::SamsaraDriverApp->value];
+    }
+
+    /**
+     * Warnings before a limit, largest first (the 0 is the limit itself).
+     *
+     * @return list<int>
+     */
+    public function leadThresholdsMinutes(): array
+    {
+        $minutes = array_values(array_unique(array_filter($this->leadMinutes, fn (int $value): bool => $value > 0)));
+        rsort($minutes);
+
+        return $minutes;
+    }
+
+    /**
+     * @return list<int> largest first
+     */
+    public function cycleThresholdsHours(): array
+    {
+        $hours = array_values(array_unique(array_filter($this->cycleLeadHours, fn (int $value): bool => $value > 0)));
+        rsort($hours);
+
+        return $hours;
+    }
+
+    /**
+     * @return list<int> smallest first
+     */
+    public function restNudgeMinutes(): array
+    {
+        $minutes = array_values(array_unique(array_filter($this->restCompleteNudgeMinutes, fn (int $value): bool => $value > 0)));
+        sort($minutes);
+
+        return $minutes;
     }
 }

@@ -5,6 +5,8 @@ namespace App\Domains\Notifications\Actions;
 use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
 use App\Domains\Notifications\Data\TenantNotificationPolicy;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\NotificationSourceType;
+use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationPreference;
@@ -15,6 +17,13 @@ use App\Support\LoggableCode;
 
 class SelectNotificationChannels
 {
+    /**
+     * HOS situations (payload `hos.situation`, the HosSituation values) whose
+     * driver notices skip quiet hours: road safety while he drives. Rest
+     * complete and the cycle warning are informational and respect them.
+     */
+    private const array HOS_QUIET_HOURS_BYPASS = ['break_due', 'drive_limit', 'shift_limit', 'violation'];
+
     public function __construct(
         private readonly TenantNotificationPoliciesResolver $policies,
     ) {}
@@ -97,7 +106,11 @@ class SelectNotificationChannels
         }
 
         $preference = $this->resolvePreference($notification, $recipient);
-        $quiet = $this->insideQuietHours($team, $policy, $preference);
+        // Avisos HOS de seguridad al chofer (spec 2026-10-04 §3.10): va en ruta,
+        // así que no hay horario silencioso. Fin de pausa y ciclo sí lo respetan.
+        $quiet = $this->bypassesQuietHours($notification)
+            ? ['active' => false, 'source' => 'bypassed']
+            : $this->insideQuietHours($team, $policy, $preference);
 
         $calc['quiet_hours_active'] = $quiet['active'];
         $calc['quiet_hours_source'] = $quiet['source'];
@@ -182,6 +195,18 @@ class SelectNotificationChannels
         return array_values(array_diff($this->typesOf($before), $this->typesOf($after)));
     }
 
+    private function bypassesQuietHours(Notification $notification): bool
+    {
+        if ($notification->source_type !== NotificationSourceType::HosEpisode) {
+            return false;
+        }
+
+        $hos = $notification->payload_json['hos'] ?? null;
+        $situation = is_array($hos) ? ($hos['situation'] ?? null) : null;
+
+        return is_string($situation) && in_array($situation, self::HOS_QUIET_HOURS_BYPASS, true);
+    }
+
     /**
      * El horario de silencio del usuario manda sobre el del tenant.
      *
@@ -235,7 +260,9 @@ class SelectNotificationChannels
 
     private function resolvePreference(Notification $notification, NotificationRecipient $recipient): ?NotificationPreference
     {
-        $userId = $recipient->recipient_reference_id !== null && is_numeric($recipient->recipient_reference_id)
+        $userId = $recipient->recipient_type === RecipientType::User
+            && $recipient->recipient_reference_id !== null
+            && is_numeric($recipient->recipient_reference_id)
             ? (int) $recipient->recipient_reference_id
             : null;
 

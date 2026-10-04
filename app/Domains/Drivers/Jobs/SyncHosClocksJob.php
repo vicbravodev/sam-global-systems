@@ -2,6 +2,7 @@
 
 namespace App\Domains\Drivers\Jobs;
 
+use App\Domains\Drivers\Actions\AdvanceHosEpisodes;
 use App\Domains\Drivers\Actions\ProcessHosReadings;
 use App\Domains\Drivers\Actions\ResolveHosEnrollment;
 use App\Domains\Drivers\Actions\ResolveHosMonitoringConfig;
@@ -23,9 +24,11 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * One HOS poll of one Samsara integration: clocks (+ tags when the tenant
- * enrolls by tag) → enrollment → state and episodes. A failed provider read
- * discards the WHOLE cycle — a partial listing would read as drivers leaving
- * the set and close their episodes. No retries: the next minute polls again.
+ * enrolls by tag) → enrollment → state and episodes → reminder ladder. A
+ * failed provider read discards the WHOLE cycle — a partial listing would
+ * read as drivers leaving the set and close their episodes — and the ladder
+ * does not move that minute (unknown state). No retries: the next minute
+ * polls again.
  */
 class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
 {
@@ -49,11 +52,12 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
         ResolveHosMonitoringConfig $resolveConfig,
         ResolveHosEnrollment $resolveEnrollment,
         ProcessHosReadings $processReadings,
+        AdvanceHosEpisodes $advanceEpisodes,
     ): void {
         $teamId = $this->integration->team_id;
         $input = ['team_id' => $teamId, 'integration_id' => $this->integration->id];
 
-        TenantContext::for($teamId, function () use ($providerAdapter, $resolveConfig, $resolveEnrollment, $processReadings, $teamId, $input): void {
+        TenantContext::for($teamId, function () use ($providerAdapter, $resolveConfig, $resolveEnrollment, $processReadings, $advanceEpisodes, $teamId, $input): void {
             $config = $resolveConfig->execute($teamId);
 
             if ($config === null) {
@@ -79,8 +83,11 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
+            $now = now()->toImmutable();
             $enrollment = $resolveEnrollment->execute($this->integration, $config, $readings, $tags);
-            $counts = $processReadings->execute($teamId, $config, $enrollment, now()->toImmutable());
+            $counts = $processReadings->execute($teamId, $config, $enrollment, $now);
+            // La escalera corre con los relojes de este mismo minuto.
+            $advanceEpisodes->execute($this->integration, $config, $now);
 
             $skipped = [];
 

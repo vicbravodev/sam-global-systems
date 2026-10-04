@@ -108,4 +108,9 @@ class NullProviderAdapter implements ProviderAdapter
     {
         return [];
     }
+
+    public function sendDriverMessage(TenantIntegration $integration, string $externalDriverId, string $text): void
+    {
+        throw new ProviderRequestFailedException('POST /v1/fleet/messages', 501, 'Este proveedor no admite mensajes a la app del chofer.');
+    }
 }

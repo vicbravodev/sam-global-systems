@@ -45,7 +45,7 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $summary = $this->apply($team);
 
         $this->assertSame(count(ApplyDefaultTenantConfig::defaultSettings()), $summary['settings_created']);
-        $this->assertSame(4, $summary['rules_created']);
+        $this->assertSame(5, $summary['rules_created']);
         $this->assertTrue($summary['escalation_created']);
         $this->assertSame(1, $summary['snapshot_version']);
 
@@ -75,6 +75,8 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $this->assertTrue((bool) $rules['panic-false-alarm-review']->is_active);
         $this->assertTrue((bool) $rules['after-hours-movement-incident']->is_active);
         $this->assertTrue((bool) $rules['suspicious-stop-review']->is_active);
+        $this->assertTrue((bool) $rules[ApplyDefaultTenantConfig::HOS_RULE_CODE]->stop_processing);
+        $this->assertSame(['hos_limit_exceeded', 'hos_unattended'], $rules[ApplyDefaultTenantConfig::HOS_RULE_CODE]->conditions_json['all'][0]['value']);
 
         $escalation = TenantEscalationConfig::withoutGlobalScopes()
             ->where('team_id', $team->id)
@@ -109,7 +111,7 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $first = $this->assertSystemLogged('tenant_config.defaults.applied', fn (array $c) => $c['outcome'] === 'ok');
         $this->assertSame(['team_id' => $team->id, 'pack_version' => ApplyDefaultTenantConfig::PACK_VERSION], $first['input']);
         $this->assertSame(count(ApplyDefaultTenantConfig::defaultSettings()), $first['result']['settings_created']);
-        $this->assertSame(4, $first['result']['rules_created']);
+        $this->assertSame(5, $first['result']['rules_created']);
         $this->assertSystemLogged('tenant_config.defaults.applied', fn (array $c) => ($c['reason'] ?? null) === 'already_configured'
             && $c['result']['settings_created'] === 0);
         $this->assertNoSensitiveDataLogged();
