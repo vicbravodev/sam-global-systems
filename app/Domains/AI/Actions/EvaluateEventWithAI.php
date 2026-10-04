@@ -474,6 +474,8 @@ class EvaluateEventWithAI
         return match (true) {
             str_starts_with($reason, 'known_noise_signature:') => 'señal de ruido conocida ('.substr($reason, strlen('known_noise_signature:')).')',
             $reason === 'recent_duplicates_in_window' => 'el mismo evento se repitió varias veces en poco tiempo',
+            $reason === 'rule_resolved_type:after_hours_movement' => 'la unidad se movió fuera del horario configurado por el cliente',
+            str_starts_with($reason, 'rule_resolved_type:') => 'el tipo de evento lo confirma una regla de SAM ('.substr($reason, strlen('rule_resolved_type:')).')',
             default => $reason,
         };
     }

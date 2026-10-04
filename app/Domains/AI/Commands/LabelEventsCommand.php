@@ -8,6 +8,7 @@ use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\OperatorVerdict;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
+use App\Domains\AI\Support\ClefMeasurableEvaluations;
 use App\Domains\Context\Enums\MediaRetrievalStatus;
 use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
@@ -106,6 +107,7 @@ class LabelEventsCommand extends Command
         $candidates = AIEventEvaluation::query()
             ->with('normalizedEvent:id,event_type_id')
             ->whereIn('evaluation_mode', [EvaluationMode::AiText, EvaluationMode::Hybrid])
+            ->tap(fn ($q) => ClefMeasurableEvaluations::constrain($q))
             ->when($since !== null, fn ($q) => $q->where('created_at', '>=', $since))
             ->orderByDesc('evaluation_version')
             ->orderByDesc('id')

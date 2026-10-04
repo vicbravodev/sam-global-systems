@@ -8,6 +8,7 @@ use App\Domains\AI\Enums\OperatorVerdict;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIShadowEvaluation;
+use App\Domains\AI\Support\ClefMeasurableEvaluations;
 use App\Domains\AI\Support\ScoredEvaluationVersion;
 use App\Infrastructure\AI\Clef\ClefQuestionSchema;
 use App\Support\TenantContext;
@@ -41,6 +42,7 @@ class ClefShadowComparisonQuery
                 ->with('normalizedEvent.eventType')
                 ->when($teamId !== null, fn ($q) => $q->where('team_id', $teamId))
                 ->whereIn('evaluation_mode', [EvaluationMode::AiText, EvaluationMode::Hybrid])
+                ->tap(fn ($q) => ClefMeasurableEvaluations::constrain($q))
                 ->where('created_at', '>=', $since)
                 ->orderByDesc('evaluation_version')
                 ->orderByDesc('id')
