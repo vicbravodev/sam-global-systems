@@ -56,7 +56,17 @@ Si necesitas una variante, extiende la primitiva con una prop; no copies su mark
 
 Todo `<button>` con `type` (lint), botones de icono con `aria-label`, inputs con label asociado, filas clicables con `role`, `tabIndex` y teclado.
 
+## Tests (Vitest)
+
+Se prueba la lógica, no el markup: funciones de `lib/`, los `lib.ts` de cada feature y los hooks con estado propio (recargas por broadcast, relojes, reductores). Nada de snapshots ni tests de "renderiza X": eso ya lo cubren `assertInertia` en PHPUnit y los tipos.
+
+- Archivo `*.test.ts` junto al código (`lib/format.test.ts`, `components/sam/inbox/lib.test.ts`). `npm test` (una vez) · `npm run test:watch`.
+- Imports explícitos de `vitest` (sin globals). Hooks con `renderHook` + `act` de `@testing-library/react`; el desmontaje entre tests ya está en `test-setup.ts`.
+- Zona horaria fija `America/Mexico_City` (`vitest.config.ts`): escribe las fechas esperadas en hora de CDMX. Tiempo con `vi.useFakeTimers()` + `vi.setSystemTime()`.
+- Se simula sólo el borde: `@inertiajs/react` (`router`, `usePage`), `sonner`, `@/echo`, `fetch` (`vi.stubGlobal`). La lógica bajo prueba, nunca.
+- Un helper nuevo en `lib/` o un `lib.ts`/hook con reglas de negocio llega con su test.
+
 ## Gates y entorno
 
-- `npm run types:check && npm run lint:check && npm run format:check` (y `npm run build`).
+- `npm run types:check && npm run lint:check && npm run format:check && npm test` (y `npm run build`).
 - Si un cambio no se ve en la UI, falta `npm run dev` / `npm run build`. Error "Unable to locate file in Vite manifest" → `npm run build`.
