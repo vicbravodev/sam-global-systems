@@ -185,6 +185,27 @@ class HosEnrollmentPreviewTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_the_tags_endpoint_never_reads_another_tenant(): void
+    {
+        $mine = $this->hosIntegration();
+        $theirs = $this->hosIntegration();
+        Cache::put(HosProviderCache::tagsKey($mine->team_id, $mine->id), [
+            ['id' => '1', 'name' => 'USA', 'parent_id' => null, 'vehicle_ids' => [], 'driver_ids' => ['7']],
+        ], 300);
+        Cache::put(HosProviderCache::tagsKey($theirs->team_id, $theirs->id), [
+            ['id' => '99', 'name' => 'AJENA', 'parent_id' => null, 'vehicle_ids' => ['282'], 'driver_ids' => []],
+        ], 300);
+        Http::fake();
+
+        $response = $this->assertNoTenantLeak($mine->team_id, fn () => $this->actingAs($this->ownerOf($mine))
+            ->getJson(route('tenant-config.hos.tags', ['current_team' => $this->slugOf($mine)])));
+
+        $response->assertOk()
+            ->assertJsonPath('data.*.id', ['1'])
+            ->assertJsonPath('meta.failed', false);
+        Http::assertNothingSent();
+    }
+
     public function test_the_preview_never_reads_another_tenant(): void
     {
         $mine = $this->hosIntegration();
