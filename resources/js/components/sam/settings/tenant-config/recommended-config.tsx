@@ -18,7 +18,7 @@ import { CONFIG_SUBMIT } from './shared';
 
 const INCLUDES = [
     'Protocolo de botón de pánico: todo pánico abre un incidente y se verifica con una llamada.',
-    'Video e imágenes pedidos automáticamente en cada evento crítico.',
+    'Fotos y video de la cámara en cada evento que puede abrir un incidente.',
     'Alertas cuando una unidad deja de reportar o se detiene fuera de sus zonas.',
     'Escalamiento de incidentes críticos a responsables y administradores.',
     'Avisos por correo, SMS o llamada sólo a partir de gravedad media.',

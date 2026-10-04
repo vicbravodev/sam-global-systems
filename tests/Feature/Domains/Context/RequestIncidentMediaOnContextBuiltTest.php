@@ -6,11 +6,14 @@ use App\Domains\Context\Enums\MediaRequestStatus;
 use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
-use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestIncidentMediaOnContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaRequest;
 use App\Domains\Context\Models\OperationalContextProfile;
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventSeverity;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\TenantConfig\Enums\SettingGroup;
@@ -23,7 +26,7 @@ use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
-class RequestPanicMediaOnContextBuiltTest extends TestCase
+class RequestIncidentMediaOnContextBuiltTest extends TestCase
 {
     use AssertsSystemLog;
     use RefreshDatabase;
@@ -43,23 +46,36 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
     {
         TenantSetting::factory()->create([
             'team_id' => $teamId ?? $this->teamId,
-            'setting_key' => RequestPanicMediaOnContextBuilt::SETTING_KEY,
+            'setting_key' => RequestIncidentMediaOnContextBuilt::SETTING_KEY,
             'setting_group' => SettingGroup::Operational,
             'value_json' => ['value' => true],
             'value_type' => SettingValueType::Boolean,
         ]);
     }
 
-    private function buildContext(string $severityCode = 'critical', bool $hasCamera = true): EventContextBuilt
-    {
+    private function buildContext(
+        string $severityCode = 'critical',
+        bool $hasCamera = true,
+        string $categoryCode = 'compliance',
+        ?string $eventTypeCode = null,
+        bool $withAsset = true,
+    ): EventContextBuilt {
         $severity = EventSeverity::query()->firstOrCreate(
             ['code' => $severityCode],
             ['label' => ucfirst($severityCode), 'level' => $severityCode === 'critical' ? 4 : 2, 'color' => '#ef4444'],
         );
 
+        $category = EventCategory::query()->firstOrCreate(['code' => $categoryCode], ['name' => ucfirst($categoryCode)]);
+
         $event = NormalizedEvent::factory()->create([
             'team_id' => $this->teamId,
             'event_severity_id' => $severity->id,
+            'event_category_id' => $category->id,
+            'event_type_id' => EventType::factory()->create([
+                'category_id' => $category->id,
+                ...($eventTypeCode !== null ? ['code' => $eventTypeCode] : []),
+            ])->id,
+            'asset_id' => $withAsset ? Asset::factory()->create(['team_id' => $this->teamId])->id : null,
         ]);
 
         $snapshot = EventContextSnapshot::factory()->create([
@@ -75,7 +91,7 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
 
     private function handle(EventContextBuilt $event): void
     {
-        app(RequestPanicMediaOnContextBuilt::class)->handle($event);
+        app(RequestIncidentMediaOnContextBuilt::class)->handle($event);
     }
 
     public function test_opens_a_single_sweep_only_request_for_critical_event_when_opted_in(): void
@@ -138,13 +154,62 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         Queue::assertNotPushed(FetchDeferredEventMediaJob::class);
     }
 
-    public function test_never_requests_for_non_critical_events(): void
+    public function test_requests_for_non_critical_events_that_can_open_an_incident(): void
     {
         $this->enableAutoRequest();
 
-        $this->handle($this->buildContext(severityCode: 'medium'));
+        // Caso real: pasajero no autorizado (compliance, medium) abría
+        // incidente por IA sin que nadie pidiera nunca una foto de la cabina.
+        $event = $this->buildContext(severityCode: 'medium', categoryCode: 'compliance', eventTypeCode: 'unauthorized_passenger');
+
+        $this->handle($event);
+
+        $request = EventMediaRequest::withoutGlobalScopes()->sole();
+        $this->assertSame($event->snapshot->normalized_event_id, $request->normalized_event_id);
+        $this->assertTrue($request->sweep_only);
+    }
+
+    public function test_requests_for_an_emergency_whatever_its_severity(): void
+    {
+        $this->enableAutoRequest();
+
+        $this->handle($this->buildContext(severityCode: 'high', categoryCode: 'emergency', eventTypeCode: 'panic_button'));
+
+        $this->assertSame(1, EventMediaRequest::withoutGlobalScopes()->count());
+    }
+
+    public function test_never_requests_for_events_that_cannot_open_an_incident(): void
+    {
+        $this->enableAutoRequest();
+
+        // `safety` está en ai.skip_evaluation_categories: no se evalúa ni abre incidente.
+        $this->handle($this->buildContext(severityCode: 'medium', categoryCode: 'safety'));
 
         $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+    }
+
+    public function test_never_requests_for_a_skipped_event_type(): void
+    {
+        $this->enableAutoRequest();
+        config(['ai.skip_evaluation_event_types' => ['geofence_entry']]);
+
+        $this->handle($this->buildContext(severityCode: 'medium', categoryCode: 'operational', eventTypeCode: 'geofence_entry'));
+
+        $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+    }
+
+    public function test_skips_and_logs_an_event_without_a_resolved_asset(): void
+    {
+        $this->enableAutoRequest();
+        $event = $this->buildContext(withAsset: false);
+
+        $this->handle($event);
+
+        // Sin unidad no hay a qué cámara preguntarle.
+        $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'asset_unresolved');
+        $this->assertSame($event->snapshot->normalized_event_id, $c['input']['normalized_event_id']);
+        $this->assertSame('context_built', $c['input']['trigger']);
     }
 
     public function test_camera_less_asset_still_opens_the_sweep_only_request(): void
@@ -212,16 +277,18 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
-    public function test_logs_not_critical_skip(): void
+    public function test_logs_not_incident_worthy_skip(): void
     {
         $this->enableAutoRequest();
-        $event = $this->buildContext(severityCode: 'medium');
+        $event = $this->buildContext(severityCode: 'medium', categoryCode: 'safety');
 
         $this->handle($event);
 
-        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'not_critical');
+        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'not_incident_worthy');
         $this->assertSame($event->snapshot->normalized_event_id, $c['input']['normalized_event_id']);
         $this->assertSame('medium', $c['input']['severity_code']);
+        $this->assertSame('safety', $c['input']['category_code']);
+        $this->assertSame('skip_category', $c['calc']['gate_skip_reason']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -232,7 +299,7 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->handle($event);
 
         $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'setting_disabled');
-        $this->assertSame(RequestPanicMediaOnContextBuilt::SETTING_KEY, $c['input']['setting_key']);
+        $this->assertSame(RequestIncidentMediaOnContextBuilt::SETTING_KEY, $c['input']['setting_key']);
     }
 
     public function test_logs_skip_when_event_not_found(): void

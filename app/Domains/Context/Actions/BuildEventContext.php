@@ -196,7 +196,7 @@ class BuildEventContext
 
             $built['result']['risk_level'] = $profile->risk_level?->value;
 
-            // Sync listeners (RequestPanicMediaOnContextBuilt) log inside this
+            // Sync listeners (RequestIncidentMediaOnContextBuilt) log inside this
             // transaction, before `context.snapshot.built`.
             EventContextBuilt::dispatch($reload($snapshot), $profile);
 

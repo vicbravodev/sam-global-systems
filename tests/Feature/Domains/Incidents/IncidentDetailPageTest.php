@@ -249,6 +249,50 @@ class IncidentDetailPageTest extends TestCase
         );
     }
 
+    public function test_context_stills_say_which_camera_and_how_far_from_the_event(): void
+    {
+        [$incident, $event] = $this->makeIncidentWithEvent();
+        $event->forceFill(['occurred_at' => '2026-10-03 18:33:54'])->save();
+
+        $cabin = EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'media_type' => 'snapshot',
+            'media_role' => 'post_event_context',
+            'media_url' => 'https://media.example.test/cab.jpg',
+            'metadata_json' => [
+                'source' => 'uploaded_media',
+                'evidence_kind' => 'context',
+                'trigger_reason' => 'periodicStill',
+                'input' => 'dashcamDriverFacing',
+                'start_time' => '2026-10-03T18:33:55Z',
+            ],
+        ]);
+        $panic = EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'media_type' => 'snapshot',
+            'media_url' => 'https://media.example.test/panic.jpg',
+            'metadata_json' => ['source' => 'uploaded_media', 'trigger_reason' => 'panicButton', 'input' => 'dashcamRoadFacing'],
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('incidents.show', ['current_team' => $this->team->slug, 'incident' => $incident->id]),
+        );
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->has('media', 2)
+            ->has('media', fn (Assert $items) => $items
+                ->where('0.id', $cabin->id)
+                ->where('0.context', true)
+                ->where('0.camera', 'driver')
+                ->where('0.offsetSeconds', 1)
+                ->where('1.id', $panic->id)
+                ->where('1.context', false)
+                ->where('1.camera', 'road')
+                ->etc()));
+    }
+
     public function test_inbox_panel_thumbnails_never_point_an_img_at_a_video(): void
     {
         [$incident, $photo, $clip] = $this->makePanicMediaSet();

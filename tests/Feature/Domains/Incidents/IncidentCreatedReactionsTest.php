@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Incidents;
 use App\Domains\Assets\Listeners\FreezeLocationTrailOnIncidentCreated;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Automation\Listeners\TriggerAutomationOnIncidentCreated;
+use App\Domains\Context\Listeners\RequestMediaOnIncidentCreated;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Actions\CreateManualIncident;
 use App\Domains\Incidents\Actions\RecordIncidentWorkflowUsage;
@@ -65,6 +66,7 @@ class IncidentCreatedReactionsTest extends TestCase
         StartCallVerificationOnIncidentCreated::class => 'incidents',
         TriggerAutomationOnIncidentCreated::class => 'automation',
         FreezeLocationTrailOnIncidentCreated::class => 'incidents',
+        RequestMediaOnIncidentCreated::class => 'context',
     ];
 
     private Team $team;
@@ -249,7 +251,7 @@ class IncidentCreatedReactionsTest extends TestCase
         ]);
 
         $this->assertTrue(Incident::withoutGlobalScopes()->whereKey($incident->id)->exists());
-        $this->assertCount(4, $ran);
+        $this->assertCount(count(self::REACTIONS) - 1, $ran);
         $this->assertSystemLogged('incidents.created_reaction.failed', fn (array $c) => $c['input']['reaction'] === 'NotifyOnIncidentCreated');
     }
 
