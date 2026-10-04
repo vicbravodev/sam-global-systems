@@ -1,0 +1,169 @@
+# Producción en Dokploy (servicio tipo "Docker Compose"). El de desarrollo es
+# compose.yaml (Sail).
+#
+# - La imagen la construye y publica GitHub Actions en GHCR (deploy.yml); aquí
+#   sólo se descarga (`pull_policy: always`), así el VPS no gasta CPU en builds.
+# - Postgres NO vive aquí: es un servicio "Database" de Dokploy (backups
+#   programados a S3 desde su UI). Se alcanza por `dokploy-network` con el
+#   hostname interno que muestra Dokploy (DB_HOST).
+# - Las variables salen del .env que Dokploy escribe junto a este archivo
+#   (pestaña Environment). Plantilla: .env.production.example.
+# - Dominios (pestaña Domains de Dokploy, TLS automático con Traefik):
+#     web    -> APP_URL                      puerto 8080
+#     soketi -> VITE_PUSHER_HOST (ws.)       puerto 6001
+#     rustfs -> RUSTFS_PUBLIC_ENDPOINT       puerto 9000 (URLs prefirmadas)
+
+# Rotación de los logs de Docker (pestaña Logs de Dokploy): sin tope, el
+# driver json-file crece hasta llenar el disco.
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: 20m
+        max-file: '5'
+
+x-app: &app
+    image: '${SAM_IMAGE:-ghcr.io/vicbravodev/sam-global-systems:latest}'
+    pull_policy: ${SAM_PULL_POLICY:-always}
+    restart: unless-stopped
+    logging: *logging
+    env_file:
+        - .env
+    volumes:
+        - 'sam-storage:/var/www/html/storage/app'
+        - 'sam-logs:/var/www/html/storage/logs'
+    networks:
+        - default
+        - dokploy-network
+
+services:
+    web:
+        <<: *app
+        environment:
+            # Al arrancar: config/route/view/event cache + migrate --force.
+            # Sólo este contenedor migra; horizon y scheduler esperan a que
+            # esté sano.
+            AUTORUN_ENABLED: 'true'
+            AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+        stop_grace_period: 30s
+        depends_on:
+            valkey:
+                condition: service_healthy
+            rustfs:
+                condition: service_started
+        healthcheck:
+            test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8080/up']
+            interval: 15s
+            timeout: 5s
+            retries: 5
+            start_period: 120s
+
+    horizon:
+        <<: *app
+        command: ['php', '/var/www/html/artisan', 'horizon']
+        environment:
+            AUTORUN_ENABLED: 'true'
+            AUTORUN_LARAVEL_MIGRATION: 'false'
+            AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+        # SIGTERM = Horizon termina los jobs en curso antes de salir. El
+        # margen cubre el job más largo de las colas `long`/`telematics`.
+        stop_signal: SIGTERM
+        stop_grace_period: 240s
+        depends_on:
+            web:
+                condition: service_healthy
+        healthcheck:
+            test: ['CMD', 'healthcheck-horizon']
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    scheduler:
+        <<: *app
+        # Una sola réplica: nunca escalar. Los jobs además usan onOneServer().
+        command: ['php', '/var/www/html/artisan', 'schedule:work']
+        environment:
+            AUTORUN_ENABLED: 'true'
+            AUTORUN_LARAVEL_MIGRATION: 'false'
+            AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+        stop_signal: SIGTERM
+        stop_grace_period: 60s
+        depends_on:
+            web:
+                condition: service_healthy
+        healthcheck:
+            test: ['CMD', 'healthcheck-schedule']
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    valkey:
+        image: 'valkey/valkey:9.1-alpine'
+        restart: unless-stopped
+        logging: *logging
+        # Colas, sesiones y caché. `noeviction`: con memoria llena falla la
+        # escritura en lugar de tirar jobs encolados en silencio.
+        command:
+            - valkey-server
+            - --appendonly
+            - 'yes'
+            - --requirepass
+            - '${REDIS_PASSWORD:?REDIS_PASSWORD requerido}'
+            - --maxmemory
+            - 1gb
+            - --maxmemory-policy
+            - noeviction
+        environment:
+            REDISCLI_AUTH: '${REDIS_PASSWORD}'
+            VALKEYCLI_AUTH: '${REDIS_PASSWORD}'
+        volumes:
+            - 'sam-valkey:/data'
+        networks:
+            - default
+        healthcheck:
+            test: ['CMD', 'valkey-cli', 'ping']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    soketi:
+        image: 'quay.io/soketi/soketi:1.6-16-alpine'
+        restart: unless-stopped
+        logging: *logging
+        environment:
+            SOKETI_DEBUG: '0'
+            SOKETI_DEFAULT_APP_ID: '${PUSHER_APP_ID:?PUSHER_APP_ID requerido}'
+            SOKETI_DEFAULT_APP_KEY: '${PUSHER_APP_KEY:?PUSHER_APP_KEY requerido}'
+            SOKETI_DEFAULT_APP_SECRET: '${PUSHER_APP_SECRET:?PUSHER_APP_SECRET requerido}'
+        networks:
+            - default
+            - dokploy-network
+
+    rustfs:
+        image: 'rustfs/rustfs:1.0.1'
+        restart: unless-stopped
+        logging: *logging
+        environment:
+            RUSTFS_VOLUMES: /data
+            RUSTFS_ADDRESS: '0.0.0.0:9000'
+            RUSTFS_CONSOLE_ENABLE: 'false'
+            RUSTFS_CORS_ALLOWED_ORIGINS: '${APP_URL}'
+            RUSTFS_ACCESS_KEY: '${RUSTFS_ACCESS_KEY:?RUSTFS_ACCESS_KEY requerido}'
+            RUSTFS_SECRET_KEY: '${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY requerido}'
+            RUSTFS_LOG_LEVEL: warn
+        volumes:
+            - 'sam-rustfs:/data'
+        networks:
+            - default
+            - dokploy-network
+
+networks:
+    dokploy-network:
+        external: true
+
+volumes:
+    sam-storage:
+    sam-logs:
+    sam-valkey:
+    sam-rustfs:
