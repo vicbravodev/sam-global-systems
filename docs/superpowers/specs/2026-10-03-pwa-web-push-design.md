@@ -89,7 +89,7 @@ DELETE /settings/push-subscriptions   → push-subscriptions.destroy (por endpoi
 3. Verifica que el usuario siga siendo miembro del team; si no → failure `push_not_member`.
 4. Carga `PushSubscription` de ese usuario **en ese team**. Sin suscripciones → `failure('push_no_subscriptions')` (dispara el fallback existente si la política lo tiene).
 5. Construye el payload JSON (≤ 4 KB): `title` (subject), `body`, `url` (show del incidente con slug del team si `variables.incident_id`, si no `notifications.show`), `tag` (`incident-{id}` o `notification-{id}`), `critical` (bool, prioridad crítica), `renotify: true`.
-6. Envía a todas vía contrato `App\Contracts\Notifications\WebPushSender` (implementación `MinishlinkWebPushSender` en `app/Infrastructure/`), con opciones `urgency: high` + `TTL: 3600` si es crítico, `urgency: normal` + `TTL: 86400` si no.
+6. Envía a todas vía `WebPushMessenger` (envoltura de minishlink en `Channels/`, como `TwilioMessenger`), con opciones `urgency: high` + `TTL: 3600` si es crítico, `urgency: normal` + `TTL: 86400` si no.
 7. Respuestas 404/410 → borra esa suscripción (log `notifications.push.subscription_pruned`). Éxitos → `last_used_at = now()`.
 8. ≥1 éxito → `DeliveryResult::success`; 0 → `failure` con conteos (retry/fallback existentes).
 
@@ -120,12 +120,12 @@ Una migración de datos asegura una fila `NotificationChannel` activa `channel_t
 
 | código | cuándo |
 |---|---|
-| `notifications.push_subscription.registered` | alta/actualización (calc: `created`, `moved_team`) |
+| `notifications.push_subscription.registered` | alta/actualización (calc: `created`, `moved`) |
 | `notifications.push_subscription.removed` | baja por el usuario |
 | `notifications.push.sent` | ≥1 éxito (calc: `subscriptions`, `successes`, `failures`) |
 | `notifications.push.failed` | 0 éxitos, reason `no_subscriptions` / `not_member` / `invalid_address` / `all_failed` / `not_configured` |
 | `notifications.push.subscription_pruned` | 404/410 del servicio de push |
-| `incidents.assignment.notified` / `incidents.assignment.skipped` | listener de asignación |
+| `incidents.assignment.notified` (ok o skipped con reason) | listener de asignación |
 
 Nunca se loguea el endpoint, las llaves ni el cuerpo.
 
