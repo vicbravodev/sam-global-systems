@@ -552,18 +552,39 @@ class AdvanceHosEpisodesTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_an_open_violation_does_not_hold_the_break_ladder(): void
+    public function test_an_open_violation_holds_the_break_ladder_until_it_resolves(): void
     {
         $this->fakeAppMessages();
-        $this->episode(HosSituation::Violation, ['ladder_step' => 1, 'escalated_at' => now()]);
+        Queue::fake([ProcessRawEventJob::class]);
+        // Infracción ya levantada, insistiendo: su siguiente escalón (app + WhatsApp) a las 12:05.
+        $violation = $this->episode(HosSituation::Violation, ['ladder_step' => 1, 'escalated_at' => now(), 'next_nudge_at' => now()->addMinutes(5)]);
         $break = $this->episode();
         $this->state(break: 0, drive: 0);
 
-        $this->advance();
+        $counts = $this->advance();                           // 12:00 el descanso no duplica avisos
+
+        $this->assertSame(1, $counts['held']);
+        $this->assertSame(0, $this->appMessages());
+        $held = $this->assertSystemLogged('hos.nudge.skipped', fn (array $c) => $c['reason'] === 'violation_open');
+        $this->assertSame($break->id, $held['input']['episode_id']);
+        $this->assertSame($violation->id, $held['calc']['violation_episode_id']);
+
+        $this->travel(5)->minutes();
+        $this->advance();                                     // 12:05 sólo insiste la infracción
 
         $this->assertSame(1, $this->appMessages());
+        $this->assertCount(1, $this->twilio->messages);
+        $this->assertSame(0, $break->fresh()->ladder_step);
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('source_reference_id', (string) $break->id)->count());
+
+        $violation->forceFill(['resolved_at' => now()])->save();
+        $this->travel(1)->minutes();
+        $this->advance();                                     // 12:06 cerrada la infracción, el descanso arranca su escalera
+
+        $this->assertSame(2, $this->appMessages());
         $this->assertSame(3, $break->fresh()->ladder_step);
-        $this->assertSame($break->id, $this->assertSystemLogged('hos.nudge.sent')['input']['episode_id']);
+        $this->assertSame($break->id, $this->assertSystemLogged('hos.nudge.sent', fn (array $c) => $c['input']['episode_id'] === $break->id)['input']['episode_id']);
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
         $this->assertNoSensitiveDataLogged();
     }
 

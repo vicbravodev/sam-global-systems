@@ -30,9 +30,10 @@ use Throwable;
  * escalation a raw event keyed `hos:{episode}`. A step whose notification
  * reached nobody (failed or cancelled) does not wait for its interval: the
  * next step is due right away (ladders and violation insistence). While a
- * driver has an open violation, his drive/shift episodes hold
+ * driver has an open violation, his break/drive/shift episodes hold
  * (`violation_open`): the violation alone tells him, raises the incident and
- * keeps insisting while he drives; break_due is not affected. An
+ * keeps insisting while he drives; break_due holds too (no double app,
+ * WhatsApp or call). An
  * episode that throws is logged and counted as failed; the others still
  * advance.
  */
@@ -41,8 +42,8 @@ class AdvanceHosEpisodes
     /** Situations with a reminder ladder (a violation insists on the ladder's channels): the only ones whose next step can be brought forward. */
     private const array LADDER_SITUATIONS = [HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit, HosSituation::Violation];
 
-    /** Situations whose ladder pauses while the same driver has an open violation. */
-    private const array HELD_BY_VIOLATION = [HosSituation::DriveLimit, HosSituation::ShiftLimit];
+    /** Situations whose ladder pauses while the same driver has an open violation (its insistence already reaches him). */
+    private const array HELD_BY_VIOLATION = [HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit];
 
     public function __construct(
         private readonly HosLadderPlanner $planner,
@@ -153,7 +154,7 @@ class AdvanceHosEpisodes
 
     /**
      * The driver's open violation owns the notice and the incident: the
-     * drive/shift ladder would tell him "si no, avisaremos" right after
+     * break/drive/shift ladder would tell him "si no, avisaremos" right after
      * "ya avisamos" and raise a second (`hos_unattended`) incident. Paused
      * without touching `ladder_step`/`next_nudge_at`: once the violation
      * resolves it resumes where it was.
