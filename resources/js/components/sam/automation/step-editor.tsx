@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import InputError from '@/components/input-error';
+import { PhoneInput } from '@/components/sam/phone-input';
 import { RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -308,16 +309,23 @@ export function StepEditor({
                             placeholder={TARGET_KINDS[kind].placeholder}
                             className="w-full sm:w-72"
                         />
+                    ) : kind === 'phone' ? (
+                        <PhoneInput
+                            aria-label="Destinatario"
+                            defaultValue={draft.target_reference}
+                            onChange={(e164) =>
+                                onChange({
+                                    ...draft,
+                                    target_type: kind,
+                                    target_reference: e164,
+                                })
+                            }
+                            className="w-full sm:w-80"
+                        />
                     ) : (
                         <Input
                             aria-label="Destinatario"
-                            type={
-                                kind === 'email'
-                                    ? 'email'
-                                    : kind === 'phone'
-                                      ? 'tel'
-                                      : 'url'
-                            }
+                            type={kind === 'email' ? 'email' : 'url'}
                             placeholder={TARGET_KINDS[kind].placeholder}
                             value={draft.target_reference}
                             onChange={(e) =>

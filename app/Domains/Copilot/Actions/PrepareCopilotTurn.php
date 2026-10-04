@@ -40,9 +40,9 @@ class PrepareCopilotTurn
 
         $startedAt = hrtime(true);
 
-        ['history' => $history, 'previousAssetId' => $previousAssetId] = $conversation !== null
+        ['history' => $history, 'previousAssetId' => $previousAssetId, 'askedQuestions' => $asked] = $conversation !== null
             ? $this->history->forConversation($conversation)
-            : ['history' => [], 'previousAssetId' => null];
+            : ['history' => [], 'previousAssetId' => null, 'askedQuestions' => []];
 
         $conversation ??= CopilotConversation::query()->create([
             'team_id' => $team->id,
@@ -50,6 +50,9 @@ class PrepareCopilotTurn
             'title' => Str::limit(trim($content), 80),
             'last_message_at' => now(),
         ]);
+
+        // The question being asked now is never suggested back either.
+        $asked = [...$asked, $content];
 
         $contextHints = array_filter($hints, fn ($value) => $value !== null);
 
@@ -80,10 +83,11 @@ class PrepareCopilotTurn
             history: $history,
             previousAssetId: $previousAssetId,
             scope: CopilotTurnScope::fromTeam($team, $permissions, $user->isSuperAdmin()),
-            collector: new CopilotTurnCollector,
+            collector: new CopilotTurnCollector($asked),
             hints: $hints,
             channel: $channel,
             startedAt: $startedAt,
+            askedQuestions: $asked,
         );
     }
 }

@@ -1,0 +1,28 @@
+{
+    "name": "Preguntas puntuales: respuestas cortas, y una de flota que no se limita a la unidad en contexto",
+    "turns": [
+        {
+            "ask": "¿Dónde está la {asset}?",
+            "expect_tools_any": [
+                "asset_location",
+                "asset_summary"
+            ],
+            "expect_asset": "{asset}",
+            "max_chars": 400
+        },
+        {
+            "ask": "¿A qué velocidad va?",
+            "max_chars": 300
+        },
+        {
+            "ask": "¿Cuántos incidentes críticos hay abiertos ahora?",
+            "expect_tools_any": [
+                "open_incidents"
+            ],
+            "max_chars": 450,
+            "forbid_regex": [
+                "{asset}"
+            ]
+        }
+    ]
+}

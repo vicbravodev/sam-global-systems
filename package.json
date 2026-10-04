@@ -60,6 +60,7 @@
         "input-otp": "^1.4.2",
         "laravel-echo": "^2.3.4",
         "laravel-vite-plugin": "^3.0.0",
+        "libphonenumber-js": "^1.13.14",
         "lucide-react": "^0.475.0",
         "maplibre-gl": "^5.24.0",
         "motion": "^13.4.6",

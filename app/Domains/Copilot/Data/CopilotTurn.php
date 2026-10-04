@@ -24,6 +24,7 @@ final class CopilotTurn
     /**
      * @param  list<array{role: string, content: string}>  $history
      * @param  array{asset_id?: int|null, intent?: string|null}  $hints
+     * @param  list<string>  $askedQuestions  earlier questions of the conversation
      */
     public function __construct(
         public readonly Team $team,
@@ -38,5 +39,6 @@ final class CopilotTurn
         public readonly string $channel,
         public readonly int $startedAt,
         public readonly CopilotTurnUsage $spent = new CopilotTurnUsage,
+        public readonly array $askedQuestions = [],
     ) {}
 }

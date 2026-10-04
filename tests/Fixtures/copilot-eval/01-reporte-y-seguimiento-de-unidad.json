@@ -1,0 +1,9 @@
+{
+    "name": "Reporte de unidad y preguntas encadenadas sin repetir el código",
+    "turns": [
+        { "ask": "Dame el reporte completo de la unidad {asset}", "expect_asset": "{asset}", "max_chars": 1100 },
+        { "ask": "¿Y dónde está ahorita?", "expect_tools_any": ["asset_location", "asset_summary"], "expect_asset": "{asset}", "max_chars": 450 },
+        { "ask": "¿Cuánto combustible le queda?", "expect_tools_any": ["asset_fuel"], "expect_asset": "{asset}", "max_chars": 450 },
+        { "ask": "Compárala con el resto de la flota en excesos de velocidad", "expect_tools_any": ["rank_assets"] }
+    ]
+}

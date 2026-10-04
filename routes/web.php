@@ -3,6 +3,7 @@
 use App\Http\Controllers\Access\MemberRoleController;
 use App\Http\Controllers\Access\RoleController;
 use App\Http\Controllers\Admin\AuditController;
+use App\Http\Controllers\Admin\DemoRequestController as AdminDemoRequestController;
 use App\Http\Controllers\Admin\GlobalChannelController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\OperatorController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\RulesPageController;
 use App\Http\Controllers\Decisions\RuleTestController;
+use App\Http\Controllers\DemoRequestController;
 use App\Http\Controllers\Drivers\DriverPageController;
 use App\Http\Controllers\Incidents\IncidentAIVerdictController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
@@ -68,6 +70,14 @@ use App\Http\Middleware\RendersErrorsAsJson;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
+
+// Formulario público "Pedir una demo": se guarda para la consola de
+// super-admin y se avisa por correo a los operadores. Antes del grupo
+// {current_team} para que el comodín no lo capture.
+Route::get('demo', [DemoRequestController::class, 'create'])->name('demo-request.create');
+Route::post('demo', [DemoRequestController::class, 'store'])
+    ->middleware('throttle:5,1')
+    ->name('demo-request.store');
 
 // User-level settings routes are registered BEFORE the {current_team} group:
 // their literal `settings/...` paths must win over the team-slug wildcard
@@ -152,6 +162,10 @@ Route::prefix('admin')
         Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
         Route::post('operators', [OperatorController::class, 'store'])->name('operators.store');
         Route::delete('operators/{user}', [OperatorController::class, 'destroy'])->name('operators.destroy');
+
+        // Solicitudes de demo del sitio público (seguimiento comercial).
+        Route::get('demo-requests', [AdminDemoRequestController::class, 'index'])->name('demo-requests.index');
+        Route::put('demo-requests/{demoRequest}', [AdminDemoRequestController::class, 'update'])->name('demo-requests.update');
 
         // Cross-tenant audit viewer.
         Route::get('audit', [AuditController::class, 'index'])->name('audit.index');

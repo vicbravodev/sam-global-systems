@@ -1,0 +1,7 @@
+{
+    "name": "Pregunta ambigua sin contexto: pide la unidad en vez de adivinar",
+    "turns": [
+        { "ask": "¿Y ayer cuánto recorrió?", "expect_regex": ["\\?"], "forbid_tools": ["asset_engine", "asset_fuel", "asset_location", "asset_summary"], "max_chars": 350, "skip_checks": ["pills_presentes"] },
+        { "ask": "La {asset}", "expect_asset": "{asset}", "max_chars": 500 }
+    ]
+}

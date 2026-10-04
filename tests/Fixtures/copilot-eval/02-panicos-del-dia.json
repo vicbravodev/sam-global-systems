@@ -1,0 +1,8 @@
+{
+    "name": "Pánicos de hoy: del resumen al detalle de la unidad",
+    "turns": [
+        { "ask": "Botones de pánico de hoy", "expect_tools_any": ["panic_kpis", "search_events"] },
+        { "ask": "¿Cuál fue el más reciente y en qué unidad?", "max_chars": 500 },
+        { "ask": "¿Sigue abierto su incidente?", "expect_tools_any": ["open_incidents", "panic_kpis", "asset_activity", "search_events"], "max_chars": 500 }
+    ]
+}

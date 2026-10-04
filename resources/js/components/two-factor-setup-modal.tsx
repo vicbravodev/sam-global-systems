@@ -1,9 +1,9 @@
 import { Form } from '@inertiajs/react';
-import { REGEXP_ONLY_DIGITS } from 'input-otp';
 import { Check, Copy, ScanLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AlertError from '@/components/alert-error';
 import InputError from '@/components/input-error';
+import { VerificationCodeInput } from '@/components/sam/verification-code-input';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -12,11 +12,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import {
-    InputOTP,
-    InputOTPGroup,
-    InputOTPSlot,
-} from '@/components/ui/input-otp';
 import { Spinner } from '@/components/ui/spinner';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useClipboard } from '@/hooks/use-clipboard';
@@ -159,6 +154,7 @@ function TwoFactorVerificationStep({
         <Form
             {...confirm.form()}
             onSuccess={() => onClose()}
+            onError={() => setCode('')}
             resetOnError
             resetOnSuccess
         >
@@ -174,26 +170,19 @@ function TwoFactorVerificationStep({
                     className="relative w-full space-y-3"
                 >
                     <div className="flex w-full flex-col items-center space-y-3 py-2">
-                        <InputOTP
+                        <VerificationCodeInput
                             id="otp"
                             name="code"
-                            maxLength={OTP_MAX_LENGTH}
+                            length={OTP_MAX_LENGTH}
+                            value={code}
                             onChange={setCode}
+                            submitOnComplete
                             disabled={processing}
-                            pattern={REGEXP_ONLY_DIGITS}
-                        >
-                            <InputOTPGroup>
-                                {Array.from(
-                                    { length: OTP_MAX_LENGTH },
-                                    (_, index) => (
-                                        <InputOTPSlot
-                                            key={index}
-                                            index={index}
-                                        />
-                                    ),
-                                )}
-                            </InputOTPGroup>
-                        </InputOTP>
+                            aria-invalid={
+                                errors?.confirmTwoFactorAuthentication?.code !==
+                                undefined
+                            }
+                        />
                         <InputError
                             message={
                                 errors?.confirmTwoFactorAuthentication?.code

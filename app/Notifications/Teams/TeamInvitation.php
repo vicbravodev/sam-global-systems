@@ -3,10 +3,10 @@
 namespace App\Notifications\Teams;
 
 use App\Models\TeamInvitation as TeamInvitationModel;
+use App\Support\SamMailMessage;
 use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use LogicException;
 
@@ -53,7 +53,7 @@ class TeamInvitation extends Notification implements ShouldQueue
     /**
      * Get the mail representation of the notification.
      */
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): SamMailMessage
     {
         // shouldSend() descarta el team borrado; invited_by es FK NOT NULL con
         // cascade sobre users (sin soft-delete), así que el invitador existe.
@@ -62,13 +62,22 @@ class TeamInvitation extends Notification implements ShouldQueue
         $inviter = $this->invitation->inviter
             ?? throw new LogicException("TeamInvitation {$this->invitation->id} sin invitador.");
 
-        return (new MailMessage)
+        return (new SamMailMessage)
             ->subject(__("You've been invited to join :teamName", ['teamName' => $team->name]))
+            ->eyebrow('Invitación')
+            ->greeting("Te esperan en {$team->name}")
             ->line(__(':inviterName has invited you to join the :teamName team.', [
                 'inviterName' => $inviter->name,
                 'teamName' => $team->name,
             ]))
-            ->action(__('Accept invitation'), route('invitations.show', $this->invitation));
+            ->line('Desde SAM vas a poder seguir la flota en tiempo real, atender incidentes y recibir las alertas que importan.')
+            ->details([
+                'Empresa' => $team->name,
+                'Te invita' => $inviter->name,
+                'Rol' => $this->invitation->role->label(),
+            ])
+            ->action(__('Accept invitation'), route('invitations.show', $this->invitation))
+            ->line('Si no esperabas esta invitación, puedes ignorar este correo.');
     }
 
     /**

@@ -21,10 +21,24 @@ class GenericNotificationMailTest extends TestCase
 
         $mail->assertHasSubject('Pánico en ROBUST VW');
 
-        $mail->assertSeeInHtml('Unidad ROBUST VW activó el botón de pánico.<br />', false);
+        $mail->assertSeeInHtml('Unidad ROBUST VW activó el botón de pánico.<br>Ubicación:', false);
         $mail->assertSeeInHtml('&lt;Autopista 57&gt;', false);
         $mail->assertDontSeeInHtml('<Autopista 57>', false);
 
+        // Plantilla de marca y el cuerpo no se interpreta como Markdown.
+        $mail->assertSeeInHtml('images/brand/sam-emblem.png', false);
+        $mail->assertSeeInHtml('Equipo SAM Global Systems', false);
+
         $mail->assertSeeInText("Unidad ROBUST VW activó el botón de pánico.\nUbicación: <Autopista 57>", false);
+    }
+
+    public function test_markdown_in_the_body_is_shown_literally(): void
+    {
+        $mail = new GenericNotificationMail('Aviso', "# no es título\n\n*ni negritas*");
+
+        $mail->assertSeeInHtml('# no es título', false);
+        $mail->assertSeeInHtml('*ni negritas*', false);
+        $mail->assertDontSeeInHtml('<h1># no', false);
+        $mail->assertDontSeeInHtml('<em>ni negritas</em>', false);
     }
 }
