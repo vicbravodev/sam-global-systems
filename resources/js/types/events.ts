@@ -84,6 +84,8 @@ export interface EventFacts {
     isResolved: boolean | null;
     externalResolvedAt: string | null;
     eventState: string | null;
+    /** Safety event del que esta alerta de Samsara es eco. */
+    echoOfEventId: number | null;
 }
 
 export interface EventDetail extends EventRow {

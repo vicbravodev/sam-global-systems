@@ -13,6 +13,12 @@ enum SamsaraAlertTrigger: int
     case PanicButton = 1034;
     case TamperingDetected = 1045;
 
+    /** Alertas que Samsara dispara POR un safety event: su eco (spec alertas 03). */
+    case HarshEvent = 1023;
+    case SafetyEventWithDriver = 5033;
+    case SafetyEventOccurred = 5039;
+    case SevereSpeeding = 5022;
+
     /** Ninguna condición trae un `triggerId`: no sabemos qué disparó la alerta. */
     public const string CLASS_UNREADABLE = 'unreadable';
 
@@ -25,6 +31,23 @@ enum SamsaraAlertTrigger: int
     public function isEmergency(): bool
     {
         return $this === self::PanicButton;
+    }
+
+    /**
+     * La alerta repite un safety event que también llega por el poll de
+     * `/safety-events/stream`, con etiqueta y media: no es un hecho nuevo.
+     */
+    public function isSafetyEcho(): bool
+    {
+        return in_array($this, self::safetyEchoes(), true);
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function safetyEchoes(): array
+    {
+        return [self::HarshEvent, self::SafetyEventWithDriver, self::SafetyEventOccurred, self::SevereSpeeding];
     }
 
     /**
