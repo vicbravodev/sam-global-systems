@@ -31,12 +31,15 @@ class DriversServiceProvider extends ServiceProvider
         Gate::policy(HosDriverState::class, HosMonitoringPolicy::class);
 
         // Selector de etiquetas y vista previa HOS: con caché fría pueden leer
-        // Samsara, cuya cuota es por organización. Tope por tenant.
+        // Samsara, cuya cuota es por organización. Tope por tenant Y usuario:
+        // el throttle corre antes de EnsureTeamMembership, así que alguien de
+        // otro tenant que pega a esta URL sólo gasta su propio cupo.
         RateLimiter::for('hos-preview', function (Request $request): Limit {
             $team = $request->route('current_team');
-            $key = $team instanceof Team ? (string) $team->id : (is_string($team) ? $team : $request->ip());
+            $teamKey = $team instanceof Team ? (string) $team->id : (is_string($team) ? $team : '-');
+            $userKey = $request->user()?->id ?? 'ip:'.$request->ip();
 
-            return Limit::perMinute(self::HOS_PREVIEW_PER_MINUTE)->by('hos-preview:'.$key);
+            return Limit::perMinute(self::HOS_PREVIEW_PER_MINUTE)->by("hos-preview:{$teamKey}:{$userKey}");
         });
     }
 }

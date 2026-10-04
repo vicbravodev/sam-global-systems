@@ -57,11 +57,20 @@ final readonly class HosProviderCache
         return "hos:clocks:{$teamId}:{$integrationId}";
     }
 
-    public static function failureKey(int $teamId, int $integrationId): string
+    /**
+     * Fallo recordado por tipo de lectura: un fallo de relojes no tumba el
+     * selector de etiquetas (ni al revés).
+     *
+     * @param  'tags'|'clocks'  $kind
+     */
+    public static function failureKey(string $kind, int $teamId, int $integrationId): string
     {
-        return "hos:provider-failed:{$teamId}:{$integrationId}";
+        return "hos:provider-failed:{$kind}:{$teamId}:{$integrationId}";
     }
 
+    /**
+     * @param  'tags'|'clocks'  $kind
+     */
     public static function lockKey(string $kind, int $teamId, int $integrationId): string
     {
         return "hos:lock:{$kind}:{$teamId}:{$integrationId}";
@@ -151,13 +160,7 @@ final readonly class HosProviderCache
      */
     public function readings(TenantIntegration $integration): array
     {
-        $fromCache = $this->cachedReadings($integration);
-
-        if ($fromCache !== null) {
-            return [$fromCache, 'cache'];
-        }
-
-        // Otra vista previa pudo traerla mientras esperábamos el lock.
+        // Sólo se vuelve `provider` si ESTA petición leyó Samsara.
         $fetched = false;
 
         /** @var list<HosClockReading> $readings */
@@ -195,12 +198,14 @@ final readonly class HosProviderCache
     }
 
     /**
-     * Lectura en frío de la configuración: si Samsara falló hace poco no lo
-     * vuelve a pedir; si otra petición ya está leyendo, espera su resultado
-     * (re-lee la caché dentro del lock); si falla, lo recuerda.
+     * Lectura de la configuración: caché caliente sin lock ni fallo recordado;
+     * en frío, si Samsara falló hace poco no lo vuelve a pedir; si otra
+     * petición ya está leyendo, espera su resultado (re-lee la caché dentro
+     * del lock); si falla, lo recuerda para este tipo de lectura.
      *
      * @template T of array
      *
+     * @param  'tags'|'clocks'  $kind
      * @param  Closure(): (T|null)  $fromCache
      * @param  Closure(): T  $fetch
      * @return T
@@ -209,7 +214,13 @@ final readonly class HosProviderCache
      */
     private function guardedRead(TenantIntegration $integration, string $kind, Closure $fromCache, Closure $fetch): array
     {
-        $failureKey = self::failureKey($integration->team_id, $integration->id);
+        $warm = $fromCache();
+
+        if ($warm !== null) {
+            return $warm;
+        }
+
+        $failureKey = self::failureKey($kind, $integration->team_id, $integration->id);
         $this->throwIfRecentlyFailed($failureKey);
 
         try {

@@ -244,7 +244,7 @@ class HosEnrollmentPreviewTest extends TestCase
         $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
 
         $this->assertSame(1, $this->clocksCalls());
-        $this->assertTrue(Cache::has(HosProviderCache::failureKey($integration->team_id, $integration->id)));
+        $this->assertTrue(Cache::has(HosProviderCache::failureKey('clocks', $integration->team_id, $integration->id)));
         $this->assertCount(2, $this->systemLogEntries('hos.preview.computed'));
         $this->assertNoSensitiveDataLogged();
     }
@@ -304,7 +304,7 @@ class HosEnrollmentPreviewTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_tags_and_preview_are_rate_limited_per_tenant(): void
+    public function test_tags_and_preview_are_rate_limited_per_user_and_tenant(): void
     {
         $integration = $this->hosIntegration();
         $this->fakeTags();
@@ -318,10 +318,48 @@ class HosEnrollmentPreviewTest extends TestCase
         $this->actingAs($owner)->getJson($url)->assertTooManyRequests();
         $this->preview($integration, [])->assertTooManyRequests();
 
-        // Otro tenant tiene su propio cupo.
+        // Otro tenant (y otro usuario) tiene su propio cupo.
         $other = $this->hosIntegration();
         $this->actingAs($this->ownerOf($other))
             ->getJson(route('tenant-config.hos.tags', ['current_team' => $this->slugOf($other)]))
             ->assertOk();
+    }
+
+    public function test_an_outsider_cannot_drain_the_tenant_preview_budget(): void
+    {
+        $integration = $this->hosIntegration();
+        app(HosProviderCache::class)->putReadings($integration, []);
+        $outsider = $this->ownerOf($this->hosIntegration());
+        $url = route('tenant-config.hos.preview', ['current_team' => $this->slugOf($integration)]);
+        $body = ['tag_ids' => [], 'included_asset_ids' => [], 'excluded_asset_ids' => []];
+
+        for ($i = 0; $i < DriversServiceProvider::HOS_PREVIEW_PER_MINUTE; $i++) {
+            $status = $this->actingAs($outsider)->postJson($url, $body)->status();
+            $this->assertContains($status, [403, 404]);
+        }
+
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', false);
+    }
+
+    public function test_a_clocks_failure_does_not_mark_warm_tags_as_failed(): void
+    {
+        $integration = $this->hosIntegration();
+        Cache::put(HosProviderCache::tagsKey($integration->team_id, $integration->id), [
+            ['id' => '1', 'name' => 'USA', 'parent_id' => null, 'vehicle_ids' => [], 'driver_ids' => ['7']],
+        ], 300);
+        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::response([], 503)]);
+
+        $this->preview($integration, [])->assertOk()->assertJsonPath('data.failed', true);
+        $this->assertTrue(Cache::has(HosProviderCache::failureKey('clocks', $integration->team_id, $integration->id)));
+
+        $this->actingAs($this->ownerOf($integration))
+            ->getJson(route('tenant-config.hos.tags', ['current_team' => $this->slugOf($integration)]))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', '1')
+            ->assertJsonPath('meta.failed', false);
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/tags'));
+        $this->assertSystemLogged('hos.tags.listed');
+        $this->assertNoSensitiveDataLogged();
     }
 }
