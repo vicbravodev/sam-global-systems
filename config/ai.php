@@ -40,6 +40,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cloudflare Clef (medición en sombra, temporal)
+    |--------------------------------------------------------------------------
+    |
+    | Evalúa en paralelo, sin decidir nada, lo mismo que evaluó GPT, para
+    | comparar. Se apaga sola pasada `shadow_until`. Spec:
+    | docs/superpowers/specs/2026-10-03-clef-shadow-evaluation-design.md
+    |
+    */
+
+    'clef' => [
+        'enabled' => (bool) env('AI_CLEF_SHADOW_ENABLED', false),
+        'shadow_until' => env('AI_CLEF_SHADOW_UNTIL'),
+        'models' => ['clef', 'clef-flash'],
+        'sample_rate' => (float) env('AI_CLEF_SHADOW_SAMPLE_RATE', 1.0),
+        'send_images' => (bool) env('AI_CLEF_SHADOW_SEND_IMAGES', true),
+        'max_images' => 4,
+        'max_image_bytes' => 4 * 1024 * 1024,
+        'max_total_image_bytes' => 8 * 1024 * 1024,
+        'timeout_seconds' => 15,
+        'pricing_per_million_input' => ['clef' => 0.24, 'clef-flash' => 0.09],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | AI Providers
     |--------------------------------------------------------------------------
     |
