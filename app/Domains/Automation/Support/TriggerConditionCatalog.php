@@ -163,6 +163,7 @@ class TriggerConditionCatalog
             IncidentTypeCode::GeofenceBreach->value => 'Salida de geocerca',
             IncidentTypeCode::DriverFatigue->value => 'Fatiga del conductor',
             IncidentTypeCode::SuspiciousStop->value => 'Parada sospechosa',
+            IncidentTypeCode::HosCompliance->value => 'Horas de servicio (HOS)',
             IncidentTypeCode::EmergencyAlert->value => 'Alerta de emergencia',
             IncidentTypeCode::SafetyViolation->value => 'Violación de seguridad',
             IncidentTypeCode::ComplianceViolation->value => 'Violación de cumplimiento',

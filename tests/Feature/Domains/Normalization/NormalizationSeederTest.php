@@ -58,7 +58,7 @@ class NormalizationSeederTest extends TestCase
             'mobile_usage', 'yaw_control', 'reversing', 'u_turn',
             'camera_obstructed', 'tampering', 'no_seatbelt', 'hos_violation', 'smoking_drinking',
             'geofence_exit', 'geofence_entry', 'vehicle_idle', 'unsafe_parking',
-            'device_offline', 'after_hours_movement', 'suspicious_stop',
+            'device_offline', 'after_hours_movement', 'suspicious_stop', 'hos_limit_exceeded', 'hos_unattended',
             'did_not_yield', 'railroad_crossing_violation', 'other_violation', 'provider_safety_alert',
             'policy_violation', 'unauthorized_passenger', 'driving_context', 'defensive_driving', 'unmapped',
         ];

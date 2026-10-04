@@ -270,8 +270,12 @@ return [
     | - after_hours_movement: se movió fuera del horario que configuró el
     |   cliente; la base y los sitios de cliente ya los descarta la propia
     |   regla (telematics.after_hours_safe_geofence_categories).
+    | - hos_limit_exceeded / hos_unattended: eventos PROPIOS del monitoreo HOS
+    |   de SAM (los relojes marcan infracción de un chofer inscrito, o no
+    |   corrigió tras la escalera de avisos); la regla `hos-incident` abre el
+    |   incidente. `hos_violation` (webhook de Samsara) NO va aquí: sigue a la IA.
     */
-    'rule_resolved_event_types' => ['after_hours_movement'],
+    'rule_resolved_event_types' => ['after_hours_movement', 'hos_limit_exceeded', 'hos_unattended'],
 
     'skip_evaluation_event_types' => [
         'geofence_entry',

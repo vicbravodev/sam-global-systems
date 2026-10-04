@@ -624,6 +624,8 @@ class CreateIncidentFromEvent
         'geofence_exit' => IncidentTypeCode::GeofenceBreach,
         'geofence_entry' => IncidentTypeCode::GeofenceBreach,
         'tampering' => IncidentTypeCode::EmergencyAlert,
+        'hos_limit_exceeded' => IncidentTypeCode::HosCompliance,
+        'hos_unattended' => IncidentTypeCode::HosCompliance,
     ];
 
     /**

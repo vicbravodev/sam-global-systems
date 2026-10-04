@@ -7,6 +7,7 @@ import {
     Phone,
     Send,
     Smartphone,
+    Truck,
     Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -22,6 +23,7 @@ const CHANNEL_ICONS: Record<string, LucideIcon> = {
     whatsapp: MessageCircle,
     voice: Phone,
     push: Smartphone,
+    samsara_driver_app: Truck,
     web: Globe,
     slack: Send,
     webhook: Webhook,

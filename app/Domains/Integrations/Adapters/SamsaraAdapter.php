@@ -42,6 +42,9 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      */
     private const MAX_PAGES = 50;
 
+    /** Samsara rejects driver-app messages longer than this. */
+    public const int DRIVER_MESSAGE_MAX_LENGTH = 2500;
+
     /**
      * Samsara stat type -> [our type, unit, divisor, decimals].
      *
@@ -385,6 +388,51 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         return $tags;
+    }
+
+    public function sendDriverMessage(TenantIntegration $integration, string $externalDriverId, string $text): void
+    {
+        $endpoint = 'POST /v1/fleet/messages';
+
+        // La API legacy recibe ids numéricos (int64).
+        if (preg_match('/^\d+$/', $externalDriverId) !== 1) {
+            throw new ProviderRequestFailedException($endpoint, 422, 'El id de chofer de Samsara no es numérico.');
+        }
+
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $token === '') {
+            throw new ProviderUnauthorized('No hay token de API configurado para esta integración de Samsara.');
+        }
+
+        try {
+            $response = $this->client($token)->post('/v1/fleet/messages', [
+                'driverIds' => [(int) $externalDriverId],
+                'text' => mb_substr($text, 0, self::DRIVER_MESSAGE_MAX_LENGTH),
+            ]);
+        } catch (ConnectionException $e) {
+            throw new ProviderUnavailable('Could not reach Samsara: '.SafeErrorMessage::from($e), previous: $e);
+        }
+
+        $status = $response->status();
+
+        if ($status === 429) {
+            $retryAfter = $response->header('Retry-After');
+
+            throw new ProviderRateLimited(max(0.0, (float) ($retryAfter === '' || $retryAfter === '0' ? 1 : $retryAfter)));
+        }
+
+        if ($status === 401 || $status === 403) {
+            throw new ProviderUnauthorized("Samsara rejected the driver message (HTTP {$status}).");
+        }
+
+        if ($status >= 500) {
+            throw new ProviderUnavailable("Samsara returned HTTP {$status}.");
+        }
+
+        if (! $response->successful()) {
+            throw ProviderRequestFailedException::fromResponse($endpoint, $response);
+        }
     }
 
     /**

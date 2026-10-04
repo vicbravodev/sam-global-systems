@@ -11,6 +11,7 @@ enum IncidentTypeCode: string
     case GeofenceBreach = 'geofence_breach';
     case DriverFatigue = 'driver_fatigue';
     case SuspiciousStop = 'suspicious_stop';
+    case HosCompliance = 'hos_compliance';
     case EmergencyAlert = 'emergency_alert';
     case SafetyViolation = 'safety_violation';
     case ComplianceViolation = 'compliance_violation';

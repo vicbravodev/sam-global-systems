@@ -18,7 +18,8 @@ export type NotificationChannelType =
     | 'web'
     | 'slack'
     | 'webhook'
-    | 'voice';
+    | 'voice'
+    | 'samsara_driver_app';
 
 export type DeliveryStatusValue =
     | 'pending'

@@ -10,4 +10,5 @@ enum RecipientType: string
     case ExternalContact = 'external_contact';
     case WebhookEndpoint = 'webhook_endpoint';
     case SlackChannel = 'slack_channel';
+    case Driver = 'driver';
 }

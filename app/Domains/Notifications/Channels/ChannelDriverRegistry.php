@@ -24,6 +24,7 @@ class ChannelDriverRegistry implements ChannelDriverRegistryContract
             ChannelType::Sms => $this->container->make(SmsNotificationDriver::class),
             ChannelType::Push => $this->container->make(PushNotificationDriver::class),
             ChannelType::Voice => $this->container->make(VoiceNotificationDriver::class),
+            ChannelType::SamsaraDriverApp => $this->container->make(SamsaraDriverAppNotificationDriver::class),
         };
     }
 }

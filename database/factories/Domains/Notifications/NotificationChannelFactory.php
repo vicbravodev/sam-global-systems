@@ -81,6 +81,14 @@ class NotificationChannelFactory extends Factory
         ]);
     }
 
+    public function samsaraDriverApp(): static
+    {
+        return $this->state(fn () => [
+            'channel_type' => ChannelType::SamsaraDriverApp,
+            'provider' => 'samsara',
+        ]);
+    }
+
     public function inactive(): static
     {
         return $this->state(fn () => ['is_active' => false]);

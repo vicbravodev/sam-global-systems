@@ -88,7 +88,7 @@ class ProcessHosReadingsTest extends TestCase
         $this->assertStringNotContainsString('Secreto', json_encode($this->systemLogEntries()));
     }
 
-    public function test_it_resolves_when_the_clock_resets(): void
+    public function test_it_resolves_when_the_clock_goes_back_above_the_threshold(): void
     {
         $this->process($this->enrollment($this->reading('driving', break: 1500)));
         // Parado: el reloj de pausa no se mueve hasta cumplir 30 min seguidos.
@@ -199,5 +199,35 @@ class ProcessHosReadingsTest extends TestCase
         $this->assertSame(1, $counts['unenrolled']);
         $this->assertNull($otherEpisode->fresh()->resolved_at);
         $this->assertSame('2026-10-04 11:00:00', $otherState->fresh()->observed_at->format('Y-m-d H:i:s'));
+    }
+
+    public function test_a_break_served_during_a_short_provider_outage_still_reads_as_rest_complete(): void
+    {
+        $this->process($this->enrollment($this->reading('driving', break: 1500)));
+        $this->process($this->enrollment($this->reading('offDuty', break: 1500)), '2026-10-04 12:05:00');
+        // Samsara no respondió 15 min; al volver la pausa ya está cumplida.
+        $this->process($this->enrollment($this->reading('offDuty', break: 28800)), '2026-10-04 12:20:00');
+
+        $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->where('situation', HosSituation::RestComplete)->count());
+    }
+
+    public function test_a_driver_reconnecting_after_a_long_disconnect_does_not_read_frozen_clocks_as_a_pause(): void
+    {
+        $this->process($this->enrollment($this->reading('offDuty', break: 600)), '2026-10-04 10:00:00');
+        $this->process($this->enrollment($this->reading(null)), '2026-10-04 10:01:00');
+        // observed_at se sigue refrescando con relojes congelados mientras la app está apagada.
+        $this->process($this->enrollment($this->reading(null)), '2026-10-04 10:59:00');
+        $this->process($this->enrollment($this->reading('offDuty', break: 28800)), '2026-10-04 11:00:00');
+
+        $this->assertSame(0, HosEpisode::withoutGlobalScopes()->where('situation', HosSituation::RestComplete)->count());
+    }
+
+    public function test_a_short_disconnect_still_uses_the_last_real_clocks(): void
+    {
+        $this->process($this->enrollment($this->reading('offDuty', break: 600)), '2026-10-04 12:00:00');
+        $this->process($this->enrollment($this->reading(null)), '2026-10-04 12:01:00');
+        $this->process($this->enrollment($this->reading('offDuty', break: 28800)), '2026-10-04 12:10:00');
+
+        $this->assertSame(1, HosEpisode::withoutGlobalScopes()->open()->where('situation', HosSituation::RestComplete)->count());
     }
 }
