@@ -4,6 +4,7 @@ namespace Tests\Feature\Domains\Drivers\Hos;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
+use App\Domains\Drivers\Enums\HosDutyStatus;
 use App\Domains\Drivers\Enums\HosSituation;
 use App\Domains\Drivers\Jobs\PollHosClocksJob;
 use App\Domains\Drivers\Jobs\SyncHosClocksJob;
@@ -15,6 +16,8 @@ use App\Domains\Drivers\Support\HosMonitoringConfig;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingValueType;
@@ -109,6 +112,7 @@ class SyncHosClocksJobTest extends TestCase
         Http::fake([
             'api.samsara.com/fleet/hos/clocks*' => $clocks,
             'api.samsara.com/tags*' => Http::response($this->tags()),
+            'api.samsara.com/v1/fleet/messages' => Http::response(['data' => []]),
         ]);
     }
 
@@ -246,5 +250,48 @@ class SyncHosClocksJobTest extends TestCase
 
         $this->assertSame(1, HosEpisode::withoutGlobalScopes()->where('team_id', $a->team_id)->count());
         $this->assertSame(0, HosEpisode::withoutGlobalScopes()->where('team_id', $b->team_id)->count());
+    }
+
+    public function test_a_poll_sends_the_break_warning_to_the_driver_app(): void
+    {
+        NotificationChannel::factory()->samsaraDriverApp()->create();
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        $this->fakeSamsara();
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/fleet/messages') && $request['driverIds'] === [58072405]);
+        $this->assertSame(1, HosEpisode::withoutGlobalScopes()->sole()->ladder_step);
+        $this->assertSame(1, $this->assertSystemLogged('hos.ladder.advanced')['result']['notified']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_poll_never_advances_the_ladder_of_another_tenant(): void
+    {
+        NotificationChannel::factory()->samsaraDriverApp()->create();
+        $a = $this->tenant();
+        $this->link($a, '58072405', '281');
+        $b = $this->tenant();
+        [$otherDriver, $otherAsset] = $this->link($b, '77000001', '777');
+        // B tiene su propio episodio vencido: sólo su propio sondeo lo mueve.
+        $otherEpisode = HosEpisode::factory()->create([
+            'team_id' => $b->team_id, 'driver_id' => $otherDriver->id, 'asset_id' => $otherAsset->id,
+            'situation' => HosSituation::BreakDue, 'opened_at' => now(),
+        ]);
+        HosDriverState::factory()->create([
+            'team_id' => $b->team_id, 'driver_id' => $otherDriver->id, 'asset_id' => $otherAsset->id,
+            'duty_status' => HosDutyStatus::Driving, 'break_remaining_s' => 0,
+        ]);
+        $this->fakeSamsara();
+
+        $this->assertNoTenantLeak($a->team_id, fn () => app()->call([new SyncHosClocksJob($a), 'handle']));
+
+        $this->assertSame(1, HosEpisode::withoutGlobalScopes()->where('team_id', $a->team_id)->sole()->ladder_step);
+        $this->assertSame(0, $otherEpisode->fresh()->ladder_step);
+        $this->assertNull($otherEpisode->fresh()->next_nudge_at);
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $b->team_id)->count());
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/fleet/messages') && $request['driverIds'] === [77000001]);
+        $this->assertNoSensitiveDataLogged();
     }
 }

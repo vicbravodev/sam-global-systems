@@ -771,7 +771,7 @@ Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `eval
 
 ### HOS (`hos`) — monitoreo de horas de servicio (EE. UU.)
 
-Spec: `docs/superpowers/specs/2026-10-04-hos-monitoring-design.md`. Nunca nombre, teléfono ni texto al chofer: sólo ids y números de los relojes.
+Spec: `docs/superpowers/specs/2026-10-04-hos-monitoring-design.md`. Nunca nombre, teléfono ni texto al chofer: sólo ids, canales, códigos de aviso y números de los relojes.
 
 | Código | Nivel | reason | Contexto |
 |---|---|---|---|
@@ -783,6 +783,12 @@ Spec: `docs/superpowers/specs/2026-10-04-hos-monitoring-design.md`. Nunca nombre
 | `hos.episode.resolved` | ok | — | `team_id`, `driver_id`, `episode_id`; calc `situation`, `duty_status`, `open_seconds`; result `resolution` (`corrected` = `break_due`/`drive_limit`/`shift_limit`: el reloj volvió por encima del umbral de aviso (`lead_s`), incluido el recálculo parcial tras sleeper dividido; `cycle_limit`: el ciclo superó `cycle_lead_s` + 30 min; `violation`: sin infracción y con manejo disponible (> 0); `rest_complete`: el chofer arrancó tras su pausa; `expired` = fin de pausa sin arrancar tras `rest_complete_expire_minutes`; `unenrolled` = salió del conjunto vigilado) |
 | `hos.driver.app_disconnected` | degraded | `empty_duty_status` | `team_id`, `driver_id`, `asset_id`. Samsara devolvió status vacío: app del chofer desconectada. Se registra sólo en la transición; se conservan los últimos relojes y no se abre ni cierra nada mientras dure |
 | `hos.incident.raised` | ok / skipped | `already_raised` · `no_asset` | `team_id`, `episode_id`, `driver_id` (`asset_id` en ok); calc `situation`, `event_type_code` (`hos_limit_exceeded` = los relojes marcan infracción; `hos_unattended` = escalera agotada), `ladder_step`; result `raw_event_id`, `job_requested`. Evento interno `internal_monitor` con `deduplication_key` `hos:{episodio}`; la regla `hos-incident` lo vuelve incidente sin IA (`ai.rule_resolved_event_types`) |
+| `hos.ladder.advanced` | ok (**debug** si no se avisó, escaló ni falló nada) | — | `team_id`, `integration_id`; result `open`, `notified`, `escalated`, `held` (pausadas: chofer parado, sin lectura o con infracción abierta), `waiting` (aún no toca o ya terminó), `failed` |
+| `hos.nudge.sent` | ok | — | `team_id`, `episode_id`, `driver_id`; calc `situation`, `move`, `ladder_step` (antes), `next_step`, `step` (sufijo del `event_key` `hos:{episodio}:{escalón}`), `channels`, `notice` (`HosNotice`), `duty_status`, `app_disconnected`, `state_present`; result `notification_id`, `notification_reused` (la clave ya existía: ciclo solapado, no se volvió a mandar), `next_nudge_at` |
+| `hos.nudge.skipped` | skipped (**debug**) | `no_reading` (sin estado o app desconectada) · `not_working` (pausa: el chofer cumplió y está parado) · `violation_open` (pausa de `drive_limit`/`shift_limit`: el mismo chofer tiene una infracción abierta, que es la que avisa y levanta el incidente; `ladder_step`/`next_nudge_at` no se tocan y se reanuda donde iba al cerrarse la infracción) · `no_clock` · `cycle_exhausted` · `nothing_due` · `not_due` · `ladder_scheduled` · `ladder_finished` · `notices_sent` · `escalated` · `violation_raised` · `no_ladder` | mismo `input`/`calc` que `hos.nudge.sent` (sin `step`/`channels`/`notice`); con `violation_open`, calc `violation_episode_id` |
+| `hos.nudge.failed` | failed | `dispatch_error` · `escalation_error` | mismo `input`/`calc`; `error`. El escalón no avanza: el siguiente ciclo lo reintenta con la misma clave |
+| `hos.nudge.channel_unavailable` | degraded | `previous_nudge_undelivered` | `team_id`, `episode_id`, `driver_id`; calc `previous_step`, `notification_id`, `notification_status` (`failed`/`cancelled`: app sin permiso *Write Messages*, sin teléfono, número suprimido, WhatsApp fuera de ventana). El siguiente escalón se adelanta a este ciclo |
+| `hos.incident.linked` | ok / skipped (**debug**) | `event_pending` | `team_id`, `episode_id`; calc `raw_event_present`, `normalized_event_present`; result `incident_id`. El pipeline (normalización → regla → incidente) aún no termina: se reintenta cada minuto |
 
 ### Analítica (`analytics`)
 

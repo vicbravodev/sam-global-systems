@@ -33,6 +33,9 @@ use Carbon\CarbonInterface;
  */
 class HosLadderPlanner
 {
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     public function plan(
         HosSituation $situation,
         int $ladderStep,
@@ -58,6 +61,9 @@ class HosLadderPlanner
         };
     }
 
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     private function violation(int $ladderStep, ?CarbonImmutable $nextNudgeAt, HosMonitoringConfig $config): HosLadderDecision
     {
         if ($ladderStep >= 1) {
@@ -75,6 +81,9 @@ class HosLadderPlanner
         );
     }
 
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     private function cycle(int $ladderStep, ?CarbonImmutable $nextNudgeAt, ?HosClockReading $current, HosMonitoringConfig $config): HosLadderDecision
     {
         $thresholds = $config->cycleThresholdsHours();
@@ -116,6 +125,9 @@ class HosLadderPlanner
         );
     }
 
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     private function rest(int $ladderStep, CarbonImmutable $openedAt, ?HosClockReading $current, HosMonitoringConfig $config, CarbonImmutable $now): HosLadderDecision
     {
         $nudges = $config->restNudgeMinutes();
@@ -155,6 +167,9 @@ class HosLadderPlanner
         );
     }
 
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     private function limit(HosSituation $situation, int $ladderStep, ?CarbonImmutable $nextNudgeAt, ?HosClockReading $current, HosMonitoringConfig $config, CarbonImmutable $now): HosLadderDecision
     {
         if ($current === null) {
@@ -249,6 +264,7 @@ class HosLadderPlanner
      * Index of the most urgent threshold already crossed, or null.
      *
      * @param  list<int>  $thresholds  largest first
+     * @return non-negative-int|null
      */
     private function deepestCrossed(int $remaining, array $thresholds): ?int
     {
@@ -263,6 +279,9 @@ class HosLadderPlanner
         return $due;
     }
 
+    /**
+     * @param  non-negative-int  $ladderStep
+     */
     private function keep(HosLadderMove $move, string $reason, int $ladderStep, ?CarbonImmutable $nextNudgeAt): HosLadderDecision
     {
         return new HosLadderDecision($move, $reason, $ladderStep, $nextNudgeAt);
