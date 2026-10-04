@@ -29,16 +29,17 @@ use Throwable;
  * Idempotent: steps are notifications keyed `hos:{episode}:{step}` and the
  * escalation a raw event keyed `hos:{episode}`. A step whose notification
  * reached nobody (failed or cancelled) does not wait for its interval: the
- * next step is due right away (ladders only). While a driver has an open
- * violation, his drive/shift episodes hold (`violation_open`): the violation
- * alone tells him and raises the incident; break_due is not affected. An
+ * next step is due right away (ladders and violation insistence). While a
+ * driver has an open violation, his drive/shift episodes hold
+ * (`violation_open`): the violation alone tells him, raises the incident and
+ * keeps insisting while he drives; break_due is not affected. An
  * episode that throws is logged and counted as failed; the others still
  * advance.
  */
 class AdvanceHosEpisodes
 {
-    /** Situations with a reminder ladder: the only ones whose next step can be brought forward. */
-    private const array LADDER_SITUATIONS = [HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit];
+    /** Situations with a reminder ladder (a violation insists on the ladder's channels): the only ones whose next step can be brought forward. */
+    private const array LADDER_SITUATIONS = [HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit, HosSituation::Violation];
 
     /** Situations whose ladder pauses while the same driver has an open violation. */
     private const array HELD_BY_VIOLATION = [HosSituation::DriveLimit, HosSituation::ShiftLimit];
@@ -223,6 +224,12 @@ class AdvanceHosEpisodes
     }
 
     /**
+     * The incident first, on its own: a nudge that throws (Samsara or Twilio
+     * down) never keeps the monitoring team from hearing about it. The
+     * escalation step's notice goes next, also on its own; if it fails the
+     * episode still counts as escalated (the incident is raised) and, for a
+     * violation, the insistence steps that follow keep telling the driver.
+     *
      * @param  array<string, mixed>  $input
      * @param  array<string, mixed>  $calc
      * @return 'escalated'|'failed'
@@ -232,21 +239,26 @@ class AdvanceHosEpisodes
         $calc += ['step' => $decision->step, 'channels' => $decision->channels, 'notice' => $decision->notice?->value];
 
         try {
-            if ($decision->channels !== [] && $decision->notice !== null) {
-                $notification = $this->sendNudge->execute($integration, $episode, $decision);
-
-                SystemLog::ok('hos.nudge.sent', input: $input, calc: $calc, result: [
-                    'notification_id' => $notification->id,
-                    'notification_reused' => ! $notification->wasRecentlyCreated,
-                    'next_nudge_at' => null,
-                ]);
-            }
-
             $raised = $this->raiseIncident->execute($episode, $current, $now);
         } catch (Throwable $e) {
             SystemLog::failed('hos.nudge.failed', reason: 'escalation_error', input: $input, calc: $calc, error: $e);
 
             return 'failed';
+        }
+
+        if ($decision->channels !== [] && $decision->notice !== null) {
+            try {
+                $notification = $this->sendNudge->execute($integration, $episode, $decision);
+
+                SystemLog::ok('hos.nudge.sent', input: $input, calc: $calc, result: [
+                    'notification_id' => $notification->id,
+                    'notification_reused' => ! $notification->wasRecentlyCreated,
+                    'next_nudge_at' => $decision->nextNudgeAt?->toIso8601String(),
+                ]);
+            } catch (Throwable $e) {
+                // El incidente ya salió: el aviso perdido no frena el escalado.
+                SystemLog::failed('hos.nudge.failed', reason: 'dispatch_error', input: $input, calc: $calc, error: $e);
+            }
         }
 
         if (! $raised['raised'] && $raised['reason'] === 'no_asset') {
@@ -257,10 +269,11 @@ class AdvanceHosEpisodes
         }
 
         // El episodio sigue abierto: su corrección cierra o anota el incidente.
+        // Una infracción guarda cuándo insiste de nuevo (sólo si sigue manejando).
         $episode->forceFill([
             'escalated_at' => $now,
             'ladder_step' => $decision->nextStep,
-            'next_nudge_at' => null,
+            'next_nudge_at' => $decision->nextNudgeAt,
         ])->save();
 
         return 'escalated';

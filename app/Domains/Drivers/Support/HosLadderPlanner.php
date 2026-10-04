@@ -21,12 +21,20 @@ use Carbon\CarbonInterface;
  *    (`lead_minutes` > 0, largest first, only the most urgent crossed one is
  *    sent); reaching the limit starts the ladder at step L (L..L+N-1, one per
  *    `ladder` entry, spaced by their `after_minutes`). The ladder PAUSES while
- *    the driver is not driving (break, drive) or not working (shift) and
- *    resumes where it was if they start again without the clock resetting;
+ *    the driver is not driving and resumes where it was if they start again
+ *    without the clock resetting (shift warnings also count on-duty work);
  *  - cycle_limit: one notice per `cycle_lead_hours` threshold, no ladder;
  *  - rest_complete: one notice per `rest_complete_nudge_minutes` after it
  *    opened (the detector expires it);
- *  - violation: a notice plus the incident at once.
+ *  - violation: a notice plus the incident at once (step 0); then, only
+ *    while the driver keeps DRIVING, the ladder's next channel steps at
+ *    their offsets (step k = k-th ladder entry with channels; `escalate`
+ *    entries are skipped: a violation never raises a second incident).
+ *    `ladder_step` ≥ 1 with no `next_nudge_at` = nothing left to send
+ *    (also the open violations PR 1 left behind, migrated to step 1).
+ *
+ * shift_limit: before the limit (warnings) any work counts; past it, working
+ * without driving is legal, so its ladder only moves while driving.
  *
  * Informational notices use the first ladder step's channels (the free
  * driver app by default).
@@ -49,12 +57,13 @@ class HosLadderPlanner
         $now = CarbonImmutable::instance($now);
         $nextNudgeAt = $nextNudgeAt !== null ? CarbonImmutable::instance($nextNudgeAt) : null;
 
-        if ($escalated) {
+        // La infracción escala en su escalón 0 y luego sigue insistiendo.
+        if ($escalated && $situation !== HosSituation::Violation) {
             return $this->keep(HosLadderMove::Done, 'escalated', $ladderStep, $nextNudgeAt);
         }
 
         return match ($situation) {
-            HosSituation::Violation => $this->violation($ladderStep, $nextNudgeAt, $config),
+            HosSituation::Violation => $this->violation($ladderStep, $nextNudgeAt, $current, $config, $now),
             HosSituation::CycleLimit => $this->cycle($ladderStep, $nextNudgeAt, $current, $config),
             HosSituation::RestComplete => $this->rest($ladderStep, CarbonImmutable::instance($openedAt), $current, $config, $now),
             HosSituation::BreakDue, HosSituation::DriveLimit, HosSituation::ShiftLimit => $this->limit($situation, $ladderStep, $nextNudgeAt, $current, $config, $now),
@@ -64,21 +73,64 @@ class HosLadderPlanner
     /**
      * @param  non-negative-int  $ladderStep
      */
-    private function violation(int $ladderStep, ?CarbonImmutable $nextNudgeAt, HosMonitoringConfig $config): HosLadderDecision
+    private function violation(int $ladderStep, ?CarbonImmutable $nextNudgeAt, ?HosClockReading $current, HosMonitoringConfig $config, CarbonImmutable $now): HosLadderDecision
     {
-        if ($ladderStep >= 1) {
+        // Sólo los escalones con canales: el incidente ya salió en el escalón 0.
+        $steps = array_values(array_filter($config->ladderSteps(), fn (array $entry): bool => $entry['channels'] !== []));
+
+        if ($ladderStep === 0) {
+            return new HosLadderDecision(
+                move: HosLadderMove::Escalate,
+                reason: 'violation',
+                nextStep: 1,
+                nextNudgeAt: $this->violationNextNudgeAt($steps, 0, $now),
+                step: 0,
+                channels: $config->informationalChannels(),
+                notice: HosNotice::Violation,
+            );
+        }
+
+        if ($nextNudgeAt === null || $ladderStep >= count($steps)) {
             return $this->keep(HosLadderMove::Done, 'violation_raised', $ladderStep, $nextNudgeAt);
         }
 
+        if ($current === null) {
+            return $this->keep(HosLadderMove::Hold, 'no_reading', $ladderStep, $nextNudgeAt);
+        }
+
+        if (HosDutyStatus::tryFrom((string) $current->dutyStatus) !== HosDutyStatus::Driving) {
+            // Parado ya no agrava la infracción: la insistencia se pausa sin perder su lugar.
+            return $this->keep(HosLadderMove::Hold, 'not_working', $ladderStep, $nextNudgeAt);
+        }
+
+        if ($now->lt($nextNudgeAt)) {
+            return $this->keep(HosLadderMove::Wait, 'not_due', $ladderStep, $nextNudgeAt);
+        }
+
         return new HosLadderDecision(
-            move: HosLadderMove::Escalate,
-            reason: 'violation',
-            nextStep: 1,
-            nextNudgeAt: null,
-            step: 0,
-            channels: $config->informationalChannels(),
+            move: HosLadderMove::Notify,
+            reason: 'violation_insist',
+            nextStep: $ladderStep + 1,
+            nextNudgeAt: $this->violationNextNudgeAt($steps, $ladderStep, $now),
+            step: $ladderStep,
+            channels: $steps[$ladderStep]['channels'],
             notice: HosNotice::Violation,
         );
+    }
+
+    /**
+     * @param  list<array{after_minutes: int, channels: list<string>, escalate: bool}>  $steps
+     */
+    private function violationNextNudgeAt(array $steps, int $index, CarbonImmutable $now): ?CarbonImmutable
+    {
+        $current = $steps[$index] ?? null;
+        $next = $steps[$index + 1] ?? null;
+
+        if ($next === null) {
+            return null;
+        }
+
+        return $now->addMinutes(max(0, $next['after_minutes'] - ($current['after_minutes'] ?? 0)));
     }
 
     /**
@@ -176,8 +228,15 @@ class HosLadderPlanner
             return $this->keep(HosLadderMove::Hold, 'no_reading', $ladderStep, $nextNudgeAt);
         }
 
+        $remaining = match ($situation) {
+            HosSituation::BreakDue => $current->breakRemainingSeconds,
+            HosSituation::DriveLimit => $current->driveRemainingSeconds,
+            default => $current->shiftRemainingSeconds,
+        };
+
         $status = HosDutyStatus::tryFrom((string) $current->dutyStatus);
-        $working = $situation === HosSituation::ShiftLimit
+        // Antes del límite de 14 h cuenta cualquier trabajo; pasado, trabajar sin manejar es legal.
+        $working = $situation === HosSituation::ShiftLimit && ($remaining === null || $remaining > 0)
             ? $status !== null && $status->isWorking()
             : $status === HosDutyStatus::Driving;
 
@@ -185,12 +244,6 @@ class HosLadderPlanner
             // Cumplió (está parado): la escalera se pausa sin perder su lugar.
             return $this->keep(HosLadderMove::Hold, 'not_working', $ladderStep, $nextNudgeAt);
         }
-
-        $remaining = match ($situation) {
-            HosSituation::BreakDue => $current->breakRemainingSeconds,
-            HosSituation::DriveLimit => $current->driveRemainingSeconds,
-            default => $current->shiftRemainingSeconds,
-        };
 
         if ($remaining === null) {
             return $this->keep(HosLadderMove::Wait, 'no_clock', $ladderStep, $nextNudgeAt);

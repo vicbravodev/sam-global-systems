@@ -5,7 +5,9 @@ namespace Tests\Feature\Domains\Drivers\Hos;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Actions\AdvanceHosEpisodes;
 use App\Domains\Drivers\Actions\LinkHosEpisodeIncident;
+use App\Domains\Drivers\Actions\ProcessHosReadings;
 use App\Domains\Drivers\Actions\SendHosNudge;
+use App\Domains\Drivers\Data\HosEnrollment;
 use App\Domains\Drivers\Data\HosLadderDecision;
 use App\Domains\Drivers\Enums\HosDutyStatus;
 use App\Domains\Drivers\Enums\HosLadderMove;
@@ -21,6 +23,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Domains\Integrations\Data\HosClockReading;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Actions\AppendReplyInstructions;
@@ -101,6 +104,21 @@ class AdvanceHosEpisodesTest extends TestCase
     private function advance(array $stored = []): array
     {
         return app(AdvanceHosEpisodes::class)->execute($this->integration, HosMonitoringConfig::fromArray($stored, config('hos.defaults')), now()->toImmutable());
+    }
+
+    /** Un sondeo real: relojes → detector → episodios. */
+    private function readClocks(string $status, int $drive, int $shift, int $break = 20000): void
+    {
+        app(ProcessHosReadings::class)->execute(
+            $this->integration->team_id,
+            HosMonitoringConfig::fromArray([], config('hos.defaults')),
+            new HosEnrollment([[
+                'reading' => new HosClockReading('58072405', '281', $status, $break, $drive, $shift, 200000, 0),
+                'driver' => $this->driver,
+                'asset' => $this->asset,
+            ]], []),
+            now()->toImmutable(),
+        );
     }
 
     private function appMessages(): int
@@ -366,9 +384,11 @@ class AdvanceHosEpisodesTest extends TestCase
             $this->advance();
         }
 
-        $this->assertSame(1, $this->appMessages());
-        $this->assertSame([], $this->twilio->messages);
-        $this->assertSame([], $this->twilio->calls);
+        // Sólo insiste la infracción (12:05 app + WhatsApp, 12:10 llamada); drive_limit calla.
+        $this->assertSame(2, $this->appMessages());
+        $this->assertCount(1, $this->twilio->messages);
+        $this->assertCount(1, $this->twilio->calls);
+        $this->assertSame(3, Notification::withoutGlobalScopes()->where('source_reference_id', (string) $violation->id)->count());
         $this->assertSame('hos_limit_exceeded', RawEvent::withoutGlobalScopes()->sole()->event_type_raw);
         $driveLimit->refresh();
         $this->assertSame(0, $driveLimit->ladder_step);
@@ -378,32 +398,157 @@ class AdvanceHosEpisodesTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_the_drive_limit_ladder_resumes_where_it_was_once_the_violation_resolves(): void
+    public function test_a_violation_and_its_held_drive_limit_close_together_once_the_driver_rests(): void
+    {
+        // Lo que el detector sí produce: manejando con el manejo en 0 abre la
+        // infracción y drive_limit; la infracción sólo cierra cuando ya puede
+        // manejar (descanso de 10 h), y ese mismo reloj cierra drive_limit.
+        // drive_limit nunca "se reanuda": la insistencia de la infracción lo cubre.
+        $this->fakeAppMessages();
+        Queue::fake([ProcessRawEventJob::class]);
+        $this->readClocks('driving', drive: 0, shift: 20000);
+        $violation = HosEpisode::withoutGlobalScopes()->where('situation', HosSituation::Violation)->sole();
+        $driveLimit = HosEpisode::withoutGlobalScopes()->where('situation', HosSituation::DriveLimit)->sole();
+
+        $this->advance();                                     // 12:00 infracción: aviso + incidente
+        $this->travel(5)->minutes();
+        $this->advance();                                     // 12:05 insiste la infracción
+
+        $this->travel(10)->hours();
+        $this->readClocks('offDuty', drive: 39600, shift: 50400);
+        $this->assertNotNull($violation->fresh()->resolved_at);
+        $this->assertNotNull($driveLimit->fresh()->resolved_at);
+
+        $this->advance();                                     // nada pendiente de ninguno de los dos
+
+        $this->assertSame(2, $this->appMessages());
+        $this->assertCount(1, $this->twilio->messages);
+        $this->assertSame([], $this->twilio->calls);
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('source_reference_id', (string) $driveLimit->id)->count());
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_violation_while_driving_insists_on_whatsapp_and_a_call_with_one_incident(): void
     {
         $this->fakeAppMessages();
         Queue::fake([ProcessRawEventJob::class]);
-        $violation = $this->episode(HosSituation::Violation, ['ladder_step' => 1, 'escalated_at' => now()]);
-        // A mitad de la escalera: escalón 3 (app + WhatsApp) pendiente a las 12:05.
-        $driveLimit = $this->episode(HosSituation::DriveLimit, ['ladder_step' => 3, 'next_nudge_at' => now()->addMinutes(5)]);
+        $episode = $this->episode(HosSituation::Violation);
         $this->state(drive: 0);
 
-        $this->travel(10)->minutes();
-        $this->advance();                                     // 12:10 infracción abierta: drive_limit en pausa
-
-        $this->assertSame([], $this->twilio->messages);
-        $this->assertSame(0, $this->appMessages());
-        $this->assertSame(3, $driveLimit->fresh()->ladder_step);
-        $this->assertTrue($driveLimit->fresh()->next_nudge_at->equalTo(now()->subMinutes(5)));
-
-        $violation->forceFill(['resolved_at' => now()])->save();
-        $this->travel(1)->minutes();
-        $this->advance();                                     // 12:11 sale el escalón pendiente, no la escalera desde cero
-
-        $this->assertCount(1, $this->twilio->messages);
+        $this->advance();                                     // 12:00 app + incidente
         $this->assertSame(1, $this->appMessages());
-        Http::assertSent(fn ($request) => str_contains((string) $request['text'], 'Sigues manejando sin horas'));
-        $this->assertSame(4, $driveLimit->fresh()->ladder_step);
-        $this->assertSame(1, Notification::withoutGlobalScopes()->where('event_key', "hos:{$driveLimit->id}:3")->count());
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+
+        $this->travel(3)->minutes();
+        $this->advance();                                     // 12:03 aún no toca
+        $this->assertSame([], $this->twilio->messages);
+
+        $this->travel(2)->minutes();
+        $this->advance();                                     // 12:05 app + WhatsApp
+        $this->assertSame(2, $this->appMessages());
+        $this->assertCount(1, $this->twilio->messages);
+        $this->assertSame('whatsapp:+5215512345678', $this->twilio->messages[0]['to']);
+        $this->assertSame([], $this->twilio->calls);
+
+        $this->travel(5)->minutes();
+        $this->advance();                                     // 12:10 llamada
+        $this->assertCount(1, $this->twilio->calls);
+        $this->assertStringContainsString('infracción', $this->twilio->calls[0]['params']['twiml']);
+
+        foreach ([5, 5, 30] as $minutes) {                    // nada más: ni otro aviso ni otro incidente
+            $this->travel($minutes)->minutes();
+            $this->advance();
+        }
+
+        $this->assertSame(2, $this->appMessages());
+        $this->assertCount(1, $this->twilio->messages);
+        $this->assertCount(1, $this->twilio->calls);
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+        Queue::assertPushed(ProcessRawEventJob::class, 1);
+        $this->assertSame(
+            ["hos:{$episode->id}:0", "hos:{$episode->id}:1", "hos:{$episode->id}:2"],
+            Notification::withoutGlobalScopes()->orderBy('id')->pluck('event_key')->all(),
+        );
+        $episode->refresh();
+        $this->assertSame(3, $episode->ladder_step);
+        $this->assertNull($episode->next_nudge_at);
+        $insist = $this->assertSystemLogged('hos.nudge.sent', fn (array $c) => $c['calc']['step'] === 1);
+        $this->assertSame('notify', $insist['calc']['move']);
+        $this->assertSame('violation', $insist['calc']['notice']);
+        $this->assertSame('violation_raised', $this->assertSystemLogged('hos.nudge.skipped', fn (array $c) => $c['reason'] === 'violation_raised')['reason']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_violation_while_off_duty_only_tells_the_driver_once(): void
+    {
+        $this->fakeAppMessages();
+        Queue::fake([ProcessRawEventJob::class]);
+        $episode = $this->episode(HosSituation::Violation);
+        $this->state('offDuty', drive: 0);
+
+        $this->advance();                                     // 12:00 aviso + incidente
+
+        foreach ([5, 5, 5, 5] as $minutes) {                  // parado: la insistencia queda en pausa
+            $this->travel($minutes)->minutes();
+            $this->advance();
+        }
+
+        $this->assertSame(1, $this->appMessages());
+        $this->assertSame([], $this->twilio->messages);
+        $this->assertSame([], $this->twilio->calls);
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+        $this->assertSame(1, $episode->fresh()->ladder_step);
+        $this->assertSame('not_working', $this->assertSystemLogged('hos.nudge.skipped', fn (array $c) => $c['input']['episode_id'] === $episode->id)['reason']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_past_the_shift_limit_working_without_driving_does_not_climb_the_ladder(): void
+    {
+        $this->fakeAppMessages();
+        $episode = $this->episode(HosSituation::ShiftLimit, ['ladder_step' => 2]);
+        $this->state('onDuty');
+        HosDriverState::withoutGlobalScopes()->where('driver_id', $this->driver->id)->update(['shift_remaining_s' => 0]);
+
+        $counts = $this->advance();
+
+        $this->assertSame(1, $counts['held']);
+        $this->assertSame(0, $this->appMessages());
+        $this->assertSame(2, $episode->fresh()->ladder_step);
+
+        HosDriverState::withoutGlobalScopes()->where('driver_id', $this->driver->id)->update(['duty_status' => HosDutyStatus::Driving->value]);
+        $this->advance();                                     // manejando fuera de turno: arranca la escalera
+
+        $this->assertSame(1, $this->appMessages());
+        Http::assertSent(fn ($request) => str_contains((string) $request['text'], 'turno de 14 h'));
+        $this->assertSame(3, $episode->fresh()->ladder_step);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_failing_nudge_never_blocks_the_violation_incident(): void
+    {
+        Queue::fake([ProcessRawEventJob::class]);
+        $this->app->instance(SendHosNudge::class, new class extends SendHosNudge
+        {
+            public function __construct() {}
+
+            public function execute(TenantIntegration $integration, HosEpisode $episode, HosLadderDecision $decision): Notification
+            {
+                throw new \RuntimeException('samsara down');
+            }
+        });
+        $episode = $this->episode(HosSituation::Violation);
+        $this->state(drive: 0);
+
+        $counts = $this->advance();
+
+        $this->assertSame(1, $counts['escalated']);
+        $this->assertSame('hos_limit_exceeded', RawEvent::withoutGlobalScopes()->sole()->event_type_raw);
+        $this->assertNotNull($episode->fresh()->escalated_at);
+        $this->assertSystemLogged('hos.incident.raised');
+        $failed = $this->assertSystemLogged('hos.nudge.failed');
+        $this->assertSame('dispatch_error', $failed['reason']);
+        $this->assertSame($episode->id, $failed['input']['episode_id']);
         $this->assertNoSensitiveDataLogged();
     }
 

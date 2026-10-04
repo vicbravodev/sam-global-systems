@@ -121,10 +121,28 @@ class HosLadderPlannerTest extends TestCase
 
     public function test_reaching_the_limit_before_the_warnings_starts_the_ladder(): void
     {
-        $decision = $this->plan(HosSituation::ShiftLimit, 0, $this->reading('onDuty', shift: 0));
+        $decision = $this->plan(HosSituation::ShiftLimit, 0, $this->reading('driving', shift: 0));
 
         $this->assertSame(2, $decision->step);
         $this->assertSame(HosNotice::ShiftLimit, $decision->notice);
+    }
+
+    public function test_past_the_shift_limit_the_ladder_only_moves_while_driving(): void
+    {
+        // Con el turno de 14 h agotado, trabajar sin manejar es legal: no se insiste.
+        $onDuty = $this->plan(HosSituation::ShiftLimit, 2, $this->reading('onDuty', shift: 0), '2026-10-04 11:58:00');
+        $this->assertSame(HosLadderMove::Hold, $onDuty->move);
+        $this->assertSame('not_working', $onDuty->reason);
+        $this->assertSame(2, $onDuty->nextStep);
+        $this->assertSame('2026-10-04 11:58:00', $this->at($onDuty->nextNudgeAt));
+        $this->assertSame(HosLadderMove::Hold, $this->plan(HosSituation::ShiftLimit, 0, $this->reading('onDuty', shift: 0))->move);
+
+        $driving = $this->plan(HosSituation::ShiftLimit, 2, $this->reading('driving', shift: 0), '2026-10-04 11:58:00');
+        $this->assertSame(HosLadderMove::Notify, $driving->move);
+        $this->assertSame(2, $driving->step);
+
+        // Antes del límite (avisos previos) cuenta cualquier trabajo, como siempre.
+        $this->assertSame(HosLadderMove::Notify, $this->plan(HosSituation::ShiftLimit, 0, $this->reading('onDuty', shift: 20 * 60))->move);
     }
 
     public function test_the_ladder_pauses_while_the_driver_is_not_working(): void
@@ -164,7 +182,73 @@ class HosLadderPlannerTest extends TestCase
         // The notice says the team was already told: the incident goes in the same cycle.
         $this->assertSame(HosLadderMove::Escalate, $decision->move);
         $this->assertSame(0, $decision->step);
-        $this->assertSame(HosLadderMove::Done, $this->plan(HosSituation::Violation, 1, $this->reading())->move);
+        $this->assertSame('2026-10-04 12:05:00', $this->at($decision->nextNudgeAt));
+    }
+
+    public function test_a_violation_while_driving_insists_on_the_next_ladder_channels_without_a_second_incident(): void
+    {
+        $early = $this->plan(HosSituation::Violation, 1, $this->reading(drive: 0), '2026-10-04 12:05:00', at: '2026-10-04 12:03:00', escalated: true);
+        $this->assertSame(HosLadderMove::Wait, $early->move);
+        $this->assertSame('not_due', $early->reason);
+
+        $whatsapp = $this->plan(HosSituation::Violation, 1, $this->reading(drive: 0), '2026-10-04 12:05:00', at: '2026-10-04 12:05:00', escalated: true);
+        $this->assertSame(HosLadderMove::Notify, $whatsapp->move);
+        $this->assertSame('violation_insist', $whatsapp->reason);
+        $this->assertSame(1, $whatsapp->step);
+        $this->assertSame(['samsara_driver_app', 'whatsapp'], $whatsapp->channels);
+        $this->assertSame(HosNotice::Violation, $whatsapp->notice);
+        $this->assertSame(2, $whatsapp->nextStep);
+        $this->assertSame('2026-10-04 12:10:00', $this->at($whatsapp->nextNudgeAt));
+
+        $voice = $this->plan(HosSituation::Violation, 2, $this->reading(drive: 0), '2026-10-04 12:10:00', at: '2026-10-04 12:10:00', escalated: true);
+        $this->assertSame(HosLadderMove::Notify, $voice->move);
+        $this->assertSame(['voice'], $voice->channels);
+        $this->assertSame(3, $voice->nextStep);
+        $this->assertNull($voice->nextNudgeAt);
+
+        // El escalón de incidente de la escalera no aplica: el de la infracción ya existe.
+        $done = $this->plan(HosSituation::Violation, 3, $this->reading(drive: 0), null, at: '2026-10-04 12:15:00', escalated: true);
+        $this->assertSame(HosLadderMove::Done, $done->move);
+        $this->assertSame('violation_raised', $done->reason);
+    }
+
+    public function test_violation_insistence_pauses_while_the_driver_is_not_driving(): void
+    {
+        foreach (['offDuty', 'onDuty', 'sleeperBed'] as $status) {
+            $held = $this->plan(HosSituation::Violation, 1, $this->reading($status, drive: 0), '2026-10-04 11:58:00', escalated: true);
+            $this->assertSame(HosLadderMove::Hold, $held->move, $status);
+            $this->assertSame('not_working', $held->reason);
+            $this->assertSame(1, $held->nextStep);
+            $this->assertSame('2026-10-04 11:58:00', $this->at($held->nextNudgeAt));
+        }
+
+        $this->assertSame('no_reading', $this->plan(HosSituation::Violation, 1, null, '2026-10-04 11:58:00', escalated: true)->reason);
+    }
+
+    public function test_a_violation_already_raised_without_a_pending_step_sends_nothing(): void
+    {
+        // Infracción abierta por el PR 1 (escalón 1 por migración, sin escalar ni siguiente aviso).
+        $decision = $this->plan(HosSituation::Violation, 1, $this->reading(drive: 0));
+
+        $this->assertSame(HosLadderMove::Done, $decision->move);
+        $this->assertSame('violation_raised', $decision->reason);
+    }
+
+    public function test_violation_insistence_skips_the_ladder_incident_entries(): void
+    {
+        $ladder = [
+            ['after_minutes' => 0, 'channels' => ['samsara_driver_app']],
+            ['after_minutes' => 5, 'escalate' => 'incident'],
+            ['after_minutes' => 12, 'channels' => ['voice']],
+        ];
+
+        $first = $this->plan(HosSituation::Violation, 0, $this->reading(drive: 0), config: ['ladder' => $ladder]);
+        $this->assertSame('2026-10-04 12:12:00', $this->at($first->nextNudgeAt));
+
+        $voice = $this->plan(HosSituation::Violation, 1, $this->reading(drive: 0), '2026-10-04 12:12:00', at: '2026-10-04 12:12:00', escalated: true, config: ['ladder' => $ladder]);
+        $this->assertSame(HosLadderMove::Notify, $voice->move);
+        $this->assertSame(['voice'], $voice->channels);
+        $this->assertNull($voice->nextNudgeAt);
     }
 
     public function test_an_escalated_episode_never_moves_again(): void
