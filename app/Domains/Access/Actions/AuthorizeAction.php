@@ -197,6 +197,16 @@ class AuthorizeAction
     }
 
     /**
+     * Opt-in modules (e.g. `hos_monitoring`): on ONLY with an explicit
+     * enabled row. Unlike {@see checkFeatureAccess()}, a missing row means
+     * OFF. Shares the per-request memo of the feature check.
+     */
+    public function isFeatureEnabled(Team $team, string $featureKey): bool
+    {
+        return $this->teamAccess($team)['features'][$featureKey] ?? false;
+    }
+
+    /**
      * @return array{subscription: Subscription|null, features: array<string, bool>}
      */
     private function teamAccess(Team $team): array

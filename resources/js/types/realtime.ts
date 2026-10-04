@@ -136,6 +136,12 @@ export type NotificationPushedPayload = {
     team_id: number | null;
 };
 
+/** Un sondeo HOS del tenant terminó (cada ~1 min con alguien vigilado). */
+export type HosClocksUpdatedPayload = {
+    monitored: number;
+    observed_at: string;
+};
+
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'fleet.positions_updated': FleetPositionsUpdatedPayload;
@@ -150,6 +156,7 @@ export type TeamBroadcastEventMap = {
     'incidents.updated': IncidentUpdatedPayload;
     'integration.status_changed': IntegrationStatusChangedPayload;
     'report.ready': ReportReadyPayload;
+    'hos.clocks_updated': HosClocksUpdatedPayload;
 };
 
 export type TeamBroadcastEvent = keyof TeamBroadcastEventMap;

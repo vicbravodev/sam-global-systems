@@ -1,13 +1,18 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import { AssignmentsCard } from '@/components/sam/drivers/detail/assignments-card';
 import { ContactsCard } from '@/components/sam/drivers/detail/contacts-card';
 import { DocumentsCard } from '@/components/sam/drivers/detail/documents-card';
 import { DriverHero } from '@/components/sam/drivers/detail/driver-hero';
 import { ProfileCard } from '@/components/sam/drivers/detail/profile-card';
 import { RiskCard } from '@/components/sam/drivers/detail/risk-card';
+import { HosDriverPanel } from '@/components/sam/hos/hos-driver-panel';
+import { driverTabFromUrl, hosReloadProps } from '@/components/sam/hos/lib';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
+import { TabBar } from '@/components/sam/tab-bar';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import driverRoutes from '@/routes/drivers';
 import type { DriverShowProps } from '@/types/drivers';
 
@@ -17,9 +22,32 @@ export default function DriverShow({
     recentEvents,
     incidents,
     activity,
+    hos,
 }: DriverShowProps) {
     const page = usePage();
     const teamSlug = page.props.currentTeam?.slug ?? null;
+    const [tab, setTab] = useState<'resumen' | 'hos'>(() =>
+        hos !== null ? driverTabFromUrl(page.url) : 'resumen',
+    );
+
+    // Cada sondeo HOS (~1 min) recarga `hos` sólo con su pestaña abierta.
+    const hosReload = hosReloadProps(hos !== null, tab);
+    useBroadcastReload(
+        { 'hos.clocks_updated': () => hosReload },
+        { resync: hosReload ?? [] },
+    );
+
+    const changeTab = (key: string) => {
+        const next = key === 'hos' ? 'hos' : 'resumen';
+
+        if (next === 'hos' && tab !== 'hos') {
+            // Al abrirla, una recarga parcial: pudo quedar vieja en Resumen.
+            router.reload({ only: ['hos'] });
+        }
+
+        setTab(next);
+    };
+    const openEpisodes = hos?.openEpisodes.length ?? 0;
 
     return (
         <>
@@ -27,36 +55,60 @@ export default function DriverShow({
             <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
                 <DriverHero driver={driver} teamSlug={teamSlug} />
 
-                {/* Operación a la izquierda (riesgo, actividad, incidentes,
-                    unidades); ficha a la derecha (perfil, contactos,
-                    documentos). */}
-                <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                    <div className="flex min-w-0 flex-col gap-4">
-                        <RiskCard
-                            risk={driver.riskProfile}
-                            activity={activity ?? []}
-                        />
-                        <RecentEventsCard
-                            events={recentEvents ?? []}
-                            teamSlug={teamSlug}
-                            subject="Este conductor"
-                        />
-                        <LinkedIncidentsCard
-                            incidents={incidents ?? []}
-                            teamSlug={teamSlug}
-                            subject="Este conductor"
-                        />
-                        <AssignmentsCard
-                            assignments={assignments}
-                            teamSlug={teamSlug}
-                        />
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-4">
-                        <ProfileCard driver={driver} />
-                        <ContactsCard contacts={driver.contacts} />
-                        <DocumentsCard documents={driver.documents} />
-                    </div>
-                </div>
+                {hos !== null ? (
+                    <TabBar
+                        aria-label="Secciones del conductor"
+                        items={[
+                            { key: 'resumen', label: 'Resumen' },
+                            {
+                                key: 'hos',
+                                label: 'HOS',
+                                ...(openEpisodes > 0
+                                    ? { count: openEpisodes }
+                                    : {}),
+                            },
+                        ]}
+                        value={tab}
+                        onChange={changeTab}
+                    />
+                ) : null}
+
+                {tab === 'hos' && hos !== null ? (
+                    <HosDriverPanel hos={hos} teamSlug={teamSlug} />
+                ) : (
+                    <>
+                        {/* Operación a la izquierda (riesgo, actividad, incidentes,
+                            unidades); ficha a la derecha (perfil, contactos,
+                            documentos). */}
+                        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                            <div className="flex min-w-0 flex-col gap-4">
+                                <RiskCard
+                                    risk={driver.riskProfile}
+                                    activity={activity ?? []}
+                                />
+                                <RecentEventsCard
+                                    events={recentEvents ?? []}
+                                    teamSlug={teamSlug}
+                                    subject="Este conductor"
+                                />
+                                <LinkedIncidentsCard
+                                    incidents={incidents ?? []}
+                                    teamSlug={teamSlug}
+                                    subject="Este conductor"
+                                />
+                                <AssignmentsCard
+                                    assignments={assignments}
+                                    teamSlug={teamSlug}
+                                />
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-4">
+                                <ProfileCard driver={driver} />
+                                <ContactsCard contacts={driver.contacts} />
+                                <DocumentsCard documents={driver.documents} />
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
         </>
     );

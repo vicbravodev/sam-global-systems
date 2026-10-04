@@ -4,6 +4,8 @@ namespace App\Http\Controllers\TenantConfig;
 
 use App\Contracts\ObjectStorage;
 use App\Domains\Automation\Support\TriggerConditionCatalog;
+use App\Domains\Drivers\Actions\BuildHosConfigForm;
+use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\TenantChannelToggle;
@@ -23,6 +25,7 @@ use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -56,9 +59,11 @@ class TenantConfigPageController extends Controller
         );
     }
 
-    public function show(Team $current_team, ResolveTenantAIProfile $resolveAIProfile): Response
+    public function show(Request $request, Team $current_team, ResolveTenantAIProfile $resolveAIProfile, BuildHosConfigForm $hosForm): Response
     {
         $this->authorize('viewAny', TenantSetting::class);
+
+        $user = $request->user();
 
         return Inertia::render('settings/tenant-config', [
             'settings' => fn () => TenantSetting::query()
@@ -235,6 +240,11 @@ class TenantConfigPageController extends Controller
             },
             'canManageChannels' => fn () => (bool) request()->user()?->can('toggleGlobal', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
+            // Monitoreo HOS: null sin la feature `hos_monitoring` (la sección
+            // tampoco se lista en el índice de Ajustes).
+            'hos' => fn (): ?array => $user !== null && $user->can('viewConfig', HosDriverState::class)
+                ? $hosForm->execute($current_team->id, $user->can('updateConfig', HosDriverState::class))
+                : null,
         ]);
     }
 

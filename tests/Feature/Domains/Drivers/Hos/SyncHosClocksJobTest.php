@@ -6,6 +6,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Drivers\Enums\HosDutyStatus;
 use App\Domains\Drivers\Enums\HosSituation;
+use App\Domains\Drivers\Events\HosClocksUpdatedBroadcast;
 use App\Domains\Drivers\Jobs\PollHosClocksJob;
 use App\Domains\Drivers\Jobs\SyncHosClocksJob;
 use App\Domains\Drivers\Models\Driver;
@@ -13,6 +14,7 @@ use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Drivers\Models\HosEpisode;
 use App\Domains\Drivers\Support\HosMonitoringConfig;
+use App\Domains\Drivers\Support\HosProviderCache;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -25,6 +27,7 @@ use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
@@ -293,5 +296,61 @@ class SyncHosClocksJobTest extends TestCase
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $b->team_id)->count());
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/fleet/messages') && $request['driverIds'] === [77000001]);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_successful_poll_leaves_its_reading_for_the_config_preview(): void
+    {
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        $this->fakeSamsara();
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        $cached = Cache::get(HosProviderCache::readingsKey($integration->team_id, $integration->id));
+        $this->assertSame('58072405', $cached[0]['external_driver_id']);
+        $this->assertSame('281', $cached[0]['external_vehicle_id']);
+    }
+
+    public function test_each_poll_tells_the_tenant_panels_to_refresh(): void
+    {
+        Event::fake([HosClocksUpdatedBroadcast::class]);
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        $this->fakeSamsara();
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        Event::assertDispatched(HosClocksUpdatedBroadcast::class, function (HosClocksUpdatedBroadcast $event) use ($integration): bool {
+            return $event->teamId === $integration->team_id
+                && $event->broadcastOn()[0]->name === "private-accounts.{$integration->team_id}"
+                && $event->broadcastAs() === 'hos.clocks_updated'
+                && $event->broadcastWith() === ['monitored' => 1, 'observed_at' => $event->observedAt];
+        });
+        $this->assertTrue($this->assertSystemLogged('hos.poll.completed')['result']['broadcast']);
+    }
+
+    public function test_a_poll_with_nobody_monitored_broadcasts_nothing(): void
+    {
+        Event::fake([HosClocksUpdatedBroadcast::class]);
+        // Sin chofer vinculado: la lectura no se resuelve, nadie queda vigilado.
+        $integration = $this->tenant();
+        $this->fakeSamsara();
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        Event::assertNotDispatched(HosClocksUpdatedBroadcast::class);
+        $this->assertFalse($this->assertSystemLogged('hos.poll.completed')['result']['broadcast']);
+    }
+
+    public function test_a_failed_poll_broadcasts_nothing(): void
+    {
+        Event::fake([HosClocksUpdatedBroadcast::class]);
+        $integration = $this->tenant();
+        $this->link($integration, '58072405', '281');
+        Http::fake(['api.samsara.com/fleet/hos/clocks*' => Http::response([], 503)]);
+
+        app()->call([new SyncHosClocksJob($integration), 'handle']);
+
+        Event::assertNotDispatched(HosClocksUpdatedBroadcast::class);
     }
 }

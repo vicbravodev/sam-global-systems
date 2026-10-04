@@ -35,6 +35,7 @@ use App\Http\Controllers\Decisions\RulesPageController;
 use App\Http\Controllers\Decisions\RuleTestController;
 use App\Http\Controllers\DemoRequestController;
 use App\Http\Controllers\Drivers\DriverPageController;
+use App\Http\Controllers\Drivers\HosPanelController;
 use App\Http\Controllers\Incidents\IncidentAIVerdictController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -56,6 +57,7 @@ use App\Http\Controllers\Teams\TenantAccessController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\Tenancy\InvoiceReceiptController;
+use App\Http\Controllers\TenantConfig\HosMonitoringConfigController;
 use App\Http\Controllers\TenantConfig\IncidentSlaController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
@@ -226,6 +228,8 @@ Route::prefix('{current_team}')
 
         // Driver pages (read-only; DriverPolicy gates access).
         Route::get('drivers', [DriverPageController::class, 'index'])->name('drivers.index');
+        // Monitoreo HOS (EE. UU.) de la flota: segmento literal antes del binding.
+        Route::get('drivers/hos', [HosPanelController::class, 'index'])->name('drivers.hos.index');
         Route::get('drivers/{driver}', [DriverPageController::class, 'show'])->name('drivers.show');
 
         // Integrations management page + actions. The GET renders the Inertia
@@ -296,6 +300,12 @@ Route::prefix('{current_team}')
         // el resolver de la Tarea 6 (ResolveIncidentSla / TenantIncidentSla).
         Route::get('settings/tenant-config/slas', [IncidentSlaController::class, 'index'])->name('tenant-config.slas.index');
         Route::put('settings/tenant-config/slas', [IncidentSlaController::class, 'update'])->name('tenant-config.slas.update');
+
+        // Monitoreo HOS (EE. UU.): sección `?seccion=hos`. HosMonitoringPolicy
+        // exige la feature `hos_monitoring` además del permiso.
+        Route::put('settings/tenant-config/hos', [HosMonitoringConfigController::class, 'update'])->name('tenant-config.hos.update');
+        Route::get('settings/tenant-config/hos/tags', [HosMonitoringConfigController::class, 'tags'])->middleware('throttle:hos-preview')->name('tenant-config.hos.tags');
+        Route::post('settings/tenant-config/hos/preview', [HosMonitoringConfigController::class, 'preview'])->middleware('throttle:hos-preview')->name('tenant-config.hos.preview');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

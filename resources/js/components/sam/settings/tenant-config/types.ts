@@ -1,4 +1,5 @@
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import type { HosConfigForm } from '@/types/hos';
 
 export interface SettingRow {
     id: number;
@@ -106,4 +107,6 @@ export interface TenantConfigProps {
     notificationTypeOptions: Option[];
     canManageChannels: boolean;
     canManage: boolean;
+    /** Monitoreo HOS: null sin la feature `hos_monitoring` o sin `config.view`. */
+    hos: HosConfigForm | null;
 }

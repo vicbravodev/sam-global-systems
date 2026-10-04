@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Drivers;
 
 use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Context\Actions\LoadRecentAssetHistory;
+use App\Domains\Drivers\Actions\BuildHosDriverPanel;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Enums\ContactType;
 use App\Domains\Drivers\Enums\DriverStatus;
@@ -14,6 +15,7 @@ use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
 use App\Domains\Drivers\Models\DriverDocument;
 use App\Domains\Drivers\Models\DriverRiskProfile;
+use App\Domains\Drivers\Models\HosDriverState;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -129,7 +131,7 @@ class DriverPageController extends Controller
         ]);
     }
 
-    public function show(Team $current_team, Driver $driver): Response
+    public function show(Request $request, Team $current_team, Driver $driver, BuildHosDriverPanel $hosPanel): Response
     {
         // 404 before the policy check so a cross-team id never reveals the
         // driver exists (the BelongsToTenant scope on the binding already
@@ -157,6 +159,10 @@ class DriverPageController extends Controller
             'recentEvents' => fn () => $this->recentEvents($driver),
             'incidents' => fn () => $this->incidents($driver),
             'activity' => fn () => $this->activity($driver),
+            // Pestaña HOS: null sin la feature `hos_monitoring` (no se muestra).
+            'hos' => fn (): ?array => $request->user()?->can('viewAny', HosDriverState::class) === true
+                ? $hosPanel->execute($driver, now())
+                : null,
         ]);
     }
 

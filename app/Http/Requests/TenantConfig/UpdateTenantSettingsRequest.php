@@ -3,6 +3,7 @@
 namespace App\Http\Requests\TenantConfig;
 
 use App\Domains\Context\Actions\FetchLiveLocationForEvent;
+use App\Domains\Drivers\Support\HosMonitoringConfig;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use Illuminate\Foundation\Http\FormRequest;
@@ -48,6 +49,18 @@ class UpdateTenantSettingsRequest extends FormRequest
 
                 foreach ($settings as $index => $setting) {
                     if (! is_array($setting)) {
+                        continue;
+                    }
+
+                    // La configuración HOS tiene validación propia
+                    // (UpdateHosMonitoringConfigRequest): el resolver tolera
+                    // basura y por aquí entraría sin revisar.
+                    if (($setting['setting_key'] ?? null) === HosMonitoringConfig::SETTING_KEY) {
+                        $validator->errors()->add(
+                            "settings.{$index}.setting_key",
+                            'La configuración de HOS se guarda desde su propia sección.',
+                        );
+
                         continue;
                     }
 

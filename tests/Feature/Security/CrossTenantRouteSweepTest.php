@@ -9,9 +9,11 @@ use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Domains\Decisions\Models\DecisionRule;
+use App\Domains\Drivers\Support\HosMonitoringConfig;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
+use App\Domains\Tenancy\Models\TenantFeature;
 use App\Enums\TeamRole;
 use App\Http\Middleware\EnsureTeamMembership;
 use App\Models\Membership;
@@ -445,6 +447,12 @@ class CrossTenantRouteSweepTest extends TestCase
         // usuario que sí pertenece al team de la URL.
         $memberA = User::factory()->create();
         $this->teamA->members()->attach($memberA, ['role' => TeamRole::Member->value]);
+
+        // Features opt-in (sin fila = apagada): encendidas en ambos teams para
+        // que sus rutas se barran de verdad y no respondan 403 vacuo.
+        foreach ([$this->teamA, $this->teamB] as $team) {
+            TenantFeature::factory()->create(['team_id' => $team->id, 'feature_key' => HosMonitoringConfig::FEATURE_KEY, 'enabled' => true]);
+        }
 
         $this->records[User::class] = ['a' => $memberA, 'b' => $this->userB];
         $this->records[Team::class] = ['a' => $this->teamA, 'b' => $this->teamB];

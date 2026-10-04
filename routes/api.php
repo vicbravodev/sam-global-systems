@@ -21,6 +21,7 @@ use App\Http\Controllers\Decisions\DecisionController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\EscalationPolicyController;
 use App\Http\Controllers\Drivers\DriverController;
+use App\Http\Controllers\Drivers\HosPanelController;
 use App\Http\Controllers\Incidents\IncidentAIVerdictController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -39,6 +40,7 @@ use App\Http\Controllers\Normalization\NormalizedEventController;
 use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Notifications\NotificationTemplateController;
+use App\Http\Controllers\TenantConfig\HosMonitoringConfigController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigVersionController;
@@ -72,9 +74,11 @@ Route::prefix('{current_team}')
         Route::get('assets/{asset}/telemetry', [AssetController::class, 'telemetry'])->name('api.assets.telemetry');
 
         Route::get('drivers', [DriverController::class, 'index'])->name('api.drivers.index');
+        Route::get('drivers/hos', [HosPanelController::class, 'fleet'])->name('api.drivers.hos.index');
         Route::get('drivers/{driver}', [DriverController::class, 'show'])->name('api.drivers.show');
         Route::get('drivers/{driver}/assignments', [DriverController::class, 'assignments'])->name('api.drivers.assignments');
         Route::get('drivers/{driver}/risk-profile', [DriverController::class, 'riskProfile'])->name('api.drivers.risk-profile');
+        Route::get('drivers/{driver}/hos', [HosPanelController::class, 'driver'])->name('api.drivers.hos.show');
         Route::put('drivers/{driver}/contacts', [DriverController::class, 'updateContacts'])->name('api.drivers.update-contacts');
         Route::put('drivers/{driver}/documents', [DriverController::class, 'updateDocuments'])->name('api.drivers.update-documents');
 
@@ -125,6 +129,11 @@ Route::prefix('{current_team}')
 
         Route::get('settings/versions', [TenantConfigVersionController::class, 'index'])->name('api.tenant-config.versions.index');
         Route::get('settings/versions/{configVersion}', [TenantConfigVersionController::class, 'show'])->name('api.tenant-config.versions.show');
+
+        Route::get('settings/hos', [HosMonitoringConfigController::class, 'show'])->name('api.tenant-config.hos.show');
+        Route::put('settings/hos', [HosMonitoringConfigController::class, 'update'])->name('api.tenant-config.hos.update');
+        Route::get('settings/hos/tags', [HosMonitoringConfigController::class, 'tags'])->middleware('throttle:hos-preview')->name('api.tenant-config.hos.tags');
+        Route::post('settings/hos/preview', [HosMonitoringConfigController::class, 'preview'])->middleware('throttle:hos-preview')->name('api.tenant-config.hos.preview');
 
         Route::get('decisions/rules', [DecisionRuleController::class, 'index'])->name('api.decisions.rules.index');
         Route::post('decisions/rules', [DecisionRuleController::class, 'store'])->name('api.decisions.rules.store');

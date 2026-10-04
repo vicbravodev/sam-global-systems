@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Notifications;
 
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationPreference;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class NotificationPreferenceController extends Controller
 {
@@ -27,7 +29,7 @@ class NotificationPreferenceController extends Controller
         $validated = $request->validate([
             'notification_type' => ['required', 'string', 'max:128'],
             'allowed_channels' => ['required', 'array'],
-            'allowed_channels.*' => ['string'],
+            'allowed_channels.*' => ['string', Rule::enum(ChannelType::class)->except([ChannelType::SamsaraDriverApp])],
             'muted' => ['nullable', 'boolean'],
             'quiet_hours' => ['nullable', 'array'],
             'escalation_fallback' => ['nullable', 'array'],

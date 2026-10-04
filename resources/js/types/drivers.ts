@@ -1,5 +1,6 @@
 import type { LinkedIncidentEntry } from '@/components/sam/linked-incidents-card';
 import type { RecentEventEntry } from '@/components/sam/recent-events-card';
+import type { HosDriverPanelData } from '@/types/hos';
 import type { ListPagination } from '@/types/pagination';
 
 export type DriverStatusValue =
@@ -161,4 +162,6 @@ export interface DriverShowProps {
     recentEvents: RecentEventEntry[];
     incidents: LinkedIncidentEntry[];
     activity: DriverActivityPoint[];
+    /** Pestaña HOS; null sin la feature `hos_monitoring`. */
+    hos: HosDriverPanelData | null;
 }

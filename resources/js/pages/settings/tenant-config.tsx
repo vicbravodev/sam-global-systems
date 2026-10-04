@@ -1,5 +1,6 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, usePage } from '@inertiajs/react';
+import { Hourglass } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { ReadOnlyNotice } from '@/components/sam/read-only-notice';
 import { SettingsPage } from '@/components/sam/settings/settings-page';
@@ -8,12 +9,14 @@ import { AiSection } from '@/components/sam/settings/tenant-config/ai-section';
 import { AlertsSection } from '@/components/sam/settings/tenant-config/alerts-section';
 import { BrandingSection } from '@/components/sam/settings/tenant-config/branding-section';
 import { EmergenciesSection } from '@/components/sam/settings/tenant-config/emergencies-section';
+import { HosSection } from '@/components/sam/settings/tenant-config/hos-section';
 import { OnCallSection } from '@/components/sam/settings/tenant-config/on-call-section';
 import type { TenantConfigProps } from '@/components/sam/settings/tenant-config/types';
 import {
     COMPANY_SECTIONS,
     companySectionFromUrl,
 } from '@/components/sam/settings/use-settings-nav';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import tenantConfigRoutes from '@/routes/tenant-config';
 
@@ -40,7 +43,9 @@ export default function TenantConfigPage(props: TenantConfigProps) {
     const editable =
         sectionKey === 'avisos'
             ? props.canManage || props.canManageChannels
-            : props.canManage;
+            : sectionKey === 'hos'
+              ? props.hos === null || props.hos.canManage
+              : props.canManage;
 
     return (
         <>
@@ -103,6 +108,17 @@ export default function TenantConfigPage(props: TenantConfigProps) {
                         canManage={props.canManage}
                     />
                 )}
+                {sectionKey === 'hos' &&
+                    (props.hos ? (
+                        <HosSection form={props.hos} />
+                    ) : (
+                        <EmptyState
+                            className="py-8"
+                            icon={Hourglass}
+                            title="El monitoreo HOS no está activo"
+                            description="Lo activa el equipo de SAM para empresas con choferes en Estados Unidos. Escríbenos si lo necesitas."
+                        />
+                    ))}
                 {sectionKey === 'marca' && (
                     <BrandingSection
                         branding={props.branding}

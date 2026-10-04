@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\TenantConfig;
 
+use App\Domains\Notifications\Enums\ChannelType;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateTenantNotificationPoliciesRequest extends FormRequest
 {
@@ -22,9 +24,9 @@ class UpdateTenantNotificationPoliciesRequest extends FormRequest
             'policies.*.notification_type' => ['nullable', 'string', 'max:255'],
             'policies.*.priority' => ['nullable', 'string', 'max:50'],
             'policies.*.allowed_channels' => ['required', 'array', 'min:1'],
-            'policies.*.allowed_channels.*' => ['string', 'max:50'],
+            'policies.*.allowed_channels.*' => ['string', 'max:50', Rule::enum(ChannelType::class)->except([ChannelType::SamsaraDriverApp])],
             'policies.*.fallback_channels' => ['nullable', 'array'],
-            'policies.*.fallback_channels.*' => ['string', 'max:50'],
+            'policies.*.fallback_channels.*' => ['string', 'max:50', Rule::enum(ChannelType::class)->except([ChannelType::SamsaraDriverApp])],
             'policies.*.recipient_rules' => ['nullable', 'array'],
             'policies.*.quiet_hours' => ['nullable', 'array'],
             'policies.*.escalation_rules' => ['nullable', 'array'],

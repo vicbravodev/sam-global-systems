@@ -50,6 +50,21 @@ class HosDriverState extends Model
         return $this->belongsTo(Asset::class);
     }
 
+    /**
+     * Lo que queda en cada reloj, en segundos (null = Samsara no lo mandó).
+     *
+     * @return array{break: int|null, drive: int|null, shift: int|null, cycle: int|null}
+     */
+    public function clockSnapshot(): array
+    {
+        return [
+            'break' => $this->break_remaining_s,
+            'drive' => $this->drive_remaining_s,
+            'shift' => $this->shift_remaining_s,
+            'cycle' => $this->cycle_remaining_s,
+        ];
+    }
+
     /** The stored snapshot as a reading, the "before" side of transition checks. */
     public function toReading(string $externalDriverId, ?string $externalVehicleId): HosClockReading
     {

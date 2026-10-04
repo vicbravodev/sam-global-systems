@@ -34,6 +34,7 @@ class NavPermissionsSharedPropTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('nav.incidents', true)
                 ->where('nav.drivers', true)
+                ->where('nav.hos', false)
                 ->where('nav.billing', false)
                 ->where('nav.audit', false)
                 ->where('nav.rules', false)

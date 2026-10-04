@@ -15,6 +15,12 @@ final readonly class HosMonitoringConfig
 
     public const string SETTING_KEY = 'hos.monitoring';
 
+    /** Canales con los que SAM le habla al chofer: no tiene correo ni cuenta en SAM. */
+    public const array DRIVER_CHANNELS = ['samsara_driver_app', 'whatsapp', 'sms', 'voice'];
+
+    /** Situaciones que el tenant puede apagar: la infracción siempre se vigila. */
+    public const array CONFIGURABLE_SITUATIONS = ['break_due', 'drive_limit', 'shift_limit', 'cycle_limit', 'rest_complete'];
+
     /**
      * @param  array<int, string>  $tagIds
      * @param  array<int, int>  $includedAssetIds
