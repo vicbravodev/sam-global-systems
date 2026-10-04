@@ -113,7 +113,8 @@ class LabelEventsCommand extends Command
             ->groupBy('normalized_event_id')
             // Un veredicto en cualquier versión ya etiqueta el evento.
             ->reject(fn ($versions): bool => $versions->contains(fn (AIEventEvaluation $e): bool => $e->operator_verdict !== null))
-            ->map(fn ($versions): AIEventEvaluation => $versions->first())
+            ->map(fn ($versions): ?AIEventEvaluation => $versions->first())
+            ->filter()
             ->values();
 
         /** @var Collection<int, Collection<int, AIEventEvaluation>> $groups */
