@@ -14,6 +14,7 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 | Tests filtrados | `php artisan test --compact --filter=Nombre` · `php artisan test --compact tests/Feature/Domains/{Dominio}` |
 | Suite completa | `php artisan test --compact` |
 | Frontend | `npm run types:check && npm run lint:check && npm run format:check` · `npm test` (Vitest) · `npm run build` |
+| E2E (flujos críticos) | `npm run build && npm run test:e2e` (Playwright; ver `resources/js/CLAUDE.md`) |
 | Análisis estático | `composer analyse` (Larastan nivel 8 + phpstan strict-rules y deprecation-rules, baseline vacío en `phpstan-baseline.neon`) |
 | Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate --with-form` |
 | Gate antes de push | los de arriba (formato, suite, lint/format, types, Vitest, análisis estático) o `composer ci:check` |
