@@ -59,7 +59,7 @@ export function LandingHeader({ authed, dashboardUrl }: LandingHeaderProps) {
                             >
                                 Entrar
                             </Link>
-                            <PrimaryButton href={DEMO_HREF}>
+                            <PrimaryButton href={DEMO_HREF} inertia>
                                 Pedir una demo
                             </PrimaryButton>
                         </>

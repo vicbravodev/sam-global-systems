@@ -74,7 +74,7 @@ function HeroCopy({ authed }: { authed: boolean }) {
                 transition={{ duration: 0.7, delay: 0.4, ease: EASE }}
             >
                 {!authed && (
-                    <PrimaryButton href={DEMO_HREF} large>
+                    <PrimaryButton href={DEMO_HREF} large inertia>
                         Pedir una demo
                     </PrimaryButton>
                 )}
