@@ -10,6 +10,7 @@ use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetLocationsJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Automation\Jobs\ExpireUnconfirmedActionsJob;
+use App\Domains\Drivers\Jobs\PollHosClocksJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Incidents\Jobs\SweepOverdueEscalationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraAlertIncidentsJob;
@@ -100,6 +101,9 @@ Schedule::call(fn () => app()->call([new DispatchTelematicsFeedsJob, 'handle']))
 
 // Gateway heartbeat for the offline watchdog, on the watchdog's own cadence.
 Schedule::job(new PollAllDeviceConnectivityJob)->everyFiveMinutes()->onOneServer();
+
+// Monitoreo HOS (EE. UU.): relojes de Samsara de los choferes inscritos (spec 2026-10-04).
+Schedule::job(new PollHosClocksJob)->everyMinute()->onOneServer();
 
 Schedule::job(new PurgeOldAssetTelemetryJob)->dailyAt('03:45')->onOneServer();
 Schedule::job(new PurgeOldAssetLocationsJob)->dailyAt('03:50')->onOneServer();
