@@ -87,4 +87,9 @@ return [
         'webhook_tolerance_seconds' => (int) env('SAMSARA_WEBHOOK_TOLERANCE_SECONDS', 300),
     ],
 
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'auth_token' => env('CLOUDFLARE_AUTH_TOKEN'),
+    ],
+
 ];
