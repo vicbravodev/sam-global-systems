@@ -9,6 +9,7 @@ use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
+use App\Domains\AI\Listeners\DispatchClefShadowEvaluation;
 use App\Domains\AI\Listeners\EvaluateMediaOnEventMediaAvailable;
 use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
 use App\Domains\AI\Listeners\RecordOperatorVerdictOnIncidentResolved;
@@ -60,6 +61,8 @@ class AIServiceProvider extends ServiceProvider
         // Backfill assessments for media that persisted before this evaluation
         // existed (extraction and text evaluation race on separate queues).
         Event::listen(AIEvaluationCompleted::class, AssessPendingMediaOnEvaluationCompleted::class);
+        // Medición temporal Clef vs GPT; se apaga sola (ai.clef.shadow_until).
+        Event::listen(AIEvaluationCompleted::class, DispatchClefShadowEvaluation::class);
         // "Descartar como falso positivo" = etiqueta humana para la IA.
         Event::listen(IncidentResolved::class, RecordOperatorVerdictOnIncidentResolved::class);
 
