@@ -42,7 +42,7 @@ final readonly class HosMonitoringConfig
      */
     public static function fromArray(array $stored, array $defaults): self
     {
-        $value = fn (string $key): mixed => array_key_exists($key, $stored) ? $stored[$key] : $defaults[$key];
+        $value = fn (string $key): mixed => array_key_exists($key, $stored) && $stored[$key] !== null ? $stored[$key] : $defaults[$key];
         $ints = fn (mixed $list): array => array_values(array_map('intval', array_filter((array) $list, 'is_numeric')));
 
         return new self(

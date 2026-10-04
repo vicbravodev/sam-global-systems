@@ -11,10 +11,12 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class ResolveHosMonitoringConfigTest extends TestCase
 {
+    use AssertsTenantIsolation;
     use RefreshDatabase;
 
     private function enable(Team $team, bool $enabled = true): void
@@ -71,5 +73,55 @@ class ResolveHosMonitoringConfigTest extends TestCase
         $this->assertTrue($config->enabled(HosSituation::BreakDue));
         $this->assertTrue($config->enabled(HosSituation::Violation));
         $this->assertSame(1200, $config->leadSeconds());
+    }
+
+    public function test_no_cross_tenant_leak(): void
+    {
+        // Team A with feature enabled and a specific setting.
+        $teamA = Team::factory()->create();
+        $this->enable($teamA);
+        TenantSetting::factory()->create([
+            'team_id' => $teamA->id,
+            'setting_key' => HosMonitoringConfig::SETTING_KEY,
+            'setting_group' => SettingGroup::Compliance,
+            'value_type' => SettingValueType::Json,
+            'value_json' => [
+                'tag_ids' => ['111'],
+            ],
+        ]);
+
+        // Team B with nothing initially.
+        $teamB = Team::factory()->create();
+
+        // Team B without feature should get null.
+        $this->assertNull(app(ResolveHosMonitoringConfig::class)->execute($teamB->id));
+
+        // Enable feature for team B (no setting).
+        $this->enable($teamB);
+
+        // Team B should get defaults (empty tag_ids), never team A's tag_ids.
+        $configB = $this->assertNoTenantLeak($teamB, fn () => app(ResolveHosMonitoringConfig::class)->execute($teamB->id));
+        $this->assertSame([], $configB->tagIds);
+        $this->assertNotContains('111', $configB->tagIds);
+    }
+
+    public function test_explicit_null_in_setting_falls_back_to_default(): void
+    {
+        $team = Team::factory()->create();
+        $this->enable($team);
+        TenantSetting::factory()->create([
+            'team_id' => $team->id,
+            'setting_key' => HosMonitoringConfig::SETTING_KEY,
+            'setting_group' => SettingGroup::Compliance,
+            'value_type' => SettingValueType::Json,
+            'value_json' => [
+                'rest_complete_expire_minutes' => null,
+            ],
+        ]);
+
+        $config = app(ResolveHosMonitoringConfig::class)->execute($team->id);
+
+        // Default is 35 minutes = 2100 seconds.
+        $this->assertSame(2100, $config->restCompleteExpireSeconds());
     }
 }
