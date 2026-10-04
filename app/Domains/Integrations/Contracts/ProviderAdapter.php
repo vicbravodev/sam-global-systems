@@ -148,6 +148,47 @@ interface ProviderAdapter
     public function fetchAlertIncidents(TenantIntegration $integration, array $configurationIds, string $startTime, ?string $cursor = null): array;
 
     /**
+     * Create a webhook at the provider pointing to `$url`. Returns the
+     * provider's id and the secret it signs deliveries with (never logged).
+     * Needs the token's "Write Webhooks" scope.
+     *
+     * @return array{id: string, secret: string}
+     *
+     * @throws ProviderRequestFailedException 401/403 when the token lacks the scope
+     */
+    public function createWebhook(TenantIntegration $integration, string $name, string $url): array;
+
+    /**
+     * Delete a webhook created by {@see createWebhook()}. Already gone counts as done.
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function deleteWebhook(TenantIntegration $integration, string $webhookId): void;
+
+    /**
+     * Create an enabled panic-button alert for the whole fleet whose only
+     * action delivers to `$webhookId`. Returns the configuration id. Needs the
+     * token's "Write Alerts" scope.
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function createPanicAlertConfiguration(TenantIntegration $integration, string $name, string $webhookId): string;
+
+    /**
+     * Point an alert configuration created by SAM at another webhook (secret rotation).
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function pointAlertConfigurationToWebhook(TenantIntegration $integration, string $configurationId, string $webhookId): void;
+
+    /**
+     * Delete an alert configuration created by SAM. Already gone counts as done.
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function deleteAlertConfiguration(TenantIntegration $integration, string $configurationId): void;
+
+    /**
      * Validate a webhook signature against the provider's algorithm.
      *
      * @param  string  $payload  Exact raw request body bytes.

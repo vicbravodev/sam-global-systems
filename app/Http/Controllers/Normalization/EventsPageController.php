@@ -298,7 +298,7 @@ class EventsPageController extends Controller
      * what the provider labelled it, whether it is already resolved at the
      * source and the link back to the provider's own incident page.
      *
-     * @return array{location: array{latitude: float, longitude: float, formatted: string|null}|null, labels: list<string>, externalEventType: string|null, externalUrl: string|null, isResolved: bool|null, externalResolvedAt: string|null, eventState: string|null}
+     * @return array{location: array{latitude: float, longitude: float, formatted: string|null}|null, labels: list<string>, externalEventType: string|null, externalUrl: string|null, isResolved: bool|null, externalResolvedAt: string|null, eventState: string|null, echoOfEventId: int|null}
      */
     private function facts(NormalizedEvent $event): array
     {
@@ -344,7 +344,26 @@ class EventsPageController extends Controller
             'isResolved' => is_bool($payload['is_resolved'] ?? null) ? $payload['is_resolved'] : null,
             'externalResolvedAt' => is_string($resolvedAt) ? $resolvedAt : null,
             'eventState' => is_string($eventState) ? $eventState : null,
+            'echoOfEventId' => $this->echoOf($event),
         ];
+    }
+
+    /**
+     * El safety event del que esta alerta es eco (CorrelateSafetyAlertEcho),
+     * sólo si es del mismo tenant: el id viene del payload.
+     */
+    private function echoOf(NormalizedEvent $event): ?int
+    {
+        $id = $event->payload_normalized_json['echo_of_normalized_event_id'] ?? null;
+
+        if (! is_int($id)) {
+            return null;
+        }
+
+        return NormalizedEvent::query()
+            ->where('team_id', $event->team_id)
+            ->whereKey($id)
+            ->exists() ? $id : null;
     }
 
     /**

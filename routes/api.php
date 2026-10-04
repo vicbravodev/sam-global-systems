@@ -32,6 +32,7 @@ use App\Http\Controllers\Ingestion\RawEventController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Integrations\WebhookSecretController;
+use App\Http\Controllers\Integrations\WebhookSetupController;
 use App\Http\Controllers\Normalization\EventTypeController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Normalization\NormalizedEventController;
@@ -62,6 +63,8 @@ Route::prefix('{current_team}')
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('api.integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('api.integrations.test');
         Route::put('integrations/{integration}/webhook-secret', [WebhookSecretController::class, 'update'])->name('api.integrations.webhook-secret.update');
+        Route::post('integrations/{integration}/webhook/provision', [WebhookSetupController::class, 'provision'])->name('api.integrations.webhook.provision');
+        Route::post('integrations/{integration}/webhook/rotate', [WebhookSetupController::class, 'rotate'])->name('api.integrations.webhook.rotate');
 
         Route::get('assets', [AssetController::class, 'index'])->name('api.assets.index');
         Route::get('assets/{asset}', [AssetController::class, 'show'])->name('api.assets.show');

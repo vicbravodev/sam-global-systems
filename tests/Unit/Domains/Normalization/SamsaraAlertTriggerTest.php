@@ -58,4 +58,19 @@ class SamsaraAlertTriggerTest extends TestCase
         $this->assertFalse(SamsaraAlertTrigger::TamperingDetected->isEmergency());
         $this->assertSame(1034, SamsaraAlertTrigger::PanicButton->value);
     }
+
+    public function test_safety_event_triggers_are_echoes_of_the_safety_feed(): void
+    {
+        foreach ([1023, 5033, 5039, 5022] as $id) {
+            $this->assertTrue(SamsaraAlertTrigger::from($id)->isSafetyEcho(), (string) $id);
+            $this->assertFalse(SamsaraAlertTrigger::from($id)->isEmergency(), (string) $id);
+        }
+
+        $this->assertFalse(SamsaraAlertTrigger::PanicButton->isSafetyEcho());
+        $this->assertFalse(SamsaraAlertTrigger::TamperingDetected->isSafetyEcho());
+        $this->assertSame([1023, 5033, 5039, 5022], array_map(
+            fn (SamsaraAlertTrigger $t): int => $t->value,
+            SamsaraAlertTrigger::safetyEchoes(),
+        ));
+    }
 }

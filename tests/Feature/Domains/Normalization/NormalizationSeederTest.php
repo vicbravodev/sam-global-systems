@@ -59,7 +59,7 @@ class NormalizationSeederTest extends TestCase
             'camera_obstructed', 'tampering', 'no_seatbelt', 'hos_violation', 'smoking_drinking',
             'geofence_exit', 'geofence_entry', 'vehicle_idle', 'unsafe_parking',
             'device_offline', 'after_hours_movement', 'suspicious_stop',
-            'did_not_yield', 'railroad_crossing_violation', 'other_violation',
+            'did_not_yield', 'railroad_crossing_violation', 'other_violation', 'provider_safety_alert',
             'policy_violation', 'unauthorized_passenger', 'driving_context', 'defensive_driving', 'unmapped',
         ];
 
@@ -241,5 +241,33 @@ class NormalizationSeederTest extends TestCase
 
         $this->assertSame($before, EventMappingRule::query()->where('external_event_type', 'AlertIncident')->count());
         $this->assertSame(['data.conditions.*.triggerId' => 1034], $panic->fresh()?->external_conditions_json);
+    }
+
+    public function test_safety_event_alerts_are_seeded_as_echoes_below_emergencies(): void
+    {
+        $this->seed(NormalizationSeeder::class);
+
+        $echo = EventType::query()->with(['category', 'defaultSeverity'])->where('code', 'provider_safety_alert')->sole();
+        $this->assertSame('safety', $echo->category?->code);
+        $this->assertSame('low', $echo->defaultSeverity?->code);
+
+        $rules = EventMappingRule::query()
+            ->where('external_event_type', 'AlertIncident')
+            ->where('mapped_event_type_id', $echo->id)
+            ->get();
+
+        $this->assertEqualsCanonicalizing(
+            [1023, 5033, 5039, 5022],
+            $rules->map(fn (EventMappingRule $r) => $r->external_conditions_json['data.conditions.*.triggerId'] ?? null)->all(),
+        );
+        $panicPriority = EventMappingRule::query()
+            ->where('external_event_type', 'AlertIncident')
+            ->whereHas('mappedEventType', fn ($q) => $q->where('code', 'panic_button'))
+            ->value('priority');
+        $this->assertTrue($rules->every(fn (EventMappingRule $r) => $r->priority < $panicPriority));
+
+        // Re-sembrar no duplica.
+        $this->seed(NormalizationSeeder::class);
+        $this->assertSame(4, EventMappingRule::query()->where('mapped_event_type_id', $echo->id)->count());
     }
 }

@@ -85,6 +85,10 @@ return [
         'timeout' => (int) env('SAMSARA_TIMEOUT', 15),
         // Max age (seconds) accepted for the X-Samsara-Timestamp signature; 0 disables the replay check.
         'webhook_tolerance_seconds' => (int) env('SAMSARA_WEBHOOK_TOLERANCE_SECONDS', 300),
+        // Base pública (https) con la que SAM da de alta su webhook en Samsara
+        // (ProvisionSamsaraWebhook). Sin ella se usa app.url; si no es https,
+        // no se aprovisiona: Samsara no podría entregar.
+        'webhook_base_url' => env('SAMSARA_WEBHOOK_BASE_URL'),
     ],
 
     'cloudflare' => [

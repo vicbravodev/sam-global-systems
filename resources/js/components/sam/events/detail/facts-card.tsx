@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import { MapPin, Tag } from 'lucide-react';
 import {
     DescriptionItem,
@@ -8,9 +9,16 @@ import { EVENT_STATE_LABELS } from '@/components/sam/events/copy';
 import { PointMap } from '@/components/sam/lazy-point-map';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
+import eventRoutes from '@/routes/events';
 import type { EventDetail } from '@/types/events';
 
-export function FactsCard({ event }: { event: EventDetail }) {
+export function FactsCard({
+    event,
+    teamSlug,
+}: {
+    event: EventDetail;
+    teamSlug: string | null;
+}) {
     const facts = event.facts;
     const severity = toSeverity(event.severity);
 
@@ -79,6 +87,23 @@ export function FactsCard({ event }: { event: EventDetail }) {
                         <DescriptionItem label="Tipo en el proveedor">
                             <span className="font-mono text-xs">
                                 {facts.externalEventType}
+                            </span>
+                        </DescriptionItem>
+                    )}
+                    {facts.echoOfEventId !== null && teamSlug && (
+                        <DescriptionItem label="Mismo hecho que">
+                            <Link
+                                href={eventRoutes.show.url([
+                                    teamSlug,
+                                    facts.echoOfEventId,
+                                ])}
+                                className="text-primary hover:underline"
+                            >
+                                Evento #{facts.echoOfEventId}
+                            </Link>
+                            <span className="ml-2 text-2xs text-fg-3">
+                                Samsara también envió esta alerta por el evento
+                                de seguridad
                             </span>
                         </DescriptionItem>
                     )}

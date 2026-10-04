@@ -13,7 +13,9 @@ use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
+use App\Domains\Integrations\Jobs\DeprovisionSamsaraWebhookJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Enums\SamsaraAlertTrigger;
 use App\Support\RedactSensitiveLogData;
 use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
@@ -1285,12 +1287,137 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         return round((float) $mph * 1.609344, 2);
     }
 
+    /**
+     * `POST /webhooks` (scope "Write Webhooks"). Without event types: the
+     * panic alert created by {@see createPanicAlertConfiguration()} delivers
+     * to it through its webhook action. The `secretKey` never reaches a log.
+     *
+     * @return array{id: string, secret: string}
+     */
+    public function createWebhook(TenantIntegration $integration, string $name, string $url): array
+    {
+        $response = $this->writeClient($integration, 'POST /webhooks')->post('/webhooks', [
+            'name' => mb_substr($name, 0, 255),
+            'url' => $url,
+        ]);
+
+        if (! $response->successful()) {
+            throw ProviderRequestFailedException::fromResponse('POST /webhooks', $response);
+        }
+
+        $id = $this->scalarString($response->json('id'));
+        $secret = $this->scalarString($response->json('secretKey'));
+
+        if ($id === null || $id === '' || $secret === null || $secret === '') {
+            throw new ProviderRequestFailedException('POST /webhooks', $response->status(), 'La respuesta no trae id ni secretKey.');
+        }
+
+        return ['id' => $id, 'secret' => $secret];
+    }
+
+    public function deleteWebhook(TenantIntegration $integration, string $webhookId): void
+    {
+        $endpoint = 'DELETE /webhooks/{id}';
+        $response = $this->writeClient($integration, $endpoint)->delete('/webhooks/'.rawurlencode($webhookId));
+
+        if (! $response->successful() && $response->status() !== 404) {
+            throw ProviderRequestFailedException::fromResponse($endpoint, $response);
+        }
+    }
+
+    /**
+     * `POST /alerts/configurations` (scope "Write Alerts"): Panic Button
+     * (trigger 1034) for every vehicle, delivering to SAM's webhook (action 4).
+     */
+    public function createPanicAlertConfiguration(TenantIntegration $integration, string $name, string $webhookId): string
+    {
+        $endpoint = 'POST /alerts/configurations';
+        $response = $this->writeClient($integration, $endpoint)->post('/alerts/configurations', [
+            'name' => mb_substr($name, 0, 255),
+            'isEnabled' => true,
+            'scope' => ['all' => true],
+            'triggers' => [['triggerTypeId' => SamsaraAlertTrigger::PanicButton->value]],
+            'actions' => [self::webhookAction($webhookId)],
+        ]);
+
+        if (! $response->successful()) {
+            throw ProviderRequestFailedException::fromResponse($endpoint, $response);
+        }
+
+        $id = $this->scalarString($response->json('data.id') ?? $response->json('id'));
+
+        if ($id === null || $id === '') {
+            throw new ProviderRequestFailedException($endpoint, $response->status(), 'La respuesta no trae el id de la alerta.');
+        }
+
+        return $id;
+    }
+
+    public function pointAlertConfigurationToWebhook(TenantIntegration $integration, string $configurationId, string $webhookId): void
+    {
+        $endpoint = 'PATCH /alerts/configurations';
+        $response = $this->writeClient($integration, $endpoint)->patch('/alerts/configurations', [
+            'id' => $configurationId,
+            'actions' => [self::webhookAction($webhookId)],
+        ]);
+
+        if (! $response->successful()) {
+            throw ProviderRequestFailedException::fromResponse($endpoint, $response);
+        }
+    }
+
+    public function deleteAlertConfiguration(TenantIntegration $integration, string $configurationId): void
+    {
+        $endpoint = 'DELETE /alerts/configurations';
+        $response = $this->writeClient($integration, $endpoint)->delete('/alerts/configurations?id='.rawurlencode($configurationId));
+
+        if (! $response->successful() && $response->status() !== 404) {
+            throw ProviderRequestFailedException::fromResponse($endpoint, $response);
+        }
+    }
+
+    /**
+     * @return array{actionTypeId: int, actionParams: array{webhooks: array{webhookIds: list<string>, payloadType: string}}}
+     */
+    private static function webhookAction(string $webhookId): array
+    {
+        return [
+            'actionTypeId' => 4,
+            'actionParams' => ['webhooks' => ['webhookIds' => [$webhookId], 'payloadType' => 'enriched']],
+        ];
+    }
+
+    /**
+     * Client for the write calls. Without a token there is nothing to send:
+     * reported as unauthorized, like a token without the scope.
+     */
+    private function writeClient(TenantIntegration $integration, string $endpoint): PendingRequest
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $token === '') {
+            throw new ProviderRequestFailedException($endpoint, 401, 'No hay token de API configurado para esta integración de Samsara.');
+        }
+
+        return $this->client($token);
+    }
+
     private function client(string $token): PendingRequest
     {
         return Http::withToken($token)
             ->baseUrl(rtrim((string) config('services.samsara.base_url'), '/'))
             ->acceptJson()
             ->timeout((int) config('services.samsara.timeout', 15));
+    }
+
+    /**
+     * The integration's API token, for the one job that must outlive the
+     * integration row ({@see DeprovisionSamsaraWebhookJob}, encrypted on the
+     * queue). Never log or return it anywhere else.
+     */
+    public function apiToken(TenantIntegration $integration): ?string
+    {
+        return $this->resolveToken($integration);
     }
 
     /**
