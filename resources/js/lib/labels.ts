@@ -343,7 +343,7 @@ export function meterLabel(
 export const CHANNEL_LABELS: Record<string, string> = {
     email: 'Correo',
     sms: 'SMS',
-    push: 'Push',
+    push: 'Avisos al dispositivo',
     whatsapp: 'WhatsApp',
     web: 'Web',
     slack: 'Slack',

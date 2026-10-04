@@ -5,6 +5,9 @@ namespace App\Domains\Assets\Actions;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Support\MovementCriterion;
+use App\Domains\Context\Actions\ResolveGeofenceContext;
+use App\Domains\Context\Enums\GeofenceCategory;
+use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
@@ -38,6 +41,7 @@ class RaiseAfterHoursMovement
     public function __construct(
         private readonly StoreRawEvent $storeRawEvent,
         private readonly QueueRawEventForProcessing $queueForProcessing,
+        private readonly ResolveGeofenceContext $geofences,
     ) {}
 
     /**
@@ -65,7 +69,7 @@ class RaiseAfterHoursMovement
      * age against the cooldown. Never the coordinates, the local time or the
      * schedule's timezone.
      *
-     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
+     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'inside_safe_geofence'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
      */
     public function evaluate(
         Asset $asset,
@@ -106,6 +110,18 @@ class RaiseAfterHoursMovement
 
         if ($recordedAt->lt(now()->subMinutes(self::FRESHNESS_MINUTES))) {
             return $this->outcome('stale_position', $calc);
+        }
+
+        // Dentro de su base o de un sitio de cliente es actividad esperada
+        // (patio, entrega), no un uso indebido: no se alerta.
+        $safeCategory = $this->safeGeofenceCategory($asset->team_id, $latitude, $longitude);
+
+        if ($safeCategory !== null) {
+            return $this->outcome('inside_safe_geofence', [
+                ...$calc,
+                'safe_geofence_category' => $safeCategory,
+                'safe_geofence_categories' => $this->safeCategories(),
+            ]);
         }
 
         // One alert per unit per closed stretch: a night of driving crosses
@@ -149,9 +165,34 @@ class RaiseAfterHoursMovement
     }
 
     /**
-     * @param  'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised'  $branch
+     * Categoría de la primera geocerca segura del tenant que contiene el
+     * punto (sólo `inside`, nunca `near_boundary`), o null.
+     */
+    private function safeGeofenceCategory(int $teamId, float $latitude, float $longitude): ?string
+    {
+        foreach ($this->geofences->execute($latitude, $longitude, $teamId) as $match) {
+            $category = $match['category'] instanceof GeofenceCategory ? $match['category']->value : (string) $match['category'];
+
+            if ($match['match_type'] === GeofenceMatchType::Inside && in_array($category, $this->safeCategories(), true)) {
+                return $category;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function safeCategories(): array
+    {
+        return array_values(array_map(strval(...), (array) config('telematics.after_hours_safe_geofence_categories', ['base', 'client_site'])));
+    }
+
+    /**
+     * @param  'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'inside_safe_geofence'|'cooldown_active'|'raised'  $branch
      * @param  array<string, mixed>  $calc
-     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
+     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'inside_safe_geofence'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
      */
     private function outcome(string $branch, array $calc, ?int $rawEventId = null): array
     {
@@ -180,8 +221,9 @@ class RaiseAfterHoursMovement
             return;
         }
 
-        // The schedule gate repeats the feed's own check; an inactive unit is
-        // the only branch worth reading at info.
+        // The schedule gate repeats the feed's own check; an inactive unit and
+        // an alert suppressed inside a safe geofence are the branches worth
+        // reading at info.
         $reason = $evaluation['branch'] === 'outside_schedule_gate' ? 'within_operating_hours' : $evaluation['branch'];
 
         SystemLog::skipped(
@@ -189,7 +231,7 @@ class RaiseAfterHoursMovement
             reason: $reason,
             input: $input,
             calc: $evaluation['calc'],
-            debug: $reason !== 'asset_inactive',
+            debug: ! in_array($reason, ['asset_inactive', 'inside_safe_geofence'], true),
             channel: 'telematics',
         );
     }

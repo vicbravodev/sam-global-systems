@@ -3,6 +3,7 @@
 namespace App\Domains\Normalization\Listeners;
 
 use App\Domains\Ingestion\Actions\AlertPipelineFailure;
+use App\Domains\Normalization\Enums\SamsaraAlertTrigger;
 use App\Domains\Normalization\Events\EventUnmapped;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
@@ -12,7 +13,10 @@ use Throwable;
  * Una alerta del proveedor (tipos de `pipeline.unmapped_alert_types`, p. ej.
  * `AlertIncident`, que es como llega el botón de pánico de Samsara) que se
  * normaliza como `unmapped` no abre incidente: sin este aviso, un pánico con
- * payload malformado se perdería en silencio.
+ * payload malformado se perdería en silencio. Sólo se avisa cuando no podemos
+ * descartar que sea una emergencia: sin `triggerId` legible o con uno de
+ * emergencia ({@see SamsaraAlertTrigger::classify()}). Una alerta reconocida
+ * que no es de emergencia (geocerca, velocidad…) queda en "Sin mapear".
  *
  * Síncrono a propósito: corre dentro de NormalizeEventJob (ya en un worker) y
  * AlertPipelineFailure envía con `sendNow`, sin depender de otra cola. Nunca
@@ -66,8 +70,25 @@ class AlertOnUnmappedProviderAlert
             return;
         }
 
+        $triggerIds = SamsaraAlertTrigger::fromPayload($rawEvent->payload_json ?? []);
+        $triggerClass = SamsaraAlertTrigger::classify($triggerIds);
+
+        // Sabemos qué disparó la alerta y no es una emergencia (una geocerca,
+        // una falla de motor…): queda en "Sin mapear" para crear su regla, sin
+        // avisar a nadie como posible pánico.
+        if ($triggerClass === SamsaraAlertTrigger::CLASS_RECOGNIZED) {
+            SystemLog::skipped('normalization.unmapped_alert.skipped', reason: 'recognized_non_emergency_trigger', input: $input, calc: [
+                'is_alert_type' => true,
+                'trigger_ids' => $triggerIds,
+            ]);
+
+            return;
+        }
+
         SystemLog::degraded('normalization.unmapped_alert.escalated', reason: 'alert_type_unmapped', input: $input, calc: [
             'is_alert_type' => true,
+            'trigger_class' => $triggerClass,
+            'trigger_ids' => $triggerIds,
         ]);
 
         $this->alertPipelineFailure->forUnmappedAlert($rawEvent, $event->externalEventType);

@@ -17,7 +17,7 @@ class PlatformChannelSeederTest extends TestCase
     {
         $this->seed(PlatformChannelSeeder::class);
 
-        foreach (['email', 'web', 'sms', 'whatsapp', 'voice'] as $type) {
+        foreach (['email', 'web', 'sms', 'whatsapp', 'voice', 'push'] as $type) {
             $this->assertTrue(
                 NotificationChannel::query()
                     ->where('channel_type', ChannelType::from($type))
@@ -33,7 +33,7 @@ class PlatformChannelSeederTest extends TestCase
         $this->seed(PlatformChannelSeeder::class);
         $this->seed(PlatformChannelSeeder::class);
 
-        $this->assertSame(5, NotificationChannel::query()->count());
+        $this->assertSame(6, NotificationChannel::query()->count());
     }
 
     public function test_platform_channels_carry_no_tenant_and_no_credentials(): void

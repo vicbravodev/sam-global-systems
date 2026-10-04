@@ -4,6 +4,7 @@ namespace Tests\Feature\Domains\AI\Clef\Concerns;
 
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\Team;
 
@@ -38,6 +39,19 @@ trait BuildsClefFixtures
         ]);
 
         return $model;
+    }
+
+    /**
+     * Evaluación de un evento de un tipo concreto (p. ej. uno que ya no pasa
+     * por IA), en el mismo tenant.
+     */
+    protected function makeEvaluationOfType(Team $team, string $typeCode): AIEventEvaluation
+    {
+        $evaluation = $this->makeEvaluation($team);
+        $type = EventType::query()->firstOrCreate(['code' => $typeCode], EventType::factory()->make(['code' => $typeCode])->getAttributes());
+        NormalizedEvent::withoutGlobalScopes()->whereKey($evaluation->normalized_event_id)->update(['event_type_id' => $type->id]);
+
+        return $evaluation;
     }
 
     /**

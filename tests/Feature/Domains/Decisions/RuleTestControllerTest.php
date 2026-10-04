@@ -207,4 +207,27 @@ class RuleTestControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('result', 'no_events');
     }
+
+    public function test_mapping_test_uses_the_same_wildcard_matcher_as_normalization(): void
+    {
+        RawEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'payload_json' => ['data' => ['conditions' => [
+                ['triggerId' => 1045],
+                ['triggerId' => 1034],
+            ]]],
+        ]);
+
+        // Así lo escribe un operador en la UI: el id como texto y `*` para
+        // "cualquier condición".
+        $response = $this->actingAs($this->user)->postJson(
+            route('rules.test.mapping', ['current_team' => $this->team->slug]),
+            ['external_conditions_json' => ['data.conditions.*.triggerId' => '1034']],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('result', 'match');
+        $response->assertJsonPath('checks.0.passed', true);
+        $response->assertJsonPath('checks.0.actual', [1045, 1034]);
+    }
 }

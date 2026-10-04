@@ -53,6 +53,20 @@ final class IncidentNoticeCopy
     }
 
     /**
+     * Alguien del equipo te asignó un incidente.
+     *
+     * @return array{subject: string, body: string, spoken: string}
+     */
+    public static function assigned(Incident $incident): array
+    {
+        return [
+            'subject' => 'Te asignaron: '.self::headline($incident, self::unit($incident), 'en la unidad'),
+            'body' => 'SAM: Te asignaron esto: '.self::headline($incident, self::shortUnit($incident), 'en la unidad').'.',
+            'spoken' => 'Hola, te llama SAM. Te asignaron una alerta de '.self::what($incident).self::spokenWhere($incident, 'en la unidad').'. Por favor revísala en SAM.',
+        ];
+    }
+
+    /**
      * Nadie ha atendido el incidente dentro del tiempo acordado.
      *
      * @return array{subject: string, body: string, spoken: string}

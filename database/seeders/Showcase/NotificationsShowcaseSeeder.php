@@ -15,6 +15,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Database\Seeders\Showcase\Support\ShowcaseRandom;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -167,21 +168,26 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         foreach (['admin', 'supervisor', 'monitor'] as $i => $role) {
             $user = $this->ctx->users[$role] ?? null;
 
-            if ($user === null || DB::table('user_push_tokens')->where('user_id', $user->id)->where('team_id', $this->ctx->team->id)->exists()) {
+            if ($user === null || DB::table('push_subscriptions')->where('user_id', $user->id)->where('team_id', $this->ctx->team->id)->exists()) {
                 continue;
             }
+
+            $endpoint = 'https://fcm.googleapis.com/fcm/send/showcase-'.hash('sha256', "push-{$this->ctx->team->id}-{$user->id}");
 
             $rows[] = [
                 'user_id' => $user->id,
                 'team_id' => $this->ctx->team->id,
-                'platform' => $i === 1 ? 'android' : 'ios',
-                'token' => 'showcase-'.hash('sha256', "push-{$this->ctx->team->id}-{$user->id}"),
-                'device_name' => $i === 1 ? 'Galaxy A54 de '.Str::before($user->name, ' ') : 'iPhone de '.Str::before($user->name, ' '),
+                'endpoint' => $endpoint,
+                'endpoint_hash' => hash('sha256', $endpoint),
+                'public_key' => 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
+                'auth_token' => Crypt::encryptString('showcase-auth'),
+                'content_encoding' => 'aes128gcm',
+                'device_label' => $i === 1 ? 'Android · Chrome' : 'iPhone · Safari',
                 'last_used_at' => $this->ctx->now->subHours($i + 1),
             ];
         }
 
-        $this->bulkInsert('user_push_tokens', $rows);
+        $this->bulkInsert('push_subscriptions', $rows);
     }
 
     private function seedIncidentNotifications(): void

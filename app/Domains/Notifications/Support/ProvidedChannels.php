@@ -7,7 +7,7 @@ use App\Domains\Notifications\Models\NotificationChannel;
 
 /**
  * Canales que SAM realmente ofrece: los tipos de los canales de plataforma
- * activos (`notification_channels`, sin team_id — V2-B1). Push, Slack o
+ * activos (`notification_channels`, sin team_id — V2-B1). Slack o
  * Webhook existen en el enum pero no se ofrecen mientras no haya un canal de
  * plataforma que los entregue, así que ninguna pantalla los debe proponer.
  */

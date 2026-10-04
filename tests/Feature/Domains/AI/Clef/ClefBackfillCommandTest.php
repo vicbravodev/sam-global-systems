@@ -117,6 +117,18 @@ class ClefBackfillCommandTest extends TestCase
         $this->assertSame([$evaluationA->id => $teamA->id, $evaluationB->id => $teamB->id], $pairs);
     }
 
+    public function test_types_no_longer_evaluated_by_ai_are_not_backfilled(): void
+    {
+        $team = Team::factory()->create();
+        $this->makeEvaluationOfType($team, 'after_hours_movement');
+        $kept = $this->makeEvaluation($team);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertSuccessful();
+
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, 1);
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, fn (ShadowEvaluateWithClefJob $job) => $job->evaluationId === $kept->id);
+    }
+
     public function test_asks_for_confirmation_without_force(): void
     {
         $this->makeEvaluation(Team::factory()->create());

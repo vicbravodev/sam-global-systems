@@ -132,6 +132,8 @@ class CrossTenantRouteSweepTest extends TestCase
         'GET settings/appearance' => 'Ajuste personal del usuario autenticado.',
         'GET settings/notifications' => 'Preferencias personales del usuario autenticado.',
         'PUT settings/notifications' => 'Preferencias personales del usuario autenticado.',
+        'POST settings/push-subscriptions' => 'Dispositivo personal del usuario autenticado, sin parámetros de ruta (el aislamiento por tenant se prueba en los tests de PushSubscription).',
+        'DELETE settings/push-subscriptions' => 'Dispositivo personal del usuario autenticado, sin parámetros de ruta (el aislamiento por tenant se prueba en los tests de PushSubscription).',
         'PUT settings/password' => 'Ajuste personal del usuario autenticado.',
         'POST settings/phone/verification' => 'Teléfono del usuario autenticado.',
         'PATCH settings/phone/verification' => 'Teléfono del usuario autenticado.',

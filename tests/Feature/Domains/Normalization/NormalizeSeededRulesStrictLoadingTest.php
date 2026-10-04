@@ -41,6 +41,7 @@ class NormalizeSeededRulesStrictLoadingTest extends TestCase
                 'data' => [
                     'conditions' => [[
                         'description' => 'Panic Button',
+                        'triggerId' => 1034,
                         'details' => ['panicButton' => ['vehicle' => ['id' => '281474994288623', 'name' => 'ROBUST VW']]],
                     ]],
                     'happenedAtTime' => '2026-09-29T21:45:03Z',
