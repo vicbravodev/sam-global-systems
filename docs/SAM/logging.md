@@ -642,6 +642,11 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `tenancy.branding.logo_uploaded` | ok | — | `team_id`, `user_id`; result `file_object_id`, `size_bytes`, `content_type`. Nunca el nombre del archivo |
 | `tenancy.branding.logo_upload_failed` | degraded | `storage_unavailable` | `team_id`, `user_id`, `error` (clase + mensaje redactado; nunca la URL prefirmada). RustFS/S3 falló al subir el logo de la marca (`BrandingController::uploadLogo`): el tenant recibe 503 con el mensaje legible en el campo `logo`, no se crea `FileObject` y el logo anterior queda intacto |
 | `tenancy.admin_access.denied` | skipped | `two_factor_required` (super-admin sin 2FA confirmado; activado sin confirmar cuenta como sin 2FA) | `user_id`, `surface` (`admin_console`: rutas `/admin`; `tenant_entry`: entrada a un cliente ajeno por `/{current_team}`), `route_name`, `pending_confirmation` (tiene secreto sin confirmar), `expects_json` (true = 403 JSON; false = redirección a `/settings/security`). Se apaga con `SAM_ADMIN_REQUIRE_2FA=false`. Nunca email |
+| `tenancy.demo_request.received` | ok | — | `demo_request_id`, `fleet_size`; calc `has_phone`, `has_message`. Un prospecto envió el formulario público "Pedir una demo" (`/demo`). Nunca nombre, empresa, correo, teléfono ni mensaje |
+| `tenancy.demo_request.rejected` | skipped | `honeypot` (un bot llenó el campo trampa `website`: se le responde igual que a una persona y no se guarda nada) | — |
+| `tenancy.demo_request.notified` | ok / degraded | `no_recipients` (no hay super-admins: la solicitud queda sólo en la consola) | `demo_request_id`, `fleet_size`; result `recipients`. Correo de alerta a todos los super-admins con `sendNow` |
+| `tenancy.demo_request.notify_failed` | failed | `send_failed` | `demo_request_id`, `fleet_size`, `recipients`, `error`. El correo falló; la solicitud ya quedó guardada y se ve en la consola (`notified_at` queda null) |
+| `tenancy.demo_request.status_changed` | ok / skipped | `same_status` | `demo_request_id`, `actor_id`; result `previous_status`, `status`. Seguimiento desde la consola (`new` → `contacted` → `closed`) |
 
 ### Billing (`billing`)
 

@@ -5,6 +5,7 @@ import {
     ChevronRight,
     CreditCard,
     FileClock,
+    Inbox,
     LogOut,
     Radio,
     UsersRound,
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { dashboard, home } from '@/routes';
 import { index as adminAuditIndex } from '@/routes/admin/audit';
 import { index as adminChannelsIndex } from '@/routes/admin/channels';
+import { index as adminDemoRequestsIndex } from '@/routes/admin/demo-requests';
 import { index as adminOperatorsIndex } from '@/routes/admin/operators';
 import { index as adminPlansIndex } from '@/routes/admin/plans';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
@@ -126,6 +128,13 @@ export function AdminSidebar({
                     href: adminTenantsIndex().url,
                     badge: badges?.tenantsPastDue ?? 0,
                     pulseWhenInactive: (badges?.tenantsPastDue ?? 0) > 0,
+                },
+                {
+                    label: 'Solicitudes de demo',
+                    icon: Inbox,
+                    href: adminDemoRequestsIndex().url,
+                    badge: badges?.demoRequestsNew ?? 0,
+                    pulseWhenInactive: (badges?.demoRequestsNew ?? 0) > 0,
                 },
                 {
                     label: 'Planes',

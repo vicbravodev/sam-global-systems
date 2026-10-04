@@ -64,6 +64,7 @@ use App\Domains\Notifications\Models\MessagingAddressSuppression;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationTemplate;
 use App\Domains\Tenancy\Models\BillingRate;
+use App\Domains\Tenancy\Models\DemoRequest;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Membership;
@@ -164,6 +165,9 @@ class TenantScopeConventionTest extends TestCase
         EventType::class,
         BillingRate::class,
         Plan::class,
+        // Prospectos del sitio público: aún no son de ningún cliente y sólo
+        // los lee la consola de super-admin.
+        DemoRequest::class,
         UsageMeter::class,
         // Canales de notificación: sólo de plataforma (SAM opera la mensajería
         // con credenciales de env). El tenant sólo los apaga para su equipo vía
