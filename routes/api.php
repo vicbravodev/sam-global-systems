@@ -39,6 +39,7 @@ use App\Http\Controllers\Normalization\NormalizedEventController;
 use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Notifications\NotificationTemplateController;
+use App\Http\Controllers\TenantConfig\HosMonitoringConfigController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigVersionController;
@@ -125,6 +126,9 @@ Route::prefix('{current_team}')
 
         Route::get('settings/versions', [TenantConfigVersionController::class, 'index'])->name('api.tenant-config.versions.index');
         Route::get('settings/versions/{configVersion}', [TenantConfigVersionController::class, 'show'])->name('api.tenant-config.versions.show');
+
+        Route::get('settings/hos', [HosMonitoringConfigController::class, 'show'])->name('api.tenant-config.hos.show');
+        Route::put('settings/hos', [HosMonitoringConfigController::class, 'update'])->name('api.tenant-config.hos.update');
 
         Route::get('decisions/rules', [DecisionRuleController::class, 'index'])->name('api.decisions.rules.index');
         Route::post('decisions/rules', [DecisionRuleController::class, 'store'])->name('api.decisions.rules.store');

@@ -56,6 +56,7 @@ use App\Http\Controllers\Teams\TenantAccessController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\Tenancy\InvoiceReceiptController;
+use App\Http\Controllers\TenantConfig\HosMonitoringConfigController;
 use App\Http\Controllers\TenantConfig\IncidentSlaController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
@@ -296,6 +297,10 @@ Route::prefix('{current_team}')
         // el resolver de la Tarea 6 (ResolveIncidentSla / TenantIncidentSla).
         Route::get('settings/tenant-config/slas', [IncidentSlaController::class, 'index'])->name('tenant-config.slas.index');
         Route::put('settings/tenant-config/slas', [IncidentSlaController::class, 'update'])->name('tenant-config.slas.update');
+
+        // Monitoreo HOS (EE. UU.): sección `?seccion=hos`. HosMonitoringPolicy
+        // exige la feature `hos_monitoring` además del permiso.
+        Route::put('settings/tenant-config/hos', [HosMonitoringConfigController::class, 'update'])->name('tenant-config.hos.update');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

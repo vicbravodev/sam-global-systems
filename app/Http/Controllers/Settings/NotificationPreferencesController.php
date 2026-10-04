@@ -78,7 +78,7 @@ class NotificationPreferencesController extends Controller
         $validated = $request->validate([
             'notification_type' => ['required', 'string', 'max:128'],
             'allowed_channels' => ['required', 'array'],
-            'allowed_channels.*' => ['string', Rule::enum(ChannelType::class)],
+            'allowed_channels.*' => ['string', Rule::enum(ChannelType::class)->except([ChannelType::SamsaraDriverApp])],
             'muted' => ['nullable', 'boolean'],
         ]);
 
