@@ -122,4 +122,17 @@ class RotateSamsaraWebhookSecretTest extends TestCase
         $this->assertSame(RotateSamsaraWebhookSecret::SKIPPED, app(RotateSamsaraWebhookSecret::class)->execute($integration, $this->user));
         Http::assertNothingSent();
     }
+
+    public function test_a_rotated_endpoints_old_key_never_validates_another_endpoint(): void
+    {
+        $this->fakeSamsara();
+        $integration = $this->provisioned();
+        app(RotateSamsaraWebhookSecret::class)->execute($integration, $this->user);
+
+        // Otro tenant, otro endpoint: su llave no es la vieja de A.
+        $other = WebhookEndpoint::factory()->create(['secret' => 'b3RoZXItc2VjcmV0']);
+
+        $this->assertFalse($this->signed($other, self::OLD_SECRET));
+        $this->assertTrue($this->signed($integration->webhookEndpoint()->firstOrFail(), self::OLD_SECRET));
+    }
 }
