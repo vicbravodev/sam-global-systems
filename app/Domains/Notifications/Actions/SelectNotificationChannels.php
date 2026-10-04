@@ -17,6 +17,13 @@ use App\Support\LoggableCode;
 
 class SelectNotificationChannels
 {
+    /**
+     * HOS situations (payload `hos.situation`, the HosSituation values) whose
+     * driver notices skip quiet hours: road safety while he drives. Rest
+     * complete and the cycle warning are informational and respect them.
+     */
+    private const array HOS_QUIET_HOURS_BYPASS = ['break_due', 'drive_limit', 'shift_limit', 'violation'];
+
     public function __construct(
         private readonly TenantNotificationPoliciesResolver $policies,
     ) {}
@@ -99,9 +106,9 @@ class SelectNotificationChannels
         }
 
         $preference = $this->resolvePreference($notification, $recipient);
-        // Avisos HOS al chofer (spec 2026-10-04 §3.10): seguridad vial y el
-        // chofer está en ruta, así que no hay horario silencioso.
-        $quiet = $notification->source_type === NotificationSourceType::HosEpisode
+        // Avisos HOS de seguridad al chofer (spec 2026-10-04 §3.10): va en ruta,
+        // así que no hay horario silencioso. Fin de pausa y ciclo sí lo respetan.
+        $quiet = $this->bypassesQuietHours($notification)
             ? ['active' => false, 'source' => 'bypassed']
             : $this->insideQuietHours($team, $policy, $preference);
 
@@ -186,6 +193,18 @@ class SelectNotificationChannels
     private function silencedTypes(array $before, array $after): array
     {
         return array_values(array_diff($this->typesOf($before), $this->typesOf($after)));
+    }
+
+    private function bypassesQuietHours(Notification $notification): bool
+    {
+        if ($notification->source_type !== NotificationSourceType::HosEpisode) {
+            return false;
+        }
+
+        $hos = $notification->payload_json['hos'] ?? null;
+        $situation = is_array($hos) ? ($hos['situation'] ?? null) : null;
+
+        return is_string($situation) && in_array($situation, self::HOS_QUIET_HOURS_BYPASS, true);
     }
 
     /**

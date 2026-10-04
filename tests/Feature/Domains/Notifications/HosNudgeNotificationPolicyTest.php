@@ -26,12 +26,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
- * Los avisos HOS al chofer son seguridad vial y van en ruta: no los calla el
- * horario silencioso, y su escalera es su propia insistencia (sin reintento
+ * Los avisos HOS de seguridad al chofer (descanso, manejo, turno e
+ * infracción) van en ruta: no los calla el horario silencioso; fin de pausa y
+ * ciclo sí lo respetan, y su escalera es su propia insistencia (sin reintento
  * ni fallback de la política del tenant).
  */
 class HosNudgeNotificationPolicyTest extends TestCase
@@ -48,12 +50,21 @@ class HosNudgeNotificationPolicyTest extends TestCase
         }
     }
 
-    public function test_driver_hos_nudges_ignore_quiet_hours(): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function safetySituations(): array
+    {
+        return ['break' => ['break_due'], 'drive' => ['drive_limit'], 'shift' => ['shift_limit'], 'violation' => ['violation']];
+    }
+
+    #[DataProvider('safetySituations')]
+    public function test_driver_hos_safety_nudges_ignore_quiet_hours(string $situation): void
     {
         $team = $this->quietTeam();
         $this->travelTo(Carbon::parse('2026-09-27 23:30:00', $team->timezone));
 
-        [$hos, $hosRecipient] = $this->nudge($team, NotificationSourceType::HosEpisode);
+        [$hos, $hosRecipient] = $this->nudge($team, NotificationSourceType::HosEpisode, situation: $situation);
         $selection = app(SelectNotificationChannels::class)->explain($hos, $hosRecipient);
 
         $this->assertEqualsCanonicalizing(['whatsapp', 'voice'], array_map(fn (NotificationChannel $channel) => $channel->channel_type->value, $selection['channels']));
@@ -61,8 +72,36 @@ class HosNudgeNotificationPolicyTest extends TestCase
         $this->assertSame('bypassed', $selection['calc']['quiet_hours_source']);
 
         // El mismo aviso de otra fuente sí se calla.
-        [$manual, $manualRecipient] = $this->nudge($team, NotificationSourceType::Manual);
+        [$manual, $manualRecipient] = $this->nudge($team, NotificationSourceType::Manual, situation: $situation);
         $this->assertSame([], app(SelectNotificationChannels::class)->execute($manual, $manualRecipient));
+    }
+
+    /**
+     * @return array<string, array{0: string|null}>
+     */
+    public static function informationalSituations(): array
+    {
+        return ['rest complete' => ['rest_complete'], 'cycle' => ['cycle_limit'], 'unknown' => [null]];
+    }
+
+    #[DataProvider('informationalSituations')]
+    public function test_informational_hos_nudges_respect_the_tenant_quiet_hours(?string $situation): void
+    {
+        $team = $this->quietTeam();
+        $this->travelTo(Carbon::parse('2026-09-27 23:30:00', $team->timezone));
+
+        [$hos, $hosRecipient] = $this->nudge($team, NotificationSourceType::HosEpisode, situation: $situation);
+        $selection = app(SelectNotificationChannels::class)->explain($hos, $hosRecipient);
+
+        // Fin de pausa y ciclo no son urgentes: de noche no se manda WhatsApp ni llamada.
+        $this->assertSame([], $selection['channels']);
+        $this->assertTrue($selection['calc']['quiet_hours_active']);
+        $this->assertSame('tenant_policy', $selection['calc']['quiet_hours_source']);
+        $this->assertEqualsCanonicalizing(['whatsapp', 'voice'], $selection['calc']['silenced_types']);
+
+        // De día salen igual.
+        $this->travelTo(Carbon::parse('2026-09-28 12:00:00', $team->timezone));
+        $this->assertCount(2, app(SelectNotificationChannels::class)->execute($hos, $hosRecipient));
     }
 
     public function test_a_driver_never_inherits_the_preference_of_a_user_with_the_same_id(): void
@@ -142,11 +181,17 @@ class HosNudgeNotificationPolicyTest extends TestCase
     /**
      * @return array{0: Notification, 1: NotificationRecipient}
      */
-    private function nudge(Team $team, NotificationSourceType $source, ?string $referenceId = '1'): array
+    private function nudge(Team $team, NotificationSourceType $source, ?string $referenceId = '1', ?string $situation = 'break_due'): array
     {
+        $payload = ['force_channels' => ['whatsapp', 'voice']];
+
+        if ($situation !== null) {
+            $payload['hos'] = ['episode_id' => 1, 'situation' => $situation, 'step' => 0, 'notice' => 'x'];
+        }
+
         $notification = Notification::factory()->create([
             'team_id' => $team->id, 'source_type' => $source, 'notification_type' => 'hos.nudge',
-            'priority' => NotificationPriority::High, 'payload_json' => ['force_channels' => ['whatsapp', 'voice']],
+            'priority' => NotificationPriority::High, 'payload_json' => $payload,
         ]);
         $recipient = NotificationRecipient::factory()->create([
             'notification_id' => $notification->id, 'team_id' => $team->id, 'recipient_type' => RecipientType::Driver,
