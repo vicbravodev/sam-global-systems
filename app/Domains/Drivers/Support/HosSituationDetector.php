@@ -21,7 +21,8 @@ use Carbon\CarbonInterface;
  * ladder of PR 2 pauses while the driver is not working instead). It also
  * closes the episode when a split sleeper-berth period makes Samsara
  * recalculate drive/shift to a partial value instead of the full one. The
- * cycle closes only with a margin above its threshold. A disconnected driver app (null status)
+ * cycle closes only with a margin above its threshold, and a violation only
+ * once the driver can drive again. A disconnected driver app (null status)
  * freezes everything: an unknown state is neither a breach nor a fix.
  */
 class HosSituationDetector
@@ -64,7 +65,9 @@ class HosSituationDetector
         $rules = [
             HosSituation::Violation->value => [
                 'opens' => $current->violationSeconds > 0 || ($driving && $current->driveRemainingSeconds === 0),
-                'ends' => $current->violationSeconds === 0 && ! ($driving && $current->driveRemainingSeconds === 0),
+                // Parar con manejo en 0 no corrige nada: termina cuando ya puede manejar.
+                'ends' => $current->violationSeconds === 0
+                    && ($current->driveRemainingSeconds === null || $current->driveRemainingSeconds > 0),
             ],
             HosSituation::BreakDue->value => [
                 'opens' => $driving && $this->atOrBelow($current->breakRemainingSeconds, $lead),

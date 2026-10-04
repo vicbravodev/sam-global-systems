@@ -86,7 +86,11 @@ class HosSituationDetectorTest extends TestCase
         $this->assertSame([HosSituation::Violation, HosSituation::DriveLimit], $this->detect(null, $this->reading('driving', drive: 0))->open);
 
         $open = ['violation' => CarbonImmutable::parse('2026-10-04 11:00:00')];
-        $this->assertSame(['violation' => HosEpisodeResolution::Corrected], $this->detect(null, $this->reading('offDuty', drive: 0), $open)->resolve);
+        // Parado con manejo en 0: sigue sin poder manejar, la infracción no rebota.
+        $this->assertSame([], $this->detect(null, $this->reading('offDuty', drive: 0), $open)->resolve);
+        $this->assertSame(['violation' => HosEpisodeResolution::Corrected], $this->detect(null, $this->reading('offDuty', drive: 600), $open)->resolve);
+        // Sin reloj de manejo no se puede saber: basta con que la infracción se apague.
+        $this->assertSame(['violation' => HosEpisodeResolution::Corrected], $this->detect(null, $this->reading('offDuty', drive: null), $open)->resolve);
     }
 
     public function test_limit_situations_resolve_when_the_clock_goes_back_above_the_threshold(): void
