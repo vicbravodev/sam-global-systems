@@ -59,6 +59,22 @@ class ClefBackfillCommandTest extends TestCase
         Queue::assertPushed(ShadowEvaluateWithClefJob::class, 1);
     }
 
+    public function test_retryable_failures_are_pending_and_permanent_ones_are_not(): void
+    {
+        $team = Team::factory()->create();
+        $retryable = $this->makeEvaluation($team);
+        AIShadowEvaluation::factory()->create(['ai_event_evaluation_id' => $retryable->id, 'model' => 'clef']);
+        AIShadowEvaluation::factory()->failed('timeout', retryable: true)->create(['ai_event_evaluation_id' => $retryable->id, 'model' => 'clef-flash']);
+        $permanent = $this->makeEvaluation($team);
+        AIShadowEvaluation::factory()->create(['ai_event_evaluation_id' => $permanent->id, 'model' => 'clef']);
+        AIShadowEvaluation::factory()->failed('http_400')->create(['ai_event_evaluation_id' => $permanent->id, 'model' => 'clef-flash']);
+
+        $this->artisan('ai:clef-backfill', ['--force' => true])->assertSuccessful();
+
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, 1);
+        Queue::assertPushed(ShadowEvaluateWithClefJob::class, fn (ShadowEvaluateWithClefJob $job) => $job->evaluationId === $retryable->id);
+    }
+
     public function test_asks_for_confirmation_without_force(): void
     {
         $this->makeEvaluation(Team::factory()->create());

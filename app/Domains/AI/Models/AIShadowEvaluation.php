@@ -4,6 +4,7 @@ namespace App\Domains\AI\Models;
 
 use App\Concerns\BelongsToTenant;
 use Database\Factories\Domains\AI\AIShadowEvaluationFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,7 +47,20 @@ class AIShadowEvaluation extends Model
         'latency_ms',
         'cost_estimate',
         'error_code',
+        'retryable',
     ];
+
+    /**
+     * Filas con respuesta definitiva: éxito o fallo permanente. Un fallo
+     * transitorio (`retryable`) queda pendiente de reintento.
+     *
+     * @param  Builder<AIShadowEvaluation>  $query
+     * @return Builder<AIShadowEvaluation>
+     */
+    public function scopeSettled(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->where('status', self::STATUS_SUCCESS)->orWhere('retryable', false));
+    }
 
     /**
      * @return BelongsTo<AIEventEvaluation, $this>
@@ -69,6 +83,7 @@ class AIShadowEvaluation extends Model
             'output_tokens' => 'integer',
             'latency_ms' => 'integer',
             'cost_estimate' => 'float',
+            'retryable' => 'boolean',
         ];
     }
 

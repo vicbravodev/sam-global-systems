@@ -28,6 +28,8 @@ return new class extends Migration
             $table->unsignedInteger('latency_ms')->nullable();
             $table->decimal('cost_estimate', 8, 5)->nullable();
             $table->string('error_code', 64)->nullable();
+            // Fallo transitorio (429, 5xx, timeout): el siguiente job o backfill lo reintenta.
+            $table->boolean('retryable')->default(false);
             $table->timestamps();
 
             $table->index('team_id');

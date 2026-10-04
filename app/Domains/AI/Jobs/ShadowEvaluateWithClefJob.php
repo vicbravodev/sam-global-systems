@@ -100,11 +100,11 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
                         continue;
                     }
 
-                    $this->persistFailure($evaluation, $model, $e->reason, $e);
+                    $this->persistFailure($evaluation, $model, $e->reason, $e->retryable, $e);
 
                     continue;
                 } catch (Throwable $e) {
-                    $this->persistFailure($evaluation, $model, class_basename($e), $e);
+                    $this->persistFailure($evaluation, $model, class_basename($e), false, $e);
 
                     continue;
                 }
@@ -124,6 +124,9 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
     }
 
     /**
+     * Modelos sin respuesta definitiva: sin fila, o con un fallo transitorio
+     * (429, 5xx, timeout) que se vuelve a intentar.
+     *
      * @return list<string>
      */
     private function pendingModels(AIEventEvaluation $evaluation): array
@@ -134,6 +137,7 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
         $done = AIShadowEvaluation::query()
             ->where('ai_event_evaluation_id', $evaluation->id)
             ->where('schema_version', ClefQuestionSchema::VERSION)
+            ->settled()
             ->pluck('model')
             ->all();
 
@@ -146,12 +150,7 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
 
     private function persistSuccess(AIEventEvaluation $evaluation, ClefDecision $decision): void
     {
-        AIShadowEvaluation::create([
-            'team_id' => $evaluation->team_id,
-            'ai_event_evaluation_id' => $evaluation->id,
-            'normalized_event_id' => $evaluation->normalized_event_id,
-            'model' => $decision->model,
-            'schema_version' => ClefQuestionSchema::VERSION,
+        $this->upsertRow($evaluation, $decision->model, [
             'source' => $this->source,
             'status' => AIShadowEvaluation::STATUS_SUCCESS,
             'classification' => $decision->classification,
@@ -164,6 +163,8 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
             'output_tokens' => $decision->outputTokens,
             'latency_ms' => $decision->latencyMs,
             'cost_estimate' => $decision->costEstimate,
+            'error_code' => null,
+            'retryable' => false,
         ]);
 
         $prices = (array) config('ai.clef.pricing_per_million_input', []);
@@ -188,17 +189,13 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
         );
     }
 
-    private function persistFailure(AIEventEvaluation $evaluation, string $model, string $errorCode, Throwable $e): void
+    private function persistFailure(AIEventEvaluation $evaluation, string $model, string $errorCode, bool $retryable, Throwable $e): void
     {
-        AIShadowEvaluation::create([
-            'team_id' => $evaluation->team_id,
-            'ai_event_evaluation_id' => $evaluation->id,
-            'normalized_event_id' => $evaluation->normalized_event_id,
-            'model' => $model,
-            'schema_version' => ClefQuestionSchema::VERSION,
+        $this->upsertRow($evaluation, $model, [
             'source' => $this->source,
             'status' => AIShadowEvaluation::STATUS_FAILED,
             'error_code' => substr($errorCode, 0, 64),
+            'retryable' => $retryable,
         ]);
 
         SystemLog::failed(
@@ -206,6 +203,28 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
             reason: $errorCode,
             input: ['evaluation_id' => $evaluation->id, 'model' => $model, 'attempt' => $this->attempts()],
             error: $e,
+        );
+    }
+
+    /**
+     * Una fila por (evaluación, modelo, versión de schema): un reintento
+     * actualiza su fila fallida en lugar de chocar con el índice único.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function upsertRow(AIEventEvaluation $evaluation, string $model, array $values): void
+    {
+        AIShadowEvaluation::query()->updateOrCreate(
+            [
+                'ai_event_evaluation_id' => $evaluation->id,
+                'model' => $model,
+                'schema_version' => ClefQuestionSchema::VERSION,
+            ],
+            [
+                'team_id' => $evaluation->team_id,
+                'normalized_event_id' => $evaluation->normalized_event_id,
+                ...$values,
+            ],
         );
     }
 }

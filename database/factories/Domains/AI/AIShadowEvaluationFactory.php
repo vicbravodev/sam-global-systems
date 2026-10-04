@@ -36,10 +36,11 @@ class AIShadowEvaluationFactory extends Factory
             'latency_ms' => 200,
             'cost_estimate' => 0.00067,
             'error_code' => null,
+            'retryable' => false,
         ];
     }
 
-    public function failed(string $errorCode = 'http_503'): static
+    public function failed(string $errorCode = 'http_400', bool $retryable = false): static
     {
         return $this->state(fn () => [
             'status' => AIShadowEvaluation::STATUS_FAILED,
@@ -48,6 +49,7 @@ class AIShadowEvaluationFactory extends Factory
             'risk_score' => null,
             'needs_human_probability' => null,
             'error_code' => $errorCode,
+            'retryable' => $retryable,
         ]);
     }
 }

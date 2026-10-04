@@ -56,7 +56,7 @@ class ClefBackfillCommand extends Command
             ->whereHas('inferenceLogs')
             ->where(function (Builder $q) use ($models): void {
                 foreach ($models as $model) {
-                    $q->orWhereDoesntHave('shadowEvaluations', fn (Builder $s) => $s->where('model', $model)->where('schema_version', ClefQuestionSchema::VERSION));
+                    $q->orWhereDoesntHave('shadowEvaluations', fn (Builder $s) => $s->where('model', $model)->where('schema_version', ClefQuestionSchema::VERSION)->settled());
                 }
             })
             ->orderByRaw('operator_verdict is null')
