@@ -2,6 +2,7 @@
 
 use App\Support\RedactLogChannel;
 use Illuminate\Log\Formatters\JsonFormatter;
+use Laravel\Nightwatch\Factories\Logger as NightwatchLogger;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -116,6 +117,15 @@ return [
             'level' => env('LOG_TELEMATICS_LEVEL', 'info'),
             'days' => env('LOG_TELEMATICS_DAYS', 7),
             'formatter' => JsonFormatter::class,
+            'tap' => [RedactLogChannel::class],
+        ],
+
+        // Laravel Nightwatch (sumarlo a LOG_STACK en producción). El paquete lo
+        // registra solo si falta; se declara aquí para que pase por la redacción.
+        'nightwatch' => [
+            'driver' => 'custom',
+            'via' => NightwatchLogger::class,
+            'level' => env('NIGHTWATCH_LOG_LEVEL', env('LOG_LEVEL', $defaultLevel)),
             'tap' => [RedactLogChannel::class],
         ],
 

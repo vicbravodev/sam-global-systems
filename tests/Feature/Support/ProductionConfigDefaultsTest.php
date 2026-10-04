@@ -106,6 +106,30 @@ class ProductionConfigDefaultsTest extends TestCase
         $this->assertSame('http://ssr:13714', $ssr['url']);
     }
 
+    public function test_nightwatch_only_runs_with_a_token(): void
+    {
+        $this->assertFalse($this->configFile('nightwatch', ['NIGHTWATCH_ENABLED' => null, 'NIGHTWATCH_TOKEN' => null])['enabled']);
+        $this->assertFalse($this->configFile('nightwatch', ['NIGHTWATCH_ENABLED' => null, 'NIGHTWATCH_TOKEN' => ''])['enabled'], 'Un .env copiado de .env.example no debe intentar enviar.');
+        $this->assertTrue($this->configFile('nightwatch', ['NIGHTWATCH_ENABLED' => null, 'NIGHTWATCH_TOKEN' => 'tok'])['enabled']);
+        $this->assertFalse($this->configFile('nightwatch', ['NIGHTWATCH_ENABLED' => 'false', 'NIGHTWATCH_TOKEN' => 'tok'])['enabled']);
+    }
+
+    public function test_nightwatch_samples_requests_and_scheduled_tasks_but_keeps_every_exception(): void
+    {
+        $nightwatch = $this->configFile('nightwatch', [
+            'NIGHTWATCH_REQUEST_SAMPLE_RATE' => null,
+            'NIGHTWATCH_SCHEDULED_TASK_SAMPLE_RATE' => null,
+            'NIGHTWATCH_EXCEPTION_SAMPLE_RATE' => null,
+            'NIGHTWATCH_DEPLOY' => null,
+            'APP_VERSION' => 'abc123',
+        ]);
+
+        $this->assertSame(0.1, $nightwatch['sampling']['requests']);
+        $this->assertSame(0.1, $nightwatch['sampling']['scheduled_tasks']);
+        $this->assertSame(1.0, $nightwatch['sampling']['exceptions']);
+        $this->assertSame('abc123', $nightwatch['deployment'], 'El SHA de la imagen identifica el deploy.');
+    }
+
     /**
      * Evalúa `config/{name}.php` con las variables dadas (null = ausente).
      *
