@@ -162,4 +162,60 @@ class MapExternalEventTypeTest extends TestCase
             'MaxSpeed behavior label should map to the speeding event type via direct match (no conditions)',
         );
     }
+
+    public function test_trigger_id_rule_matches_the_panic_in_any_condition(): void
+    {
+        $tamperingType = EventType::factory()->create(['code' => 'tampering']);
+
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->provider->id,
+            'external_event_type' => 'AlertIncident',
+            'external_conditions_json' => ['data.conditions.*.triggerId' => 1045],
+            'mapped_event_type_id' => $tamperingType->id,
+            'priority' => 15,
+        ]);
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->provider->id,
+            'external_event_type' => 'AlertIncident',
+            'external_conditions_json' => ['data.conditions.*.triggerId' => 1034],
+            'mapped_event_type_id' => $this->panicType->id,
+            'priority' => 20,
+        ]);
+
+        $action = app(MapExternalEventType::class);
+
+        // Pánico en la segunda condición: gana por prioridad aunque la primera
+        // también tenga regla.
+        $both = ['data' => ['conditions' => [
+            ['triggerId' => 1045, 'description' => 'Tampering Detected'],
+            ['triggerId' => 1034, 'description' => 'Panic Button'],
+        ]]];
+        $this->assertSame($this->panicType->id, $action->execute($this->provider->id, 'AlertIncident', $both)?->mapped_event_type_id);
+
+        $tamperingOnly = ['data' => ['conditions' => [['triggerId' => 1045]]]];
+        $this->assertSame($tamperingType->id, $action->execute($this->provider->id, 'AlertIncident', $tamperingOnly)?->mapped_event_type_id);
+
+        // El texto ya no decide: una descripción renombrada sigue siendo pánico.
+        $renamed = ['data' => ['conditions' => [['triggerId' => 1034, 'description' => 'Botón de pánico']]]];
+        $this->assertSame($this->panicType->id, $action->execute($this->provider->id, 'AlertIncident', $renamed)?->mapped_event_type_id);
+
+        $this->assertNull($action->execute($this->provider->id, 'AlertIncident', ['data' => ['conditions' => []]]));
+        $this->assertNull($action->execute($this->provider->id, 'AlertIncident', ['eventType' => 'AlertIncident']));
+    }
+
+    public function test_condition_typed_as_text_in_the_ui_matches_a_numeric_payload(): void
+    {
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->provider->id,
+            'external_event_type' => 'AlertIncident',
+            'external_conditions_json' => ['data.conditions.*.triggerId' => '1034'],
+            'mapped_event_type_id' => $this->panicType->id,
+        ]);
+
+        $rule = app(MapExternalEventType::class)->execute($this->provider->id, 'AlertIncident', [
+            'data' => ['conditions' => [['triggerId' => 1034]]],
+        ]);
+
+        $this->assertSame($this->panicType->id, $rule?->mapped_event_type_id);
+    }
 }

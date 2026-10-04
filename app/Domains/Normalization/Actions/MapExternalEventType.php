@@ -3,11 +3,15 @@
 namespace App\Domains\Normalization\Actions;
 
 use App\Domains\Normalization\Models\EventMappingRule;
+use App\Support\Conditions\FlatConditionMatcher;
 use App\Support\SystemLog;
-use Illuminate\Support\Arr;
 
 class MapExternalEventType
 {
+    public function __construct(
+        private FlatConditionMatcher $matcher,
+    ) {}
+
     /**
      * Find the highest-priority active mapping rule for the given provider and external event type.
      *
@@ -78,9 +82,8 @@ class MapExternalEventType
     }
 
     /**
-     * Evaluate all conditions in external_conditions_json as AND logic
-     * against the raw payload using dot-notation path matching.
-     *
+     * Evaluate `external_conditions_json` (AND of equalities, `*` walks lists)
+     * against the raw payload; see {@see FlatConditionMatcher}.
      *
      * @param  array<string, mixed>|null  $payload
      * @return string|null null when every condition holds, else the first failed path
@@ -88,24 +91,6 @@ class MapExternalEventType
      */
     private function matchesConditions(EventMappingRule $rule, ?array $payload): ?string
     {
-        $conditions = $rule->external_conditions_json;
-
-        if ($conditions === null || $conditions === []) {
-            return null;
-        }
-
-        if ($payload === null) {
-            return '*';
-        }
-
-        foreach ($conditions as $dotPath => $expectedValue) {
-            $actualValue = Arr::get($payload, $dotPath);
-
-            if ($actualValue !== $expectedValue) {
-                return (string) $dotPath;
-            }
-        }
-
-        return null;
+        return $this->matcher->firstFailedPath($rule->external_conditions_json ?? [], $payload);
     }
 }
