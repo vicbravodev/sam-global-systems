@@ -3,6 +3,7 @@ import { Bell, Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FormCard } from '@/components/sam/field';
 import { ChipToggle } from '@/components/sam/settings/controls';
+import { DevicePushCard } from '@/components/sam/settings/device-push-card';
 import {
     SettingsPage,
     SettingsSection,
@@ -186,6 +187,12 @@ export default function NotificationsSettings({
                         : 'Cómo te llegan a ti los avisos. No cambia lo que reciben los demás.'
                 }
             >
+                <SettingsSection
+                    title="Avisos en este dispositivo"
+                    description="Se activa por teléfono o computadora; cada uno se configura por separado."
+                >
+                    <DevicePushCard />
+                </SettingsSection>
                 <SettingsSection
                     title="Por tipo de aviso"
                     description="Mientras no guardes una preferencia, se aplica la regla de tu equipo."

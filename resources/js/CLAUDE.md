@@ -66,6 +66,16 @@ Se prueba la lógica, no el markup: funciones de `lib/`, los `lib.ts` de cada fe
 - Se simula sólo el borde: `@inertiajs/react` (`router`, `usePage`), `sonner`, `@/echo`, `fetch` (`vi.stubGlobal`). La lógica bajo prueba, nunca.
 - Un helper nuevo en `lib/` o un `lib.ts`/hook con reglas de negocio llega con su test.
 
+## E2E (Playwright)
+
+Sólo flujos críticos de punta a punta (`tests/e2e/*.spec.ts`): login, pánico firmado → bandeja → detalle, tomar/resolver, cambio de Secret Key y alta de cliente. No es para cubrir pantallas: un flujo entra aquí si romperlo deja un pánico sin atender o a un cliente sin operar.
+
+- `npm run build && npm run test:e2e`. Levanta `php artisan serve` en `:8123` con SQLite propio (`database/e2e.sqlite`), cola `sync` (el pipeline entero corre dentro del webhook), sin sockets ni llaves de IA/Twilio (`tests/e2e/support/env.ts`). No toca la base de dev. Con `public/hot` presente usa el dev server de Vite.
+- Datos: `E2eSeeder` (dev + integración Samsara con Secret Key conocida + 2FA del super-admin). Antes de cada test se restaura la base sembrada y se vacía la caché (`support/test.ts`): los tests no dependen de su orden.
+- Sesiones por rol en `auth.setup.ts` → `test.use({ storageState: storageStateFor('monitor') })`. Pánicos con `sendPanic(request, { secret?, vehicle? })` (firma HMAC como Samsara).
+- Selectores por rol y texto visible (`getByRole`, `getByLabel`), nunca clases ni `data-*` de estilo. Si un selector no se puede escribir así, falta accesibilidad en el componente.
+- Tiempo real (Soketi) queda fuera: tras mandar el pánico se recarga la página.
+
 ## Gates y entorno
 
 - `npm run types:check && npm run lint:check && npm run format:check && npm test` (y `npm run build`).

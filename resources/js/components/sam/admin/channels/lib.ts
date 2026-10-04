@@ -37,13 +37,8 @@ export const CONFIG_FIELDS: Record<string, ConfigField[]> = {
             kind: 'number',
         },
     ],
-    push: [
-        {
-            key: 'firebase_credentials',
-            label: 'Credenciales de Firebase (JSON)',
-            kind: 'json',
-        },
-    ],
+    // Sin config por canal: las llaves VAPID viven en env de plataforma.
+    push: [],
     slack: [
         { key: 'slack_webhook_url', label: 'Webhook de Slack', kind: 'secret' },
     ],
@@ -59,7 +54,7 @@ export const providerFor = (type: string): string =>
     type === 'sms' || type === 'whatsapp' || type === 'voice'
         ? 'twilio'
         : type === 'push'
-          ? 'firebase'
+          ? 'webpush'
           : type === 'slack'
             ? 'slack'
             : type === 'webhook'

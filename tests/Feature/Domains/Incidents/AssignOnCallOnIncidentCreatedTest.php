@@ -107,7 +107,7 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
 
         // The team-wide critical alert already reaches the operator out of
         // band: the directed "it's yours" notice is in-app only (no 2nd SMS).
-        $this->assertSame(['web'], $notification->payload_json['force_channels']);
+        $this->assertSame(['web', 'push'], $notification->payload_json['force_channels']);
         $this->assertTrue(Notification::withoutGlobalScopes()
             ->where('event_key', "incident_created:{$incident->id}")
             ->exists());
@@ -132,7 +132,7 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
             && $c['input']['assignee_user_id'] === $this->operator->id
             && $c['result']['notification_id'] === $notification->id
             && $c['result']['notification_reused'] === false
-            && $c['result']['forced_channel_types'] === ['web']);
+            && $c['result']['forced_channel_types'] === ['web', 'push']);
 
         $json = json_encode($this->systemLogEntries());
         $this->assertStringNotContainsString((string) json_encode($this->operator->email), $json);
