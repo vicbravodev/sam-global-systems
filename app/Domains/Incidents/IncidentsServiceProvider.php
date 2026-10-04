@@ -19,6 +19,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Policies\IncidentPolicy;
 use App\Domains\Incidents\Queries\DbIncidentMetricsQuery;
 use App\Domains\Normalization\Events\EventNormalized;
+use App\Domains\Normalization\Events\NormalizedEventUpdated;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -38,6 +39,8 @@ class IncidentsServiceProvider extends ServiceProvider
         // Reevaluaciones (v2+): actualizan el incidente del evento, no duplican.
         Event::listen(DecisionMade::class, ApplyReevaluationOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
+        // Un safety event descartado en Samsara actualiza su fila en sitio.
+        Event::listen(NormalizedEventUpdated::class, ApplyExternalResolutionOnEventNormalized::class);
         // Carril rápido: una emergencia abre su incidente crítico antes de la IA.
         Event::listen(EventNormalized::class, OpenEmergencyIncidentOnEventNormalized::class);
         Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);

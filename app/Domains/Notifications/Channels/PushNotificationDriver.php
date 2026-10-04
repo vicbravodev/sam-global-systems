@@ -4,96 +4,154 @@ namespace App\Domains\Notifications\Channels;
 
 use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
-use App\Domains\Notifications\Data\FcmSendReport;
 use App\Domains\Notifications\Data\RenderedNotification;
+use App\Domains\Notifications\Data\WebPushOutcome;
+use App\Domains\Notifications\Data\WebPushTarget;
+use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Models\NotificationChannel;
-use App\Domains\Notifications\Models\UserPushToken;
+use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\PushSubscription;
+use App\Domains\Notifications\Support\PushPayload;
+use App\Models\Team;
+use App\Models\User;
 use App\Support\SafeErrorMessage;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
+use Throwable;
 
 /**
- * Firebase Cloud Messaging driver.
- *
- * Required config_json keys:
- *   - firebase_credentials — JSON string of the service-account file (cifrado at rest).
- *
- * The recipient's `address` is interpreted as a User id. Tokens are looked
- * up in the `user_push_tokens` table; tokens reported by Firebase as
- * invalid (UNREGISTERED, INVALID_ARGUMENT, NOT_FOUND) are pruned from the
- * table so subsequent runs do not retry them.
+ * Avisos al dispositivo vía Web Push (VAPID). `address` es el id del usuario
+ * (NotificationRecipient::addressForChannel) y el team sale de la fila de
+ * entrega: sólo se manda a las suscripciones de ese usuario EN ese team, y
+ * sólo si sigue siendo miembro. Es un canal gratuito que no interrumpe: no
+ * sustituye la llamada ni frena su reintento.
  */
 class PushNotificationDriver implements NotificationDriver
 {
+    private const CRITICAL_TTL = 3600;
+
+    private const DEFAULT_TTL = 86400;
+
     public function __construct(
-        private readonly FcmMessenger $messenger,
+        private readonly WebPushMessenger $messenger,
     ) {}
 
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
-        $config = $channel->config_json ?? [];
+        $input = ['delivery_id' => $notification->deliveryId];
 
-        if (! isset($config['firebase_credentials']) || ! is_string($config['firebase_credentials']) || $config['firebase_credentials'] === '') {
-            return DeliveryResult::failure('firebase_credentials missing');
-        }
-
-        if (! is_numeric($notification->address)) {
-            return DeliveryResult::failure('push recipient must be a numeric user id');
+        if (! ctype_digit($notification->address)) {
+            return $this->fail('invalid_address', $input, permanent: true);
         }
 
         $userId = (int) $notification->address;
+        $input['user_id'] = $userId;
 
-        $tokens = UserPushToken::query()
-            ->where('user_id', $userId)
-            ->get(['token'])
-            ->map(fn (UserPushToken $pushToken): string => $pushToken->token)
-            ->all();
-        $tokens = array_values($tokens);
-
-        if ($tokens === []) {
-            return DeliveryResult::failure('no push tokens registered for user');
+        if (! $this->messenger->isConfigured()) {
+            return $this->fail('not_configured', $input, permanent: true);
         }
 
-        $payload = [
-            'title' => $notification->subject ?? '',
-            'body' => $notification->body,
-            'data' => $notification->variables,
-        ];
+        $delivery = $notification->deliveryId !== null
+            ? NotificationDelivery::withoutGlobalScopes()->with('notification')->find($notification->deliveryId)
+            : null;
+
+        if ($delivery === null || $delivery->notification === null) {
+            return $this->fail('no_delivery', $input, permanent: true);
+        }
+
+        $teamId = $delivery->team_id;
+        $input['team_id'] = $teamId;
+        $team = Team::query()->find($teamId);
+        $user = User::query()->find($userId);
+
+        if ($team === null || $user === null || ! $user->belongsToTeam($team)) {
+            return $this->fail('not_member', $input, permanent: true);
+        }
+
+        $subscriptions = TenantContext::for($teamId, fn () => PushSubscription::query()
+            ->where('team_id', $teamId)
+            ->where('user_id', $userId)
+            ->get());
+
+        if ($subscriptions->isEmpty()) {
+            return $this->fail('no_subscriptions', $input, permanent: true);
+        }
+
+        $critical = $delivery->notification->priority === NotificationPriority::Critical;
+        $payload = PushPayload::build($delivery->notification, $team, (string) $notification->subject, $notification->body);
+
+        $targets = [];
+
+        foreach ($subscriptions as $subscription) {
+            $targets[] = new WebPushTarget($subscription->id, $subscription->endpoint, $subscription->public_key, $subscription->auth_token, $subscription->content_encoding);
+        }
 
         try {
-            $report = $this->messenger->sendMulticast($config, $payload, $tokens);
-        } catch (\Throwable $e) {
-            return DeliveryResult::failure('fcm error: '.SafeErrorMessage::from($e), [
-                'driver' => 'push',
-            ]);
+            $outcomes = $this->messenger->send(
+                $targets,
+                $payload,
+                $critical ? self::CRITICAL_TTL : self::DEFAULT_TTL,
+                $critical ? 'high' : 'normal',
+            );
+        } catch (Throwable $e) {
+            SystemLog::failed('notifications.push.failed', reason: 'provider_error', input: $input, error: $e);
+
+            return DeliveryResult::failure('webpush error: '.SafeErrorMessage::from($e), ['driver' => 'push']);
         }
 
-        $this->pruneInvalidTokens($report);
+        $this->recordOutcomes($teamId, $outcomes, $input);
 
-        if ($report->successes === 0) {
-            return DeliveryResult::failure('fcm: all '.$report->failures.' deliveries failed', [
-                'driver' => 'push',
-                'successes' => 0,
-                'failures' => $report->failures,
-            ]);
+        $successes = count(array_filter($outcomes, fn (WebPushOutcome $o) => $o->success));
+        $result = ['subscriptions' => count($targets), 'successes' => $successes, 'failures' => count($outcomes) - $successes];
+
+        if ($successes === 0) {
+            SystemLog::failed('notifications.push.failed', reason: 'all_failed', input: $input, result: $result);
+
+            return DeliveryResult::failure('webpush: all deliveries failed', ['driver' => 'push', ...$result]);
         }
+
+        SystemLog::ok('notifications.push.sent', input: $input, calc: ['critical' => $critical], result: $result);
 
         return DeliveryResult::success(
-            providerMessageId: 'fcm-multicast-'.uniqid(),
-            response: [
-                'driver' => 'push',
-                'successes' => $report->successes,
-                'failures' => $report->failures,
-            ],
+            providerMessageId: 'webpush-'.$notification->deliveryId,
+            response: ['driver' => 'push', ...$result],
         );
     }
 
-    private function pruneInvalidTokens(FcmSendReport $report): void
+    /**
+     * @param  list<WebPushOutcome>  $outcomes
+     * @param  array<string, mixed>  $input
+     */
+    private function recordOutcomes(int $teamId, array $outcomes, array $input): void
     {
-        if ($report->invalidTokens === []) {
-            return;
+        foreach ($outcomes as $outcome) {
+            if ($outcome->expired) {
+                PushSubscription::withoutGlobalScopes()
+                    ->where('team_id', $teamId)
+                    ->whereKey($outcome->subscriptionId)
+                    ->delete();
+
+                SystemLog::ok('notifications.push.subscription_pruned', input: [...$input, 'subscription_id' => $outcome->subscriptionId], result: ['status_code' => $outcome->statusCode]);
+            }
         }
 
-        UserPushToken::query()
-            ->whereIn('token', $report->invalidTokens)
-            ->delete();
+        $delivered = array_map(fn (WebPushOutcome $o) => $o->subscriptionId, array_filter($outcomes, fn (WebPushOutcome $o) => $o->success));
+
+        if ($delivered !== []) {
+            PushSubscription::withoutGlobalScopes()
+                ->where('team_id', $teamId)
+                ->whereKey($delivered)
+                ->update(['last_used_at' => now()]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     */
+    private function fail(string $reason, array $input, bool $permanent): DeliveryResult
+    {
+        SystemLog::failed('notifications.push.failed', reason: $reason, input: $input);
+
+        return DeliveryResult::failure('push_'.$reason, ['driver' => 'push'], $permanent);
     }
 }

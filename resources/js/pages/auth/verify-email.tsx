@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
+import { logoutForgettingDevice } from '@/lib/web-push';
 import { logout } from '@/routes';
 import { send } from '@/routes/verification';
 
@@ -36,6 +37,10 @@ export default function VerifyEmail({ status }: { status?: string }) {
 
                         <TextLink
                             href={logout()}
+                            onClick={(event) => {
+                                event.preventDefault();
+                                void logoutForgettingDevice();
+                            }}
                             className="mx-auto block text-sm"
                         >
                             Cerrar sesión

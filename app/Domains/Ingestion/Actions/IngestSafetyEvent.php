@@ -20,6 +20,12 @@ class IngestSafetyEvent
     public const string USAGE_METER_CODE = 'ingested_events';
 
     /**
+     * Prefijo de la clave de dedup (`safety:{id}:{eventState}`) y de la
+     * identidad de la entidad normalizada (`safety:{id}`).
+     */
+    public const string KEY_PREFIX = 'safety:';
+
+    /**
      * Circuito del lote: el poll reutiliza esta instancia para todos sus
      * eventos; tras el primer fallo de storage no se vuelve a esperar.
      */
@@ -53,7 +59,7 @@ class IngestSafetyEvent
         $eventState = (string) ($payload['eventState'] ?? 'unknown');
 
         $deduplicationKey = $externalEventId !== null
-            ? "safety:{$externalEventId}:{$eventState}"
+            ? self::KEY_PREFIX."{$externalEventId}:{$eventState}"
             : null;
 
         $isKnownDuplicate = $deduplicationKey !== null

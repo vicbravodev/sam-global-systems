@@ -35,3 +35,9 @@ yarn-error.log
 *.bak
 *.bak-*
 /.playwright-cli/
+
+# Playwright (E2E)
+/test-results/
+/playwright-report/
+/blob-report/
+/tests/e2e/.auth/

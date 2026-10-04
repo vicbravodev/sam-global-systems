@@ -23,6 +23,7 @@ class PlatformChannelSeeder extends Seeder
             ['code' => 'sam_sms', 'name' => 'SMS SAM (Twilio)', 'provider' => 'twilio', 'channel_type' => ChannelType::Sms],
             ['code' => 'sam_whatsapp', 'name' => 'WhatsApp SAM (Twilio)', 'provider' => 'twilio', 'channel_type' => ChannelType::Whatsapp],
             ['code' => 'sam_voice', 'name' => 'Llamadas SAM (Twilio)', 'provider' => 'twilio', 'channel_type' => ChannelType::Voice],
+            ['code' => 'sam_push', 'name' => 'Avisos al dispositivo', 'provider' => 'webpush', 'channel_type' => ChannelType::Push],
         ];
 
         foreach ($channels as $channel) {

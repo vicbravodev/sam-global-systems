@@ -3,6 +3,7 @@
 use App\Http\Controllers\Settings\NotificationPreferencesController;
 use App\Http\Controllers\Settings\PhoneVerificationController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\PushSubscriptionController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -39,6 +40,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // (NotificationPreference is tenant-scoped via BelongsToTenant).
     Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('notification-preferences.edit');
     Route::put('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('notification-preferences.update');
+
+    // Dispositivo actual para avisos de SAM (Web Push), en el team actual.
+    Route::post('settings/push-subscriptions', [PushSubscriptionController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('push-subscriptions.store');
+    Route::delete('settings/push-subscriptions', [PushSubscriptionController::class, 'destroy'])
+        ->name('push-subscriptions.destroy');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');

@@ -26,6 +26,7 @@ class NotificationPreferencesController extends Controller
     private const BASE_TYPES = [
         'incident.created',
         'incident.sla_breached',
+        'incident.assigned',
         'incident.assigned.on_call',
     ];
 

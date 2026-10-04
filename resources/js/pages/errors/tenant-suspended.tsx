@@ -1,6 +1,7 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import AppLogo from '@/components/app-logo';
 import { Button } from '@/components/ui/button';
+import { logoutForgettingDevice } from '@/lib/web-push';
 import { logout } from '@/routes';
 
 interface OtherTeam {
@@ -70,7 +71,10 @@ export default function TenantSuspended({
                         <Link
                             href={logout()}
                             as="button"
-                            onClick={() => router.flushAll()}
+                            onClick={(event) => {
+                                event.preventDefault();
+                                void logoutForgettingDevice();
+                            }}
                         >
                             Cerrar sesión
                         </Link>

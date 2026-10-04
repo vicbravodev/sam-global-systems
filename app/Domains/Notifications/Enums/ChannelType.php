@@ -37,7 +37,7 @@ enum ChannelType: string implements HasLabel
         return match ($this) {
             self::Email => 'Correo',
             self::Sms => 'SMS',
-            self::Push => 'Push',
+            self::Push => 'Avisos al dispositivo',
             self::Whatsapp => 'WhatsApp',
             self::Web => 'Web',
             self::Slack => 'Slack',

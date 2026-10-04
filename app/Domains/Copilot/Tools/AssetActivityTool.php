@@ -28,6 +28,7 @@ final class AssetActivityTool implements CopilotTool
         $period = $context->period;
 
         $events = NormalizedEvent::query()
+            ->countable()
             ->where('team_id', $context->teamId)
             ->where('asset_id', $asset->id)
             ->whereBetween('occurred_at', [$period->from, $period->to])

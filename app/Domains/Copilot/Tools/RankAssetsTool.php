@@ -246,6 +246,7 @@ final class RankAssetsTool implements CopilotTool
     private function countEvents(CopilotToolContext $context, Collection $ids, ?string $typeCode): Collection
     {
         return NormalizedEvent::query()
+            ->countable()
             ->where('team_id', $context->teamId)
             ->whereIn('asset_id', $ids)
             ->whereBetween('occurred_at', [$context->period->from, $context->period->to])
