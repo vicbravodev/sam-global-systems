@@ -41,6 +41,10 @@ class TelematicsOperationsTest extends TestCase
 
     public function test_the_status_command_shows_lag_pause_and_errors_per_feed(): void
     {
+        // El lag se mide contra now(): con el reloj real, un runner lento lee
+        // "8 s" en vez de "7 s".
+        $this->freezeTime();
+
         $integration = TenantIntegration::factory()->active()->create(['name' => 'Samsara Norte']);
 
         TelematicsFeedCursor::factory()->create([
