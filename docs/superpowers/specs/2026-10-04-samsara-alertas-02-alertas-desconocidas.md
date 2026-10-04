@@ -33,14 +33,16 @@ regla) se trata como ilegible: se escala. Fallar hacia el lado seguro.
 
 ### Lectura única de los disparadores
 
-Clase nueva `App\Domains\Normalization\Support\ProviderAlertTriggers`:
+Enum nuevo `App\Domains\Normalization\Enums\SamsaraAlertTrigger` (int-backed, con
+los `triggerTypeId` que SAM conoce: `PanicButton = 1034`, `TamperingDetected = 1045`
+y los del spec 3):
 
 - `fromPayload(array $payload): list<int>` — `triggerId` enteros de
   `data.conditions.*` (acepta enteros y cadenas numéricas; ignora el resto).
 - `classify(list<int>): 'unreadable'|'emergency'|'recognized'`.
-- `EMERGENCY_TRIGGER_IDS = [1034]` (Panic Button). Es la misma constante que usa el
-  poll (`PollAlertIncidentsJob::PANIC_BUTTON_TRIGGER_TYPE_ID`), que pasa a
-  referenciarla.
+- `isEmergency()`: sólo `PanicButton`. El poll
+  (`PollAlertIncidentsJob::PANIC_BUTTON_TRIGGER_TYPE_ID`) pasa a usar
+  `SamsaraAlertTrigger::PanicButton->value`.
 
 ### Escalado (`AlertOnUnmappedProviderAlert`)
 
@@ -55,7 +57,7 @@ los disparadores del raw event:
 Nuevo motivo de omisión `skip_recognized_provider_alert`: el evento es `unmapped`,
 su `external_event_type` está en `pipeline.unmapped_alert_types` y sus disparadores
 (`provider_trigger_ids` del payload normalizado; para `unmapped` el payload
-normalizado es el crudo, así que se lee con `ProviderAlertTriggers::fromPayload`)
+normalizado es el crudo, así que se lee con `SamsaraAlertTrigger::fromPayload`)
 se clasifican `recognized`. El gate ya registra el motivo en su log.
 
 Consecuencia (igual que las categorías omitidas): sin evaluación no hay decisión
@@ -76,7 +78,7 @@ y con el spec 1 las configuraciones que consulta son las de pánico.
 
 ## Tests
 
-- `ProviderAlertTriggersTest` (unit): sin `conditions`, `conditions` sin
+- `SamsaraAlertTriggerTest` (unit): sin `conditions`, `conditions` sin
   `triggerId`, `triggerId` no numérico, mezcla de reconocido + emergencia →
   `emergency`, cadena numérica.
 - `UnmappedProviderAlertTest`: geocerca (`triggerId` 5016) sin regla → no escala,

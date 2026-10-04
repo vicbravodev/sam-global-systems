@@ -35,8 +35,9 @@ añade un comodín de lista:
   `"1034"` (lo que escribe un operador en la UI) son iguales. `true`/`false`/`null`
   se comparan estrictos (`"true"` no es `true`).
 
-La lógica vive en una clase nueva, `App\Domains\Normalization\Support\MappingConditionMatcher`,
-que usan `MapExternalEventType` y el probador de reglas (`RuleTestController::testMapping`),
+La lógica vive en una clase nueva, `App\Support\Conditions\FlatConditionMatcher`
+(junto a `ValidFlatConditions`, que valida el mismo formato), que usan
+`MapExternalEventType` y el probador de reglas (`RuleTestController::testMapping`),
 que hoy duplica la comparación. Devuelve la primera ruta que falla (para el log) o
 `null`.
 
@@ -89,7 +90,7 @@ códigos nuevos.
 
 ## Tests
 
-- `MappingConditionMatcherTest` (unit): comodín con match en la condición 1,
+- `FlatConditionMatcherTest` (unit): comodín con match en la condición 1,
   ninguna condición, lista vacía, tipos (`1034` vs `"1034"`, `true` vs `"true"`),
   rutas sin comodín como hoy.
 - `MapExternalEventTypeTest`: pánico en la condición 1 de 2 gana por prioridad;

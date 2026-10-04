@@ -36,8 +36,8 @@ sin clasificar". En ningún caso se relaciona con el primero.
 - Reglas sembradas (prioridad 5, por debajo de pánico y tampering):
   `data.conditions.*.triggerId` ∈ {1023, 5033, 5039, 5022} → `provider_safety_alert`.
   Una regla por `triggerId` (el matcher es AND de igualdades).
-- `ProviderAlertTriggers::SAFETY_ECHO_TRIGGER_IDS` lista esos ids (lo usan el
-  seeder y el listener).
+- `SamsaraAlertTrigger` gana esos casos y `isSafetyEcho()` (lo usan el seeder y
+  el listener).
 
 ¿Por qué no mapear el eco directamente al tipo del safety event (p. ej.
 `collision`)? Porque el `AlertIncident` no trae la etiqueta: no sabemos si fue un
