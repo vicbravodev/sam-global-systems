@@ -20,6 +20,7 @@
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
         "league/flysystem-aws-s3-v3": "^3.32",
+        "minishlink/web-push": "^11.0",
         "phpoffice/phpspreadsheet": "^5",
         "pusher/pusher-php-server": "^7.2",
         "twilio/sdk": "^8.11"
