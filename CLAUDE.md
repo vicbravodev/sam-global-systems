@@ -13,10 +13,10 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 | Formato PHP | automático: hook `PostToolUse` corre Pint en cada `.php` editado · manual: `vendor/bin/pint --dirty --format agent` — nunca `--test` |
 | Tests filtrados | `php artisan test --compact --filter=Nombre` · `php artisan test --compact tests/Feature/Domains/{Dominio}` |
 | Suite completa | `php artisan test --compact` |
-| Frontend | `npm run types:check && npm run lint:check && npm run format:check` · `npm run build` |
+| Frontend | `npm run types:check && npm run lint:check && npm run format:check` · `npm test` (Vitest) · `npm run build` |
 | Análisis estático | `composer analyse` (Larastan nivel 8 + phpstan strict-rules y deprecation-rules, baseline vacío en `phpstan-baseline.neon`) |
 | Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate --with-form` |
-| Gate antes de push | los cinco de arriba (formato, suite, lint/format, types, análisis estático) o `composer ci:check` |
+| Gate antes de push | los de arriba (formato, suite, lint/format, types, Vitest, análisis estático) o `composer ci:check` |
 | Dev | `composer run dev` · servicios: `./vendor/bin/sail up -d pgsql valkey rustfs soketi mailpit` |
 | Worktree nuevo | skill `worktree-bootstrap` ANTES de cualquier gate (`vendor/`, `.env` y tipos Wayfinder no vienen en el checkout) |
 
