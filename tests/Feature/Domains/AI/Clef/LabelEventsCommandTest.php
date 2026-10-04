@@ -95,6 +95,19 @@ class LabelEventsCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_event_labeled_on_an_earlier_version_is_not_offered_again(): void
+    {
+        $team = Team::factory()->create();
+        $user = $this->member($team);
+        $v1 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 1, 'operator_verdict' => OperatorVerdict::FalsePositive]);
+        $v2 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 2]);
+        $v2->forceFill(['normalized_event_id' => $v1->normalized_event_id])->save();
+
+        $this->artisan('ai:label-events', ['--team' => $team->id, '--user' => $user->email])
+            ->expectsOutputToContain('No hay eventos pendientes')
+            ->assertSuccessful();
+    }
+
     public function test_rejects_user_outside_the_team(): void
     {
         $team = Team::factory()->create();

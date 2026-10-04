@@ -110,8 +110,11 @@ class LabelEventsCommand extends Command
             ->orderByDesc('evaluation_version')
             ->orderByDesc('id')
             ->get()
-            ->unique('normalized_event_id')
-            ->filter(fn (AIEventEvaluation $e): bool => $e->operator_verdict === null);
+            ->groupBy('normalized_event_id')
+            // Un veredicto en cualquier versión ya etiqueta el evento.
+            ->reject(fn ($versions): bool => $versions->contains(fn (AIEventEvaluation $e): bool => $e->operator_verdict !== null))
+            ->map(fn ($versions): AIEventEvaluation => $versions->first())
+            ->values();
 
         /** @var Collection<int, Collection<int, AIEventEvaluation>> $groups */
         $groups = $candidates

@@ -80,6 +80,25 @@ class ClefShadowComparisonQueryTest extends TestCase
         $this->assertSame(1.0, $all['clef']['agree_with_gpt']);
     }
 
+    public function test_verdict_on_earlier_version_scores_that_version_not_the_one_that_saw_it(): void
+    {
+        $team = Team::factory()->create();
+        // v1: GPT dijo real; el operador la marcó falso positivo.
+        $v1 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 1, 'classification' => EventClassification::RealEvent, 'operator_verdict' => OperatorVerdict::FalsePositive]);
+        // v2 (reevaluación con el veredicto a la vista): GPT ahora dice falso positivo.
+        $v2 = $this->makeEvaluation($team, evaluation: ['evaluation_version' => 2, 'classification' => EventClassification::FalsePositive]);
+        $v2->forceFill(['normalized_event_id' => $v1->normalized_event_id])->save();
+        $this->shadow($v1, 'noise', 0.1);
+        $this->shadow($v2, 'false_positive', 0.1);
+
+        $all = app(ClefShadowComparisonQuery::class)->execute($team->id, now()->subDay())['all'];
+
+        $this->assertSame(1, $all['gpt']['verdict_n']);
+        $this->assertSame(0.0, $all['gpt']['discard_correct']);
+        $this->assertSame(1, $all['clef']['verdict_n']);
+        $this->assertSame(1.0, $all['clef']['discard_correct']);
+    }
+
     public function test_failed_rows_are_counted_apart(): void
     {
         $team = Team::factory()->create();
