@@ -23,6 +23,8 @@
     "include": [
         "resources/js/**/*.ts",
         "resources/js/**/*.d.ts",
-        "resources/js/**/*.tsx"
+        "resources/js/**/*.tsx",
+        "tests/e2e/**/*.ts",
+        "playwright.config.ts"
     ]
 }

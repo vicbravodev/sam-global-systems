@@ -72,7 +72,7 @@ class TenantConfigPageTest extends TestCase
                 ->where('channelTypes.0', ['value' => 'email', 'label' => 'Correo'])
                 // Sólo los canales con canal de plataforma activo.
                 ->where('channelTypes', fn ($types) => collect($types)->pluck('value')->sort()->values()->all()
-                    === ['email', 'sms', 'voice', 'web', 'whatsapp'])
+                    === ['email', 'push', 'sms', 'voice', 'web', 'whatsapp'])
                 ->where('notificationTypeOptions', fn ($options) => collect($options)
                     ->contains(['value' => 'incident.sla_breached', 'label' => 'Incidente sin atender a tiempo (SLA vencido)']))
                 ->has('notificationPolicies', 1)

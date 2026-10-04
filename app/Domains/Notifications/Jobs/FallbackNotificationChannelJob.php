@@ -10,6 +10,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\PushSubscription;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Domains\Notifications\Support\MessagingSuppressions;
@@ -131,9 +132,12 @@ class FallbackNotificationChannelJob implements ShouldQueue
             }
 
             $address = $primary->recipient->addressForChannel($type);
-            $suppressed = $address !== null && $address !== '' ? MessagingSuppressions::reasonFor($type, $address) : null;
+            $hasAddress = $address !== null && $address !== '';
+            $suppressed = $hasAddress ? MessagingSuppressions::reasonFor($type, $address) : null;
+            $noPushDevice = $hasAddress && $type === ChannelType::Push && ! PushSubscription::existsFor($teamId, (int) $address);
             $invalid = match (true) {
-                $address === null || $address === '' => "no {$type->value} address (missing phone/email) for recipient",
+                ! $hasAddress => "no {$type->value} address (missing phone/email) for recipient",
+                $noPushDevice => 'no device subscribed for push',
                 $suppressed !== null => "address unavailable for {$type->value}",
                 default => ChannelAddress::invalidReason($type, $address),
             };
@@ -143,7 +147,8 @@ class FallbackNotificationChannelJob implements ShouldQueue
             if ($delivery === null || $invalid !== null) {
                 $walk[] = ['channel_type' => $type->value, 'outcome' => match (true) {
                     $delivery === null => 'race_lost',
-                    $address === null || $address === '' => 'no_address',
+                    ! $hasAddress => 'no_address',
+                    $noPushDevice => 'no_push_device',
                     $suppressed !== null => 'suppressed',
                     default => 'invalid_address',
                 }];

@@ -6,13 +6,17 @@ use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\Assets\Actions\RaiseAfterHoursMovement;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Context\Enums\GeofenceCategory;
+use App\Domains\Context\Models\Geofence;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
@@ -280,5 +284,53 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    /**
+     * @return array<string, array{0: GeofenceCategory}>
+     */
+    public static function safeCategories(): array
+    {
+        return [
+            'base propia' => [GeofenceCategory::Base],
+            'sitio de cliente' => [GeofenceCategory::ClientSite],
+        ];
+    }
+
+    #[DataProvider('safeCategories')]
+    public function test_moving_inside_own_base_or_client_site_does_not_alert(GeofenceCategory $category): void
+    {
+        $this->makeSchedule();
+        $this->makeMovingAsset();
+        Geofence::factory()->create(['team_id' => $this->teamId, 'category' => $category]);
+
+        $this->runJob();
+
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'inside_safe_geofence'
+            && $c['calc']['safe_geofence_category'] === $category->value);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_risk_zone_does_not_suppress_the_alert(): void
+    {
+        $this->makeSchedule();
+        $this->makeMovingAsset();
+        Geofence::factory()->riskZone()->create(['team_id' => $this->teamId]);
+
+        $this->runJob();
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_another_tenants_base_does_not_suppress_the_alert(): void
+    {
+        $this->makeSchedule();
+        $this->makeMovingAsset();
+        Geofence::factory()->create(['team_id' => Team::factory()->create()->id, 'category' => GeofenceCategory::Base]);
+
+        $this->runJob();
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
     }
 }

@@ -14,6 +14,7 @@ declare module '@inertiajs/core' {
             adminBadges: AdminBadges | null;
             navBadges: NavBadges | null;
             nav: NavPermissions | null;
+            webPush: { publicKey: string | null };
             copilot: { enabled: boolean; canViewUsage: boolean } | null;
             tenantSetup: {
                 ready: boolean;

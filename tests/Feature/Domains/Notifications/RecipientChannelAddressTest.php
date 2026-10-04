@@ -65,7 +65,6 @@ class RecipientChannelAddressTest extends TestCase
         ]);
 
         $this->assertSame('someone@example.com', $recipient->addressForChannel(ChannelType::Web));
-        $this->assertSame('someone@example.com', $recipient->addressForChannel(ChannelType::Push));
     }
 
     public function test_team_fanout_omits_unverified_user_phone(): void
@@ -199,5 +198,27 @@ class RecipientChannelAddressTest extends TestCase
         $this->assertSame(2, $explain['candidates_count']);
         $this->assertCount(1, $explain['descriptors']);
         $this->assertSame(['no_email' => 1], $explain['dropped_count_by_reason']);
+    }
+
+    public function test_push_address_is_the_user_id_for_user_recipients(): void
+    {
+        $recipient = NotificationRecipient::factory()->make([
+            'recipient_type' => RecipientType::User,
+            'recipient_reference_id' => '17',
+            'address' => 'ana@example.com',
+        ]);
+
+        $this->assertSame('17', $recipient->addressForChannel(ChannelType::Push));
+    }
+
+    public function test_push_has_no_address_for_external_contacts(): void
+    {
+        $recipient = NotificationRecipient::factory()->make([
+            'recipient_type' => RecipientType::ExternalContact,
+            'recipient_reference_id' => null,
+            'address' => 'externo@example.com',
+        ]);
+
+        $this->assertNull($recipient->addressForChannel(ChannelType::Push));
     }
 }

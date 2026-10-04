@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Concerns\HasTeams;
-use App\Domains\Notifications\Models\UserPushToken;
+use App\Domains\Notifications\Models\PushSubscription;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -77,11 +77,11 @@ class User extends Authenticatable
     }
 
     /**
-     * @return HasMany<UserPushToken, $this>
+     * @return HasMany<PushSubscription, $this>
      */
-    public function pushTokens(): HasMany
+    public function pushSubscriptions(): HasMany
     {
-        return $this->hasMany(UserPushToken::class);
+        return $this->hasMany(PushSubscription::class);
     }
 
     /**

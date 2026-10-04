@@ -111,7 +111,7 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
             $notifiedResult = [
                 'notification_id' => $notification->id,
                 'notification_reused' => $notification->wasRecentlyCreated === false,
-                'forced_channel_types' => [ChannelType::Web->value],
+                'forced_channel_types' => [ChannelType::Web->value, ChannelType::Push->value],
             ];
             DB::afterCommit(fn () => SystemLog::ok('incidents.on_call.notified', input: $notifyInput, result: $notifiedResult));
 
@@ -148,7 +148,7 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
                 'incident_type' => $incident->type?->code,
                 'severity' => $incident->priority?->code,
                 'incident_title' => $incident->title,
-                'force_channels' => [ChannelType::Web->value],
+                'force_channels' => [ChannelType::Web->value, ChannelType::Push->value],
                 'recipients' => [
                     [
                         'recipient_type' => 'user',

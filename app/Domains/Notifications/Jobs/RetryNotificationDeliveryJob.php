@@ -11,6 +11,7 @@ use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
+use App\Domains\Notifications\Models\PushSubscription;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Support\JobFailureReporter;
@@ -232,6 +233,10 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         $address = $recipient->addressForChannel($type);
 
         if ($address === null || $address === '' || ChannelAddress::invalidReason($type, $address) !== null) {
+            return null;
+        }
+
+        if ($type === ChannelType::Push && ! PushSubscription::existsFor($notification->team_id, (int) $address)) {
             return null;
         }
 

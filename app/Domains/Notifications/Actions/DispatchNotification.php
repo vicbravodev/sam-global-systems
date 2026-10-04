@@ -14,6 +14,7 @@ use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
+use App\Domains\Notifications\Models\PushSubscription;
 use App\Domains\Notifications\Support\CancelBlockedNotification;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\MessagingSuppressions;
@@ -146,6 +147,18 @@ class DispatchNotification
 
                     SystemLog::skipped('notifications.delivery.skipped', reason: 'no_address', input: $channelInput);
                     $skippedByReason['no_address'] = ($skippedByReason['no_address'] ?? 0) + 1;
+
+                    continue;
+                }
+
+                // Push sin dispositivo en este team: no hay a dónde mandar. No es
+                // un fallo (no dispara fallback ni error), igual que no_address.
+                if ($channel->channel_type === ChannelType::Push
+                    && ! PushSubscription::existsFor($notification->team_id, (int) $targetAddress)) {
+                    $this->recordSkippedDelivery($notification, $recipient, $channel, 'no device subscribed for push');
+
+                    SystemLog::skipped('notifications.delivery.skipped', reason: 'no_push_device', input: $channelInput);
+                    $skippedByReason['no_push_device'] = ($skippedByReason['no_push_device'] ?? 0) + 1;
 
                     continue;
                 }

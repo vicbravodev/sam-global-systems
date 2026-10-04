@@ -86,6 +86,13 @@ return [
     */
     'after_hours_cooldown_hours' => 12,
 
+    /*
+    | After-hours movement inside one of these geofence categories of the
+    | tenant (its own base, a client's site) is expected yard or delivery
+    | activity, not misuse: no alert.
+    */
+    'after_hours_safe_geofence_categories' => ['base', 'client_site'],
+
     'retention' => [
         // Raw GPS points. Every reader of the history looks at most 24 h back;
         // incident trails are frozen into the incident before this runs.

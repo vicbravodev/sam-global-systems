@@ -34,14 +34,17 @@ class NotificationRecipient extends Model
 
     /**
      * The destination to use for a given channel: telephony channels need a
-     * phone, mail needs an email (falling back to the legacy address), and
-     * everything else keeps using the legacy address.
+     * phone, mail needs an email (falling back to the legacy address), push
+     * needs the SAM user id (sólo usuarios tienen dispositivos) and everything else keeps using the legacy address.
      */
     public function addressForChannel(ChannelType $channelType): ?string
     {
         return match ($channelType) {
             ChannelType::Sms, ChannelType::Voice, ChannelType::Whatsapp => self::presentOrNull($this->phone),
             ChannelType::Email => self::presentOrNull($this->email) ?? self::presentOrNull($this->address),
+            ChannelType::Push => $this->recipient_type === RecipientType::User
+                ? self::presentOrNull($this->recipient_reference_id)
+                : null,
             default => self::presentOrNull($this->address),
         };
     }
