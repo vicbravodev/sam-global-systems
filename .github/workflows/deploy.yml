@@ -1,0 +1,100 @@
+name: Deploy
+
+# Construye la imagen de producción (Dockerfile) y la publica en GHCR cuando el
+# CI de main termina en verde; después pide a Dokploy que redespliegue el
+# compose (compose.prod.yaml descarga la imagen nueva con pull_policy: always).
+#
+# Configuración en GitHub (Settings → Secrets and variables → Actions):
+#   Variables: VITE_PUSHER_APP_KEY, VITE_PUSHER_HOST (ws.<dominio>)
+#   Secrets:   DOKPLOY_URL, DOKPLOY_API_KEY, DOKPLOY_COMPOSE_ID
+# Sin los secrets de Dokploy sólo publica la imagen (despliegue manual).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    name: Build & push image
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Resolve commit
+        id: sha
+        run: echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+
+      - name: Check build variables
+        env:
+          VITE_PUSHER_APP_KEY: ${{ vars.VITE_PUSHER_APP_KEY }}
+          VITE_PUSHER_HOST: ${{ vars.VITE_PUSHER_HOST }}
+        run: |
+          if [ -z "$VITE_PUSHER_APP_KEY" ] || [ -z "$VITE_PUSHER_HOST" ]; then
+            echo "::error::Faltan las variables VITE_PUSHER_APP_KEY / VITE_PUSHER_HOST del repo: sin ellas el frontend no abre websockets."
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.sha.outputs.sha }}
+          build-args: |
+            GIT_SHA=${{ steps.sha.outputs.sha }}
+            VITE_PUSHER_APP_KEY=${{ vars.VITE_PUSHER_APP_KEY }}
+            VITE_PUSHER_HOST=${{ vars.VITE_PUSHER_HOST }}
+            VITE_PUSHER_PORT=443
+            VITE_PUSHER_SCHEME=https
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Dokploy
+    needs: image
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger compose deploy
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+        run: |
+          if [ -z "$DOKPLOY_URL" ] || [ -z "$DOKPLOY_API_KEY" ] || [ -z "$DOKPLOY_COMPOSE_ID" ]; then
+            echo "::warning::Sin secrets de Dokploy: imagen publicada, despliega a mano desde Dokploy."
+            exit 0
+          fi
+          curl --fail-with-body -sS -X POST "${DOKPLOY_URL%/}/api/compose.deploy" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${DOKPLOY_API_KEY}" \
+            -d "{\"composeId\": \"${DOKPLOY_COMPOSE_ID}\", \"title\": \"${{ needs.image.outputs.sha }}\"}"
