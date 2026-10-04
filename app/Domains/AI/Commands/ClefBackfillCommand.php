@@ -15,6 +15,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Throwable;
 
 /**
  * Evalúa con Clef, en sombra, evaluaciones pasadas de GPT usando el contexto
@@ -93,14 +94,30 @@ class ClefBackfillCommand extends Command
             return self::SUCCESS;
         }
 
+        $failed = 0;
+
         foreach ($evaluations as $evaluation) {
             $job = new ShadowEvaluateWithClefJob($evaluation->team_id, $evaluation->id, AIShadowEvaluation::SOURCE_BACKFILL);
 
-            if ($this->option('sync')) {
-                dispatch_sync($job);
-            } else {
+            if (! $this->option('sync')) {
                 dispatch($job);
+
+                continue;
             }
+
+            // En --sync no hay cola que reintente: un 429/5xx no debe cortar el
+            // resto. El modelo queda sin respuesta definitiva y el siguiente
+            // backfill lo vuelve a intentar.
+            try {
+                dispatch_sync($job);
+            } catch (Throwable $e) {
+                $failed++;
+                SystemLog::degraded('ai.clef_backfill.job_failed', reason: 'transient_error', input: ['evaluation_id' => $evaluation->id], error: $e);
+            }
+        }
+
+        if ($failed > 0) {
+            $this->warn(sprintf('%d con error transitorio: corre el backfill otra vez para reintentarlos.', $failed));
         }
 
         return self::SUCCESS;
