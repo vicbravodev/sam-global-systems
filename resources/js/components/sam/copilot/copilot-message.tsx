@@ -74,6 +74,7 @@ interface Props {
     compact?: boolean;
     /** Show the agent's suggested follow-ups (only the last assistant message). */
     showFollowups?: boolean;
+    /** Asks a follow-up chip as the user's next question. */
     onSuggest?: (prompt: string) => void;
 }
 

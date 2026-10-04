@@ -1,0 +1,8 @@
+{
+    "name": "Cambio de unidad a mitad de la conversación: el contexto sigue a la nueva",
+    "turns": [
+        { "ask": "¿Dónde está la {asset}?", "expect_asset": "{asset}", "max_chars": 400 },
+        { "ask": "¿Y la {asset2}?", "expect_asset": "{asset2}", "max_chars": 400 },
+        { "ask": "¿Cuánto combustible tiene?", "expect_tools_any": ["asset_fuel"], "expect_asset": "{asset2}", "max_chars": 450 }
+    ]
+}

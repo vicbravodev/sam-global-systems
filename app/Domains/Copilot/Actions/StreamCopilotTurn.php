@@ -121,7 +121,7 @@ class StreamCopilotTurn
                 $this->recordUsage->executeAbandoned($turn);
 
                 // Start over: nothing a half-run agent collected reaches the answer.
-                $turn->collector = new CopilotTurnCollector;
+                $turn->collector = new CopilotTurnCollector($turn->askedQuestions);
 
                 yield from $this->deterministicParts($turn, $withStart);
             },

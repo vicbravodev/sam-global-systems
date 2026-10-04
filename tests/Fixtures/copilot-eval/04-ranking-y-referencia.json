@@ -1,0 +1,8 @@
+{
+    "name": "Ranking de la semana y \"¿qué le pasó?\" sobre la unidad ganadora",
+    "turns": [
+        { "ask": "¿Qué unidad tuvo más eventos esta semana?", "expect_tools_any": ["rank_assets"] },
+        { "ask": "¿Y qué le pasó? ¿Qué tipo de eventos fueron?", "expect_tools_any": ["asset_activity", "search_events", "asset_timeline"], "max_chars": 700 },
+        { "ask": "¿Eso es normal comparado con el resto?", "max_chars": 600 }
+    ]
+}

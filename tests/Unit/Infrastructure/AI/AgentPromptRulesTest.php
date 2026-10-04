@@ -90,8 +90,16 @@ class AgentPromptRulesTest extends TestCase
             'spanish output' => ['Respondes SIEMPRE en español de México'],
             'grounded on tools only' => ['Todo dato sale de tus herramientas'],
             'never invent' => ['Nunca inventes'],
-            'cards already show detail' => ['no repitas listas'],
+            'cards already show detail' => ['no las transcribas'],
             'permission denial' => ['falta de permisos'],
+            'follows references across turns' => ['se refieren a lo último que hablaron'],
+            'never repeats what it already said' => ['Lo que ya respondiste no se repite'],
+            'no formulaic closing' => ['no cierres cada respuesta con la misma fórmula'],
+            'local times, never UTC' => ['Nunca formato ISO, segundos ni "UTC"'],
+            'tenant timezone in the prompt' => ['ya vienen en hora local (America/Mexico_City'],
+            'follow-ups in the user voice' => ['en voz del usuario'],
+            'fleet questions are not narrowed to the unit in context' => ['no las limites a esa unidad'],
+            'only answerable follow-ups' => ['que puedas responder con tus herramientas'],
         ];
     }
 
