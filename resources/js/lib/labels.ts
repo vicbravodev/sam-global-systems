@@ -349,6 +349,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
     slack: 'Slack',
     webhook: 'Webhook',
     voice: 'Llamada de voz',
+    samsara_driver_app: 'App de Samsara',
 };
 
 export function channelLabel(code: string | null | undefined): string {

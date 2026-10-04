@@ -221,4 +221,12 @@ interface ProviderAdapter
      * @return array<int, array{id: string, name: string, parent_id: string|null, vehicle_ids: array<int, string>, driver_ids: array<int, string>}>
      */
     public function fetchTags(TenantIntegration $integration): array;
+
+    /**
+     * Sends a text to one driver's provider app (Samsara legacy
+     * `POST /v1/fleet/messages`, scope "Write Messages"). Throws
+     * {@see ProviderUnauthorized} when the token lacks the scope (401/403) and
+     * the rest of the typed {@see ProviderRequestFailed} family otherwise.
+     */
+    public function sendDriverMessage(TenantIntegration $integration, string $externalDriverId, string $text): void;
 }

@@ -61,6 +61,11 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $this->forIntegration($integration)->fetchTags($integration);
     }
 
+    public function sendDriverMessage(TenantIntegration $integration, string $externalDriverId, string $text): void
+    {
+        $this->forIntegration($integration)->sendDriverMessage($integration, $externalDriverId, $text);
+    }
+
     public function fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array
     {
         return $this->forIntegration($integration)->fetchLiveLocation($integration, $externalAssetId);

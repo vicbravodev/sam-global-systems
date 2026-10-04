@@ -16,6 +16,9 @@ class NotificationRecipient extends Model
     /** @use HasFactory<NotificationRecipientFactory> */
     use BelongsToTenant, HasFactory;
 
+    /** Clave de `metadata_json` con la dirección de la app del chofer en Samsara. */
+    public const string SAMSARA_APP_ADDRESS_KEY = 'samsara_app_address';
+
     protected $table = 'notification_recipients';
 
     protected $fillable = [
@@ -35,7 +38,8 @@ class NotificationRecipient extends Model
     /**
      * The destination to use for a given channel: telephony channels need a
      * phone, mail needs an email (falling back to the legacy address), push
-     * needs the SAM user id (sólo usuarios tienen dispositivos) and everything else keeps using the legacy address.
+     * needs the SAM user id (sólo usuarios tienen dispositivos), la app de Samsara
+     * sólo existe para choferes (`metadata_json.samsara_app_address`) and everything else keeps using the legacy address.
      */
     public function addressForChannel(ChannelType $channelType): ?string
     {
@@ -45,8 +49,23 @@ class NotificationRecipient extends Model
             ChannelType::Push => $this->recipient_type === RecipientType::User
                 ? self::presentOrNull($this->recipient_reference_id)
                 : null,
+            ChannelType::SamsaraDriverApp => $this->recipient_type === RecipientType::Driver
+                ? $this->samsaraAppAddress()
+                : null,
             default => self::presentOrNull($this->address),
         };
+    }
+
+    /**
+     * Dirección de la app del chofer que dejó quien creó el aviso
+     * (SamsaraDriverAppAddress), o null.
+     */
+    private function samsaraAppAddress(): ?string
+    {
+        $metadata = is_array($this->metadata_json) ? $this->metadata_json : [];
+        $address = $metadata[self::SAMSARA_APP_ADDRESS_KEY] ?? null;
+
+        return is_string($address) ? self::presentOrNull($address) : null;
     }
 
     /**

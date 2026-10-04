@@ -15,19 +15,22 @@ enum ChannelType: string implements HasLabel
     case Slack = 'slack';
     case Webhook = 'webhook';
     case Voice = 'voice';
+    case SamsaraDriverApp = 'samsara_driver_app';
 
     /**
      * Messaging channels carry a per-message provider fee (Twilio) and bill on
      * their own meter; the rest stay on the generic outbound_notifications
      * meter. Distinct from `voice_calls`, which meters incident DTMF
-     * verification calls ({@see PlaceVerificationCallJob}).
+     * verification calls ({@see PlaceVerificationCallJob}). A message to the
+     * driver's Samsara app costs SAM nothing and is not billed: no meter.
      */
-    public function usageMeterCode(): string
+    public function usageMeterCode(): ?string
     {
         return match ($this) {
             self::Sms => 'sms_messages',
             self::Whatsapp => 'whatsapp_messages',
             self::Voice => 'voice_notification_calls',
+            self::SamsaraDriverApp => null,
             default => 'outbound_notifications',
         };
     }
@@ -43,6 +46,7 @@ enum ChannelType: string implements HasLabel
             self::Slack => 'Slack',
             self::Webhook => 'Webhook',
             self::Voice => 'Voz',
+            self::SamsaraDriverApp => 'App de Samsara',
         };
     }
 }

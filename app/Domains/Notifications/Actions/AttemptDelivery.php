@@ -106,9 +106,12 @@ class AttemptDelivery
         if ($result->success) {
             $chargeRecorded = $this->recordAcceptedResource($delivery, $channel->channel_type, $result);
 
-            $usageMetered = $this->recordUsage->execute(
+            $meterCode = $channel->channel_type->usageMeterCode();
+
+            // Un canal sin medidor (la app del chofer en Samsara) no se cobra.
+            $usageMetered = $meterCode !== null && $this->recordUsage->execute(
                 teamId: $delivery->team_id,
-                meterCode: $channel->channel_type->usageMeterCode(),
+                meterCode: $meterCode,
                 quantity: $channel->channel_type === ChannelType::Sms ? max(1, (int) $result->segments) : 1,
                 eventKey: $usageEventKey,
             );
@@ -123,7 +126,7 @@ class AttemptDelivery
                 'resource_type' => $result->resourceType?->value,
                 'segments' => $result->segments,
                 'charge_recorded' => $chargeRecorded,
-                'usage_meter_code' => $channel->channel_type->usageMeterCode(),
+                'usage_meter_code' => $meterCode,
                 'usage_metered' => $usageMetered,
             ], durationMs: $durationMs);
         } elseif ($result->uncertain) {

@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 class ChannelTypeUsageMeterCodeTest extends TestCase
 {
     /**
-     * @return array<string, array{ChannelType, string}>
+     * @return array<string, array{ChannelType, ?string}>
      */
     public static function meterCodeProvider(): array
     {
@@ -17,6 +17,7 @@ class ChannelTypeUsageMeterCodeTest extends TestCase
             'sms bills its own meter' => [ChannelType::Sms, 'sms_messages'],
             'whatsapp bills its own meter' => [ChannelType::Whatsapp, 'whatsapp_messages'],
             'voice bills its own meter' => [ChannelType::Voice, 'voice_notification_calls'],
+            'samsara driver app is free: no meter' => [ChannelType::SamsaraDriverApp, null],
             'email stays on the generic meter' => [ChannelType::Email, 'outbound_notifications'],
             'web stays on the generic meter' => [ChannelType::Web, 'outbound_notifications'],
             'push stays on the generic meter' => [ChannelType::Push, 'outbound_notifications'],
@@ -26,7 +27,7 @@ class ChannelTypeUsageMeterCodeTest extends TestCase
     }
 
     #[DataProvider('meterCodeProvider')]
-    public function test_channel_type_maps_to_usage_meter_code(ChannelType $channelType, string $expected): void
+    public function test_channel_type_maps_to_usage_meter_code(ChannelType $channelType, ?string $expected): void
     {
         $this->assertSame($expected, $channelType->usageMeterCode());
     }
