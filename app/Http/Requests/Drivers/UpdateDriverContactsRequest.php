@@ -45,7 +45,7 @@ class UpdateDriverContactsRequest extends FormRequest
                 if ($contactType === ContactType::MobilePhone->value && ! PhoneNumber::isE164($value)) {
                     $validator->errors()->add(
                         "contacts.{$i}.value",
-                        'El teléfono móvil debe estar en formato internacional E.164, por ejemplo +5215555550123.',
+                        'El teléfono móvil debe estar en formato internacional E.164, por ejemplo +528112345678.',
                     );
                 }
             }

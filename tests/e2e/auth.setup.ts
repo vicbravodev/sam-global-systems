@@ -24,9 +24,9 @@ setup('sesión de super-admin (con 2FA)', async ({ page }) => {
     await signIn(page, ACCOUNTS.superAdmin);
     await expect(page).toHaveURL('/two-factor-challenge');
 
-    await page.getByRole('textbox').click();
+    // El código se envía solo al escribir el sexto dígito.
+    await page.getByLabel('Código de 6 dígitos').click();
     await page.keyboard.type(totp(SUPER_ADMIN_TOTP_SECRET));
-    await page.getByRole('button', { name: 'Continuar' }).click();
 
     await expect(page).not.toHaveURL(/two-factor-challenge/);
     await page.context().storageState({ path: storageStateFor('superAdmin') });

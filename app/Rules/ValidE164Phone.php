@@ -15,7 +15,7 @@ class ValidE164Phone implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         if (! is_string($value) || ! PhoneNumber::isE164($value)) {
-            $fail('El teléfono debe estar en formato internacional E.164, por ejemplo +5215555550123.');
+            $fail('El teléfono debe estar en formato internacional E.164, por ejemplo +528112345678.');
         }
     }
 }
