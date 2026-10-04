@@ -8,6 +8,7 @@ import { channelLabel } from '@/lib/labels';
 import type { HosChannelOption } from '@/types/hos';
 import {
     addNoticeStep,
+    availableChannels,
     HOS_MAX_LADDER_STEPS,
     removeStep,
     setEscalation,
@@ -32,10 +33,9 @@ export function HosLadderEditor({
 }: HosLadderEditorProps) {
     const escalates = ladder.some((step) => step.escalate);
     const notices = ladder.filter((step) => !step.escalate).length;
-    const defaultChannels = channels
-        .filter((channel) => channel.available)
-        .slice(0, 1)
-        .map((channel) => channel.value);
+    const usable = availableChannels(channels);
+    const defaultChannels = usable.slice(0, 1);
+    const someUnavailable = usable.length < channels.length;
 
     return (
         <div className="flex flex-col gap-3">
@@ -61,12 +61,28 @@ export function HosLadderEditor({
                 ))}
             </ol>
             <InputError message={errors.ladder} />
+            {usable.length === 0 ? (
+                <p className="text-xs text-fg-3">
+                    Hoy no hay ningún canal disponible para avisarle al chofer.
+                    Pide a SAM que active uno para agregar escalones.
+                </p>
+            ) : someUnavailable ? (
+                <p className="text-xs text-fg-3">
+                    Los canales marcados como no disponibles no están activos
+                    para tu empresa: si un escalón los tiene, SAM se los salta y
+                    avisa sólo por los demás.
+                </p>
+            ) : null}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={disabled || ladder.length >= HOS_MAX_LADDER_STEPS}
+                    disabled={
+                        disabled ||
+                        usable.length === 0 ||
+                        ladder.length >= HOS_MAX_LADDER_STEPS
+                    }
                     onClick={() =>
                         onChange(addNoticeStep(ladder, defaultChannels))
                     }
@@ -187,6 +203,12 @@ function LadderStepRow({
                                     onToggle={() => toggle(channel.value)}
                                 >
                                     {channelLabel(channel.value)}
+                                    {channel.available ? null : (
+                                        <span className="text-fg-3">
+                                            {' '}
+                                            · no disponible
+                                        </span>
+                                    )}
                                 </ChipToggle>
                             );
                         })}

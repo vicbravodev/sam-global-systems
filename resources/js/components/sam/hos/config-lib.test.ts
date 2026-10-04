@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { HosConfigValues } from '@/types/hos';
 import {
     addNoticeStep,
+    availableChannels,
+    foldServerErrors,
     ladderDraft,
     parseNumberList,
     previewSummary,
+    recommendedDraft,
     removeStep,
     serializeDraft,
     setEscalation,
@@ -260,5 +263,120 @@ describe('textos de la vista previa', () => {
         expect(
             tagMembersLabel({ ...tag, vehicleCount: 0, driverCount: 0 }),
         ).toBe('Sin miembros');
+    });
+});
+
+describe('availableChannels', () => {
+    it('sólo los canales que SAM le entrega hoy al tenant, en orden', () => {
+        expect(
+            availableChannels([
+                { value: 'samsara_driver_app', available: true },
+                { value: 'whatsapp', available: false },
+                { value: 'voice', available: true },
+            ]),
+        ).toEqual(['samsara_driver_app', 'voice']);
+    });
+});
+
+describe('recommendedDraft', () => {
+    const current = {
+        ...toDraft(DEFAULTS),
+        tagIds: ['4738197'],
+        includedAssetIds: [7],
+        excludedAssetIds: [9],
+        situations: { ...DEFAULTS.situations, cycle_limit: false },
+        leadMinutes: '45',
+        ladder: [step(0, ['sms'])],
+    };
+
+    it('repone avisos y escalera pero conserva quién entra y qué se vigila', () => {
+        const next = recommendedDraft(current, DEFAULTS, [
+            'samsara_driver_app',
+            'whatsapp',
+            'voice',
+        ]);
+
+        expect(next.tagIds).toEqual(['4738197']);
+        expect(next.includedAssetIds).toEqual([7]);
+        expect(next.excludedAssetIds).toEqual([9]);
+        expect(next.situations.cycle_limit).toBe(false);
+        expect(next.leadMinutes).toBe('30, 15');
+        expect(serializeDraft(next).ladder).toEqual(
+            serializeDraft(toDraft(DEFAULTS)).ladder,
+        );
+    });
+
+    it('quita los canales que el tenant no puede usar y los escalones que quedan vacíos', () => {
+        const next = recommendedDraft(current, DEFAULTS, [
+            'samsara_driver_app',
+        ]);
+
+        expect(serializeDraft(next).ladder).toEqual([
+            {
+                after_minutes: 0,
+                channels: ['samsara_driver_app'],
+                escalate: null,
+            },
+            {
+                after_minutes: 5,
+                channels: ['samsara_driver_app'],
+                escalate: null,
+            },
+            { after_minutes: 15, channels: [], escalate: 'incident' },
+        ]);
+    });
+
+    it('si el primero se queda sin canales, el siguiente sale al llegar al límite', () => {
+        const next = recommendedDraft(current, DEFAULTS, ['voice']);
+
+        expect(serializeDraft(next).ladder).toEqual([
+            { after_minutes: 0, channels: ['voice'], escalate: null },
+            { after_minutes: 15, channels: [], escalate: 'incident' },
+        ]);
+    });
+});
+
+describe('foldServerErrors', () => {
+    it('junta los errores por elemento en el campo que se ve', () => {
+        expect(
+            foldServerErrors({
+                'included_asset_ids.3': 'Una unidad ya no existe.',
+                'excluded_asset_ids.0': 'Otra unidad ya no existe.',
+                'tag_ids.1': 'Etiqueta inválida.',
+                'ladder.2.channels.0': 'Canal inválido.',
+                'ladder.1.after_minutes': 'Deja 2 min.',
+                'ladder.0.escalate': 'Sólo al final.',
+                'ladder.4': 'Escalón inválido.',
+                'ladder.0.foo': 'Raro.',
+                lead_minutes: 'Minutos.',
+            }),
+        ).toEqual({
+            included_asset_ids: 'Una unidad ya no existe.',
+            excluded_asset_ids: 'Otra unidad ya no existe.',
+            tag_ids: 'Etiqueta inválida.',
+            'ladder.2.channels': 'Canal inválido.',
+            'ladder.1.after_minutes': 'Deja 2 min.',
+            'ladder.0.escalate': 'Sólo al final.',
+            ladder: 'Escalón inválido.',
+            lead_minutes: 'Minutos.',
+        });
+    });
+
+    it('lo que ya trae el campo no se pisa con el de otro elemento', () => {
+        expect(
+            foldServerErrors({
+                included_asset_ids: 'Primero.',
+                'included_asset_ids.0': 'Segundo.',
+            }),
+        ).toEqual({ included_asset_ids: 'Primero.' });
+    });
+
+    it('situations.x y las listas numéricas caen en su campo', () => {
+        expect(
+            foldServerErrors({
+                'lead_minutes.0': 'Minutos.',
+                'situations.break_due': 'Sí o no.',
+            }),
+        ).toEqual({ lead_minutes: 'Minutos.', situations: 'Sí o no.' });
     });
 });

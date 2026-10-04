@@ -1,5 +1,6 @@
 import { formatNumber } from '@/lib/format';
 import type {
+    HosChannelOption,
     HosConfigurableSituation,
     HosConfigValues,
     HosLadderStep,
@@ -212,6 +213,83 @@ export function serializeDraft(draft: HosConfigDraft): HosConfigPayload {
             channels: step.escalate ? [] : step.channels,
             escalate: step.escalate ? 'incident' : null,
         })),
+    };
+}
+
+/** Errores del 422 con llave por elemento → la llave del campo que se ve. */
+function fieldKeyOf(key: string): string {
+    if (/^ladder\.\d+\.(after_minutes|escalate)$/.test(key)) {
+        return key;
+    }
+
+    const channels = /^(ladder\.\d+\.channels)(\..*)?$/.exec(key);
+
+    if (channels !== null) {
+        return channels[1] ?? key;
+    }
+
+    return key.split('.')[0] ?? key;
+}
+
+/**
+ * Junta `included_asset_ids.3`, `tag_ids.0`, `ladder.2.channels.0`… en el
+ * campo que pinta la pantalla; el primer mensaje de cada campo gana.
+ */
+export function foldServerErrors(
+    errors: Record<string, string>,
+): HosDraftErrors {
+    const folded: HosDraftErrors = {};
+
+    for (const [key, message] of Object.entries(errors)) {
+        const field = fieldKeyOf(key);
+
+        if (folded[field] === undefined) {
+            folded[field] = message;
+        }
+    }
+
+    return folded;
+}
+
+/** Los canales del chofer que SAM le entrega hoy a este tenant. */
+export function availableChannels(channels: HosChannelOption[]): string[] {
+    return channels
+        .filter((channel) => channel.available)
+        .map((channel) => channel.value);
+}
+
+/**
+ * "Avisos y escalera recomendados": repone avisos y escalera sin tocar quién
+ * entra ni qué se vigila, y sólo con los canales que el tenant puede usar
+ * (un escalón que se queda sin canales desaparece).
+ */
+export function recommendedDraft(
+    current: HosConfigDraft,
+    defaults: HosConfigValues,
+    available: string[],
+): HosConfigDraft {
+    const recommended = toDraft(defaults);
+    const ladder = recommended.ladder
+        .map((step) => ({
+            ...step,
+            channels: step.channels.filter((channel) =>
+                available.includes(channel),
+            ),
+        }))
+        .filter((step) => step.escalate || step.channels.length > 0)
+        .map((step, index) =>
+            index === 0 && !step.escalate
+                ? { ...step, afterMinutes: '0' }
+                : step,
+        );
+
+    return {
+        ...recommended,
+        tagIds: current.tagIds,
+        includedAssetIds: current.includedAssetIds,
+        excludedAssetIds: current.excludedAssetIds,
+        situations: current.situations,
+        ladder,
     };
 }
 

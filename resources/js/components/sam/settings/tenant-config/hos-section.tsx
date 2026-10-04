@@ -2,7 +2,10 @@ import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
 import {
+    availableChannels,
+    foldServerErrors,
     previewSummary,
+    recommendedDraft,
     serializeDraft,
     skippedSummary,
     toDraft,
@@ -66,13 +69,14 @@ export function HosSection({ form }: { form: HosConfigForm }) {
         setDraft((current) => ({ ...current, ...patch }));
 
     const applyRecommended = () => {
-        // Sólo avisos y escalera: quién entra se queda como está.
-        setDraft((current) => ({
-            ...toDraft(form.defaults),
-            tagIds: current.tagIds,
-            includedAssetIds: current.includedAssetIds,
-            excludedAssetIds: current.excludedAssetIds,
-        }));
+        // Sólo avisos y escalera: quién entra y qué se vigila se quedan como están.
+        setDraft((current) =>
+            recommendedDraft(
+                current,
+                form.defaults,
+                availableChannels(form.channels),
+            ),
+        );
         setErrors({});
     };
 
@@ -97,7 +101,7 @@ export function HosSection({ form }: { form: HosConfigForm }) {
             'Monitoreo HOS guardado.',
             { ...CONFIG_SUBMIT, only: ['hos', 'versions'] },
         );
-        setErrors(result.fieldErrors);
+        setErrors(foldServerErrors(result.fieldErrors));
         setSaving(false);
     };
 
