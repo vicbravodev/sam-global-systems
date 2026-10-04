@@ -320,6 +320,133 @@ class AlertIncidentsPollingTest extends TestCase
         $this->assertSame(2, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
+    /**
+     * El mismo pánico tal como lo ve otra alerta de Samsara con trigger 1034:
+     * otra `configurationId` y otra `incidentUrl`, misma unidad e instante.
+     *
+     * @param  array<string, mixed>  $incident
+     * @return array<string, mixed>
+     */
+    private function seenByAnotherAlert(array $incident, string $configurationId): array
+    {
+        return array_merge($incident, [
+            'configurationId' => $configurationId,
+            'incidentUrl' => str_replace('/cfg-panic/', '/'.$configurationId.'/', (string) $incident['incidentUrl']),
+        ]);
+    }
+
+    public function test_one_press_fired_by_several_panic_alerts_is_delivered_once_by_the_webhook(): void
+    {
+        // Caso real (prod 2026-10-04): un pánico disparó cuatro alertas de
+        // Samsara; sólo la de SAM apunta al webhook, que lo entregó en 7 s.
+        // El poll, ya resuelto, vio las cuatro: no es un webhook roto.
+        Notification::fake();
+        User::factory()->create(['global_role' => 'super_admin']);
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $open = $this->incident(happenedAt: '2026-10-02T11:57:18Z');
+
+        $this->webhook($team, $open);
+        $this->assertSame(1, $this->panicIncidents($team));
+
+        $resolved = ['isResolved' => true, 'resolvedAtTime' => '2026-10-02T11:57:50Z', 'updatedAtTime' => '2026-10-02T11:57:50Z'];
+        $this->fakeSamsara([
+            array_merge($open, $resolved),
+            array_merge($this->seenByAnotherAlert($open, 'cfg-client-a'), $resolved),
+            array_merge($this->seenByAnotherAlert($open, 'cfg-client-b'), $resolved),
+            array_merge($this->seenByAnotherAlert($open, 'cfg-client-c'), $resolved),
+        ]);
+        $this->poll($integration);
+
+        $this->assertSystemNotLogged('ingestion.alert_incidents.webhook_missed');
+        $this->assertSame(0, PipelineFailureAlert::withoutGlobalScopes()->where('kind', PipelineFailureAlert::KIND_WEBHOOK_MISSED)->count());
+        Notification::assertNothingSent();
+        // El webhook (abierto) y la resolución que vio el poll; las otras tres
+        // alertas son el mismo pánico y no se guardan.
+        $this->assertSame(2, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSystemLogged('ingestion.alert_incidents.cycle_completed', fn (array $c): bool => $c['result']['ingested'] === 1
+            && $c['result']['already_ingested'] === 3);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_one_open_press_fired_by_several_panic_alerts_adds_nothing_to_the_webhook_incident(): void
+    {
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $open = $this->incident(happenedAt: '2026-10-02T11:57:18Z');
+
+        $this->webhook($team, $open);
+
+        $this->fakeSamsara([
+            $open,
+            $this->seenByAnotherAlert($open, 'cfg-client-a'),
+            $this->seenByAnotherAlert($open, 'cfg-client-b'),
+        ]);
+        $this->poll($integration);
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(1, $this->panicIncidents($team));
+        $this->assertSystemLogged('ingestion.alert_incidents.cycle_completed', fn (array $c): bool => $c['result']['ingested'] === 0
+            && $c['result']['already_ingested'] === 3);
+        $this->assertSystemLogged('ingestion.alert_incidents.skipped', fn (array $c): bool => $c['reason'] === 'already_ingested'
+            && $c['calc']['identity_scope'] === 'event'
+            && $c['calc']['first_source'] === 'webhook');
+        $this->assertSystemNotLogged('ingestion.alert_incidents.webhook_missed');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_one_press_fired_by_several_panic_alerts_without_webhook_opens_one_incident_and_alerts_once(): void
+    {
+        Notification::fake();
+        User::factory()->create(['global_role' => 'super_admin']);
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $open = $this->incident();
+
+        $this->fakeSamsara([
+            $open,
+            $this->seenByAnotherAlert($open, 'cfg-client-a'),
+            $this->seenByAnotherAlert($open, 'cfg-client-b'),
+        ]);
+        $this->poll($integration);
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(1, $this->panicIncidents($team), 'un pánico, un incidente: tres alertas no abren tres escaleras');
+        $this->assertSame(1, PipelineFailureAlert::withoutGlobalScopes()->where('kind', PipelineFailureAlert::KIND_WEBHOOK_MISSED)->count());
+        $this->assertSystemLogged('ingestion.alert_incidents.webhook_missed', fn (array $c): bool => $c['reason'] === 'webhook_not_delivered');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_webhook_of_another_alert_for_the_same_press_is_a_duplicate_of_the_poll(): void
+    {
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $open = $this->incident(happenedAt: '2026-10-02T11:59:30Z');
+
+        $this->fakeSamsara([$this->seenByAnotherAlert($open, 'cfg-client-a')]);
+        $this->poll($integration);
+
+        $this->webhook($team, $open, 'wh-sam-alert');
+
+        $webhookRaw = RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->where('external_event_id', 'wh-sam-alert')->sole();
+        $this->assertSame(RawEventStatus::DuplicateDetected, $webhookRaw->fresh()->status);
+        $this->assertSame(1, $this->panicIncidents($team));
+    }
+
+    public function test_two_units_pressing_at_the_same_instant_are_two_panics(): void
+    {
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $first = $this->incident();
+        $otherUnit = $this->seenByAnotherAlert($first, 'cfg-client-a');
+        $otherUnit['conditions'][0]['details']['panicButton']['vehicle']['id'] = '281474990000001';
+
+        $this->fakeSamsara([$first, $otherUnit]);
+        $this->poll($integration);
+
+        $this->assertSame(2, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
+    }
+
     public function test_a_redelivered_webhook_with_a_new_event_id_is_still_a_duplicate(): void
     {
         $integration = $this->makeIntegration();
@@ -615,7 +742,8 @@ class AlertIncidentsPollingTest extends TestCase
         $this->poll($integration->fresh());
 
         $this->assertSame(1, RawEvent::withoutGlobalScopes()->count(), 'sin identidad estable se ingiere igual (perder un pánico es peor), pero una sola vez');
-        $this->assertSystemLogged('ingestion.alert_incidents.ingested', fn (array $c): bool => $c['calc']['identity'] === false);
+        $this->assertSystemLogged('ingestion.alert_incidents.ingested', fn (array $c): bool => $c['calc']['identity'] === false
+            && $c['calc']['identity_scope'] === null);
         $this->assertSystemLogged('ingestion.alert_incidents.skipped', fn (array $c): bool => $c['reason'] === 'already_ingested');
     }
 

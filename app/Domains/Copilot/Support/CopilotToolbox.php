@@ -32,6 +32,6 @@ final class CopilotToolbox
 
         $allowed = array_values(array_filter($tools, fn (SdkCopilotTool $tool) => $scope->can($tool->permission())));
 
-        return [...$allowed, new SuggestFollowupsTool($collector)];
+        return [...$allowed, new SuggestFollowupsTool($collector, $scope->teamId)];
     }
 }
