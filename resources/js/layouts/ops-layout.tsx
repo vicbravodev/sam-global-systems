@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { CriticalIncidentAlert } from '@/components/critical-incident-alert';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
+import { PushOptInBanner } from '@/components/push-opt-in-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
 import { CopilotLauncher } from '@/components/sam/copilot/copilot-launcher';
 import { OpsSidebar } from '@/components/sam/ops-sidebar';
@@ -68,6 +69,7 @@ export default function OpsLayout({
                 <CriticalIncidentAlert />
                 <ImpersonationBanner />
                 <TenantSetupBanner />
+                <PushOptInBanner />
                 <div className="grid min-h-0 flex-1 grid-cols-[auto_1fr] overflow-hidden">
                     <OpsSidebar navBadges={navBadges} />
                     <div className="flex min-w-0 flex-col overflow-hidden">

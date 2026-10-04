@@ -3,10 +3,12 @@
 namespace App\Domains\Notifications;
 
 use App\Contracts\Notifications\ChannelDriverRegistry as ChannelDriverRegistryContract;
+use App\Domains\Incidents\Events\IncidentAssigned;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Notifications\Channels\ChannelDriverRegistry;
 use App\Domains\Notifications\Events\NotificationFailed;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentAssigned;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentStatusChanged;
 use App\Domains\Notifications\Listeners\RetryOrFallbackOnNotificationFailed;
@@ -39,6 +41,7 @@ class NotificationsServiceProvider extends ServiceProvider
         Gate::policy(NotificationChannel::class, NotificationChannelPolicy::class);
         Gate::policy(NotificationPreference::class, NotificationPreferencePolicy::class);
 
+        Event::listen(IncidentAssigned::class, NotifyOnIncidentAssigned::class);
         Event::listen(IncidentCreated::class, NotifyOnIncidentCreated::class);
         Event::listen(IncidentStatusChanged::class, NotifyOnIncidentStatusChanged::class);
         Event::listen(NotificationFailed::class, RetryOrFallbackOnNotificationFailed::class);

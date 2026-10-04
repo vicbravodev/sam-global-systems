@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { logoutForgettingDevice } from '@/lib/web-push';
 import { login, logout } from '@/routes';
 import { accept, register } from '@/routes/invitations';
 
@@ -208,6 +209,10 @@ export default function AcceptInvitation({
                             </p>
                             <TextLink
                                 href={logout()}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    void logoutForgettingDevice();
+                                }}
                                 className="mx-auto block text-sm"
                             >
                                 Cerrar sesión
