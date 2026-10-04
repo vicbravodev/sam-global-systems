@@ -5,6 +5,7 @@ import DeleteUser from '@/components/delete-user';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Field, FormCard } from '@/components/sam/field';
+import { PhoneInput } from '@/components/sam/phone-input';
 import { PhoneVerification } from '@/components/sam/settings/phone-verification';
 import {
     FormActions,
@@ -128,17 +129,16 @@ export default function Profile({
 
                                 <Field
                                     label="Teléfono celular"
-                                    help="Formato internacional con lada de país (+52 para México). Ahí te llaman y te escriben en una emergencia."
+                                    help="Elige el país y escribe tu número a 10 dígitos. Ahí te llaman y te escriben en una emergencia."
                                     htmlFor="phone"
                                 >
-                                    <Input
+                                    <PhoneInput
                                         id="phone"
-                                        type="tel"
-                                        defaultValue={savedPhone}
                                         name="phone"
-                                        autoComplete="tel"
-                                        inputMode="tel"
-                                        placeholder="+5215555550123"
+                                        defaultValue={savedPhone}
+                                        aria-invalid={
+                                            errors.phone !== undefined
+                                        }
                                     />
                                     <InputError message={errors.phone} />
                                 </Field>

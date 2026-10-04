@@ -6,8 +6,9 @@ import {
     FormActions,
     SettingsSection,
 } from '@/components/sam/settings/settings-page';
+import { VerificationCodeInput } from '@/components/sam/verification-code-input';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { formatPhone } from '@/lib/phone';
 import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +27,7 @@ export function PhoneVerification({
         return (
             <SettingsSection
                 title="Teléfono verificado"
-                description={`${phone} recibe las llamadas, SMS y WhatsApp de emergencia.`}
+                description={`${formatPhone(phone)} recibe las llamadas, SMS y WhatsApp de emergencia.`}
             >
                 {null}
             </SettingsSection>
@@ -38,7 +39,7 @@ export function PhoneVerification({
     return (
         <SettingsSection
             title="Verifica tu teléfono"
-            description={`Te enviamos un código por SMS a ${phone}.`}
+            description={`Te enviamos un código por SMS a ${formatPhone(phone)}.`}
         >
             <FormCard>
                 <Form
@@ -84,17 +85,16 @@ export function PhoneVerification({
                             <>
                                 <Field
                                     label="Código de 6 dígitos"
+                                    help="Llega por SMS. Al escribir el último dígito se verifica solo."
                                     htmlFor="code"
                                 >
-                                    <Input
+                                    <VerificationCodeInput
                                         id="code"
                                         name="code"
-                                        inputMode="numeric"
-                                        autoComplete="one-time-code"
-                                        maxLength={6}
-                                        required
-                                        className="w-40"
-                                        placeholder="123456"
+                                        submitOnComplete
+                                        autoFocus
+                                        disabled={processing}
+                                        aria-invalid={errors.code !== undefined}
                                     />
                                     <InputError message={errors.code} />
                                 </Field>
