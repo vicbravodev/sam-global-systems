@@ -261,6 +261,18 @@ return [
     |
     */
 
+    /*
+    | Tipos cuyo hecho ya lo establece una regla determinista de SAM: el motor
+    | de reglas los resuelve como evento real sin llamar a la IA (no se paga),
+    | y a diferencia de `skip_evaluation_event_types` SÍ dejan evaluación, así
+    | que el motor de decisiones corre y abre el incidente.
+    |
+    | - after_hours_movement: se movió fuera del horario que configuró el
+    |   cliente; la base y los sitios de cliente ya los descarta la propia
+    |   regla (telematics.after_hours_safe_geofence_categories).
+    */
+    'rule_resolved_event_types' => ['after_hours_movement'],
+
     'skip_evaluation_event_types' => [
         'geofence_entry',
         'geofence_exit',

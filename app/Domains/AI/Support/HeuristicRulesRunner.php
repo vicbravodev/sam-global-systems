@@ -10,7 +10,8 @@ use App\Support\SystemLog;
 /**
  * Deterministic rules & heuristics stage. Runs before the AI agent and can
  * short-circuit the pipeline when the outcome is obvious (known noise signatures,
- * recent duplicates). Pure PHP, no external services, no AI calls.
+ * recent duplicates, event types whose fact a SAM rule already established —
+ * `ai.rule_resolved_event_types`). Pure PHP, no external services, no AI calls.
  */
 class HeuristicRulesRunner
 {
@@ -44,6 +45,10 @@ class HeuristicRulesRunner
             ? $signatureCandidate
             : null;
         $duplicatesPresent = array_key_exists('recent_duplicates_count', $signals);
+        $typeCode = $event->eventType?->code;
+        /** @var array<int, string> $ruleResolvedTypes */
+        $ruleResolvedTypes = (array) config('ai.rule_resolved_event_types', []);
+        $ruleResolvedType = $typeCode !== null && in_array($typeCode, $ruleResolvedTypes, true) ? $typeCode : null;
 
         $decision = null;
         $rule = null;
@@ -62,6 +67,13 @@ class HeuristicRulesRunner
                 'mode' => EvaluationMode::RulesOnly,
                 'reason' => 'recent_duplicates_in_window',
             ];
+        } elseif ($ruleResolvedType !== null) {
+            $rule = 'rule_resolved_type';
+            $decision = [
+                'classification' => EventClassification::RealEvent,
+                'mode' => EvaluationMode::RulesOnly,
+                'reason' => 'rule_resolved_type:'.$ruleResolvedType,
+            ];
         }
 
         SystemLog::ok(
@@ -74,6 +86,8 @@ class HeuristicRulesRunner
                 'duplicates_signal_present' => $duplicatesPresent,
                 'recent_duplicates_count' => $duplicatesPresent ? (int) $signals['recent_duplicates_count'] : null,
                 'duplicate_threshold' => self::DUPLICATE_THRESHOLD,
+                'event_type_code' => $typeCode,
+                'rule_resolved_types' => $ruleResolvedTypes,
                 'signals_missing' => array_values(array_filter([
                     $signatureSource === null ? 'payload.signature' : null,
                     $duplicatesPresent ? null : 'signals.recent_duplicates_count',

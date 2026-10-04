@@ -108,6 +108,17 @@ class LabelEventsCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_types_no_longer_evaluated_by_ai_are_not_offered(): void
+    {
+        $team = Team::factory()->create();
+        $user = $this->member($team);
+        $this->makeEvaluationOfType($team, 'after_hours_movement');
+
+        $this->artisan('ai:label-events', ['--team' => $team->id, '--user' => $user->email])
+            ->expectsOutputToContain('No hay eventos pendientes')
+            ->assertSuccessful();
+    }
+
     public function test_rejects_user_outside_the_team(): void
     {
         $team = Team::factory()->create();
