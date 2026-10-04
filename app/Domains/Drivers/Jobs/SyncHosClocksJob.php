@@ -6,6 +6,7 @@ use App\Domains\Drivers\Actions\AdvanceHosEpisodes;
 use App\Domains\Drivers\Actions\ProcessHosReadings;
 use App\Domains\Drivers\Actions\ResolveHosEnrollment;
 use App\Domains\Drivers\Actions\ResolveHosMonitoringConfig;
+use App\Domains\Drivers\Events\HosClocksUpdatedBroadcast;
 use App\Domains\Drivers\Support\HosProviderCache;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
@@ -96,13 +97,20 @@ class SyncHosClocksJob implements ShouldBeUnique, ShouldQueue
                 $skipped["skipped_{$reason}"] = $count;
             }
 
+            // Sin nadie vigilado ni nadie que haya salido no hay nada que repintar.
+            $broadcast = $counts['monitored'] + $counts['unenrolled'] > 0;
+
             SystemLog::ok('hos.poll.completed', input: $input, calc: [
                 'readings_count' => count($readings),
                 'tags_count' => count($tags),
                 'tag_ids_count' => count($config->tagIds),
                 'included_count' => count($config->includedAssetIds),
                 'excluded_count' => count($config->excludedAssetIds),
-            ], result: $counts + $skipped);
+            ], result: $counts + $skipped + ['broadcast' => $broadcast]);
+
+            if ($broadcast) {
+                broadcast(new HosClocksUpdatedBroadcast($teamId, $counts['monitored'], $now->toIso8601String()));
+            }
         });
     }
 

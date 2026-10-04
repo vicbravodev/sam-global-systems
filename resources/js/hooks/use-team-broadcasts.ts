@@ -31,6 +31,7 @@ const TEAM_EVENTS: TeamBroadcastEvent[] = [
     'incidents.updated',
     'integration.status_changed',
     'report.ready',
+    'hos.clocks_updated',
 ];
 
 const USER_EVENTS: UserBroadcastEvent[] = ['notification.pushed'];
