@@ -10,9 +10,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * What the model remembers: the last turns of the conversation, capped at
- * ~4 KB by dropping the oldest (never below two messages), and only rows of
- * the conversation's own tenant.
+ * What the model remembers: several turns of the conversation (older
+ * answers condensed), capped at ~10 KB by dropping the oldest (never below
+ * two messages), the questions already asked, and only rows of the
+ * conversation's own tenant.
  */
 class CopilotHistoryTest extends TestCase
 {
@@ -25,19 +26,48 @@ class CopilotHistoryTest extends TestCase
         return ($assistant ? $factory->assistant() : $factory)->create(['content' => $content, ...$overrides]);
     }
 
-    public function test_trims_the_oldest_turns_to_about_four_kilobytes(): void
+    public function test_keeps_several_turns_condensing_older_answers(): void
     {
         $conversation = CopilotConversation::factory()->create();
 
-        foreach (range(1, 6) as $i) {
-            $this->message($conversation, "m{$i} ".str_repeat('x', 1200), assistant: $i % 2 === 0);
+        foreach (range(1, 8) as $i) {
+            // Real questions are short; answers carry the weight.
+            $this->message($conversation, "m{$i} ".str_repeat('x', $i % 2 === 0 ? 1200 : 100), assistant: $i % 2 === 0, overrides: $i % 2 === 0
+                ? ['context_json' => ['facts_digest' => "d{$i} ".str_repeat('z', 1000)]]
+                : []);
         }
 
         $history = app(CopilotHistory::class)->forConversation($conversation)['history'];
 
-        $this->assertSame(['m4', 'm5', 'm6'], array_map(fn (array $m) => strtok($m['content'], ' '), $history));
-        $this->assertSame(['assistant', 'user', 'assistant'], array_column($history, 'role'));
-        $this->assertLessThanOrEqual(4000, mb_strlen((string) json_encode($history, JSON_UNESCAPED_UNICODE)));
+        // Four full exchanges survive (the old cap kept only the last one).
+        $this->assertSame(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'], array_map(fn (array $m) => strtok($m['content'], ' '), $history));
+
+        // The latest answer goes whole, with its digest whole.
+        $this->assertStringContainsString(str_repeat('x', 1200)."\n[datos consultados: d8 ".str_repeat('z', 1000).']', $history[7]['content']);
+
+        // Older answers are condensed: opening + short digest, cut with "…".
+        $this->assertLessThan(1100, mb_strlen($history[1]['content']));
+        $this->assertStringContainsString('…', $history[1]['content']);
+        $this->assertStringContainsString('[datos consultados: d2 ', $history[1]['content']);
+
+        // Questions always go whole.
+        $this->assertSame('m7 '.str_repeat('x', 100), $history[6]['content']);
+        $this->assertLessThanOrEqual(10000, mb_strlen((string) json_encode($history, JSON_UNESCAPED_UNICODE)));
+    }
+
+    public function test_drops_the_oldest_messages_past_ten_kilobytes(): void
+    {
+        $conversation = CopilotConversation::factory()->create();
+
+        foreach (range(1, 12) as $i) {
+            $this->message($conversation, "m{$i} ".str_repeat('q', 1800));
+        }
+
+        $history = app(CopilotHistory::class)->forConversation($conversation)['history'];
+
+        $this->assertSame('m12', strtok(end($history)['content'], ' '));
+        $this->assertLessThan(12, count($history));
+        $this->assertLessThanOrEqual(10000, mb_strlen((string) json_encode($history, JSON_UNESCAPED_UNICODE)));
     }
 
     public function test_always_keeps_the_last_two_messages_even_when_they_exceed_the_cap(): void
@@ -45,12 +75,27 @@ class CopilotHistoryTest extends TestCase
         $conversation = CopilotConversation::factory()->create();
 
         foreach (range(1, 4) as $i) {
-            $this->message($conversation, "m{$i} ".str_repeat('y', 3000), assistant: $i % 2 === 0);
+            $this->message($conversation, "m{$i} ".str_repeat('y', 6000), assistant: $i % 2 === 0);
         }
 
         $history = app(CopilotHistory::class)->forConversation($conversation)['history'];
 
         $this->assertSame(['m3', 'm4'], array_map(fn (array $m) => strtok($m['content'], ' '), $history));
+    }
+
+    public function test_returns_the_questions_already_asked(): void
+    {
+        $conversation = CopilotConversation::factory()->create();
+
+        $this->message($conversation, '¿Dónde está la T-77?');
+        $this->message($conversation, 'En Apodaca.', assistant: true);
+        $this->message($conversation, '¿Y su combustible?');
+        $this->message($conversation, '58 %.', assistant: true);
+
+        $this->assertSame(
+            ['¿Dónde está la T-77?', '¿Y su combustible?'],
+            app(CopilotHistory::class)->forConversation($conversation)['askedQuestions'],
+        );
     }
 
     public function test_reads_only_rows_of_the_conversations_tenant(): void
