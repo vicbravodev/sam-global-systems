@@ -31,6 +31,11 @@ final class CopilotTurnCollector
     private ?Closure $onBlocks = null;
 
     /**
+     * @param  list<string>  $askedQuestions  questions already asked in the conversation: never suggested again
+     */
+    public function __construct(private readonly array $askedQuestions = []) {}
+
+    /**
      * @param  Closure(array{toolCallId: string, tool: string, label: string, blocks: list<array<string, mixed>>}): void  $listener
      */
     public function onBlocks(Closure $listener): void
@@ -51,11 +56,16 @@ final class CopilotTurnCollector
     }
 
     /**
-     * @param  list<string>  $questions
+     * Keeps the model's suggestions that read as the user's own question
+     * (CopilotFollowups) and returns how many were dropped.
+     *
+     * @param  list<mixed>  $questions
      */
-    public function followups(array $questions): void
+    public function followups(array $questions): int
     {
-        $this->followups = array_slice($questions, 0, 3);
+        ['kept' => $this->followups, 'dropped' => $dropped] = CopilotFollowups::clean($questions, $this->askedQuestions);
+
+        return $dropped;
     }
 
     public function hasResults(): bool

@@ -243,6 +243,16 @@ export function CopilotChatPanel({
     );
 
     const { send } = chat;
+
+    // A follow-up chip is written in the user's voice: tapping it asks it
+    // right away (with the unit in context), not pre-fills the composer.
+    const followUp = useCallback(
+        (question: string) => {
+            void send(question, { assetId: asset?.id ?? null });
+        },
+        [asset, send],
+    );
+
     const pickAsset = useCallback(
         (option: CopilotAssetOption, intent: CopilotIntent) => {
             setAsset(option);
@@ -361,7 +371,7 @@ export function CopilotChatPanel({
                                 showFollowups={
                                     index === chat.messages.length - 1
                                 }
-                                onSuggest={suggest}
+                                onSuggest={followUp}
                                 message={message}
                                 userInitials={userInitials}
                                 assetLabel={assetLabel}
