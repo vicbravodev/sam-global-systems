@@ -5,6 +5,7 @@ import {
     BellRing,
     Brain,
     CalendarClock,
+    Hourglass,
     Lock,
     Palette,
     Siren,
@@ -65,6 +66,13 @@ export const COMPANY_SECTIONS = [
         description:
             'Quién está de turno cada día y a qué hora recibe los incidentes.',
         icon: CalendarClock,
+    },
+    {
+        key: 'hos',
+        title: 'HOS (EE. UU.)',
+        description:
+            'Horas de servicio de tus choferes en Estados Unidos: quién entra, cuándo se les avisa y cómo se les insiste.',
+        icon: Hourglass,
     },
     {
         key: 'marca',
@@ -189,6 +197,11 @@ export function useSettingsNav(): SettingsNavGroup[] {
     if (nav?.tenantConfig) {
         for (const section of COMPANY_SECTIONS) {
             if (section.key === 'avanzado') {
+                continue;
+            }
+
+            // Sólo con la feature `hos_monitoring` (sin ella la sección no aplica).
+            if (section.key === 'hos' && !nav.hosConfig) {
                 continue;
             }
 

@@ -8,6 +8,9 @@ export const PANIC_AUTO_CLOSE_KEY = 'panic.auto_close_on_external_resolution';
 export const LIVE_LOCATION_KEY = 'context.live_location_staleness_seconds';
 export const MIN_SEVERITY_KEY = 'notifications.out_of_band_min_severity';
 
+/** Se edita en su propia sección (HOS); "Avanzado" no la lista. */
+export const HOS_MONITORING_KEY = 'hos.monitoring';
+
 /** Default del backend (FetchLiveLocationForEvent::DEFAULT_STALENESS_SECONDS). */
 export const LIVE_LOCATION_DEFAULT_SECONDS = 60;
 
@@ -16,6 +19,7 @@ export const DEDICATED_KEYS = new Set([
     PANIC_AUTO_CLOSE_KEY,
     LIVE_LOCATION_KEY,
     MIN_SEVERITY_KEY,
+    HOS_MONITORING_KEY,
 ]);
 
 export type SettingUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'count';
