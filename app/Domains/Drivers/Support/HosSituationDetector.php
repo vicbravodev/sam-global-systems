@@ -97,6 +97,7 @@ class HosSituationDetector
             $previous !== null
             && ! $driving
             && $config->enabled(HosSituation::RestComplete)
+            && $this->canDrive($current, $config)
             && (
                 $this->reset($previous->breakRemainingSeconds, $current->breakRemainingSeconds, self::FULL_BREAK_SECONDS)
                 || $this->reset($previous->driveRemainingSeconds, $current->driveRemainingSeconds, self::FULL_DRIVE_SECONDS)
@@ -111,6 +112,25 @@ class HosSituationDetector
     private function atOrBelow(?int $seconds, int $threshold): bool
     {
         return $seconds !== null && $seconds <= $threshold;
+    }
+
+    private function above(?int $seconds, int $threshold): bool
+    {
+        return $seconds !== null && $seconds > $threshold;
+    }
+
+    /**
+     * Rest is only "complete" if the driver can actually resume: hours left
+     * on drive, shift and cycle beyond their warning thresholds. A null clock
+     * means we can't tell, so no "you can go" reminder.
+     */
+    private function canDrive(HosClockReading $current, HosMonitoringConfig $config): bool
+    {
+        $lead = $config->leadSeconds();
+
+        return $this->above($current->driveRemainingSeconds, $lead)
+            && $this->above($current->shiftRemainingSeconds, $lead)
+            && $this->above($current->cycleRemainingSeconds, $config->cycleLeadSeconds());
     }
 
     private function atOrAbove(?int $seconds, int $threshold): bool

@@ -108,6 +108,23 @@ class HosSituationDetectorTest extends TestCase
         $this->assertSame([HosSituation::RestComplete], $this->detect($this->reading('sleeperBed', break: 28800, drive: 0), $this->reading('sleeperBed', break: 28800, drive: 39600))->open);
     }
 
+    public function test_rest_complete_does_not_open_when_the_driver_cannot_legally_drive(): void
+    {
+        $previous = $this->reading('offDuty', break: 600);
+
+        // Pausa de 30 min cumplida pero sin ventana de 14 h: no hay que avisarle que arranque.
+        $this->assertSame([], $this->detect($previous, $this->reading('offDuty', break: 28800, shift: 0))->open);
+        $this->assertSame([], $this->detect($previous, $this->reading('offDuty', break: 28800, drive: 1800))->open);
+        // (el ciclo bajo sí abre cycle_limit; lo que importa es que no haya fin de pausa)
+        $this->assertNotContains(HosSituation::RestComplete, $this->detect($previous, $this->reading('offDuty', break: 28800, cycle: 5 * 3600))->open);
+        // Sin relojes no se puede saber: no se abre.
+        $this->assertSame([], $this->detect($previous, $this->reading('offDuty', break: 28800, shift: null))->open);
+        $this->assertSame([], $this->detect($previous, $this->reading('offDuty', break: 28800, drive: null))->open);
+        $this->assertSame([], $this->detect($previous, $this->reading('offDuty', break: 28800, cycle: null))->open);
+        // Con horas disponibles sí abre.
+        $this->assertSame([HosSituation::RestComplete], $this->detect($previous, $this->reading('offDuty', break: 28800, drive: 7200, shift: 9000, cycle: 30000))->open);
+    }
+
     public function test_rest_complete_resolves_when_driving_or_expires(): void
     {
         $open = ['rest_complete' => CarbonImmutable::parse('2026-10-04 11:50:00')];
