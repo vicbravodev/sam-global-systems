@@ -51,6 +51,16 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $this->forIntegration($integration)->fetchDeviceConnectivity($integration);
     }
 
+    public function fetchHosClocks(TenantIntegration $integration): array
+    {
+        return $this->forIntegration($integration)->fetchHosClocks($integration);
+    }
+
+    public function fetchTags(TenantIntegration $integration): array
+    {
+        return $this->forIntegration($integration)->fetchTags($integration);
+    }
+
     public function fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array
     {
         return $this->forIntegration($integration)->fetchLiveLocation($integration, $externalAssetId);
