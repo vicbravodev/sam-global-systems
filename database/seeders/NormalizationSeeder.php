@@ -13,6 +13,18 @@ use Illuminate\Database\Seeder;
 
 class NormalizationSeeder extends Seeder
 {
+    /**
+     * Samsara `AlertIncident` rules. "Camera Obstructed" has no public
+     * `triggerTypeId`, so it stays on the description, in any condition.
+     *
+     * @var list<array{conditions: array<string, int|string>, type: string, priority: int}>
+     */
+    public const array ALERT_INCIDENT_RULES = [
+        ['conditions' => ['data.conditions.*.triggerId' => 1034], 'type' => 'panic_button', 'priority' => 20],
+        ['conditions' => ['data.conditions.*.triggerId' => 1045], 'type' => 'tampering', 'priority' => 15],
+        ['conditions' => ['data.conditions.*.description' => 'Camera Obstructed'], 'type' => 'camera_obstructed', 'priority' => 10],
+    ];
+
     public function run(): void
     {
         $categories = $this->seedCategories();
@@ -171,24 +183,22 @@ class NormalizationSeeder extends Seeder
             ],
         );
 
-        // AlertIncident rules (webhook, with conditions)
-        $alertIncidentRules = [
-            ['conditions' => ['data.conditions.0.description' => 'Panic Button'], 'type' => 'panic_button', 'priority' => 10],
-            ['conditions' => ['data.conditions.0.description' => 'Camera Obstructed'], 'type' => 'camera_obstructed', 'priority' => 10],
-            ['conditions' => ['data.conditions.0.description' => 'Tampering'], 'type' => 'tampering', 'priority' => 10],
-        ];
-
-        foreach ($alertIncidentRules as $rule) {
+        // AlertIncident rules: a Samsara alert configuration fired. Samsara
+        // identifies the trigger by `triggerId` (its `triggerTypeId`), so the
+        // rules match it in ANY condition (`*`), never by the display text of
+        // the first one. The most severe wins when a configuration carries
+        // several conditions. Each rule maps to a distinct event type, so
+        // (provider, external_event_type, mapped_event_type_id) is a stable
+        // key and re-seeding converts older rules in place.
+        foreach (self::ALERT_INCIDENT_RULES as $rule) {
             if (! isset($eventTypes[$rule['type']])) {
                 continue;
             }
 
             // Match on scalar columns only — never put the jsonb
             // external_conditions_json in the WHERE clause (Postgres can't bind
-            // an array against jsonb and throws). Each AlertIncident rule maps
-            // to a distinct event type, so (provider, external_event_type,
-            // mapped_event_type_id) is a stable unique key.
-            EventMappingRule::firstOrCreate(
+            // an array against jsonb and throws).
+            EventMappingRule::updateOrCreate(
                 [
                     'provider_id' => $samsara->id,
                     'external_event_type' => 'AlertIncident',
