@@ -42,7 +42,7 @@ class HosSituationDetectorTest extends TestCase
         $this->assertSame([], $this->detect(null, $this->reading('driving', break: 3 * 3600))->open);
     }
 
-    public function test_break_due_resolves_only_when_the_break_clock_resets(): void
+    public function test_break_due_stays_open_on_a_short_stop_and_resolves_above_the_threshold(): void
     {
         $open = ['break_due' => CarbonImmutable::parse('2026-10-04 11:50:00')];
 
@@ -72,7 +72,7 @@ class HosSituationDetectorTest extends TestCase
         $this->assertSame([HosSituation::ShiftLimit], $this->detect(null, $this->reading('onDuty', drive: 20 * 60, shift: 25 * 60))->open);
     }
 
-    public function test_cycle_limit_opens_and_resolves_on_reset(): void
+    public function test_cycle_limit_opens_and_resolves_once_back_above_its_margin(): void
     {
         $this->assertSame([HosSituation::CycleLimit], $this->detect(null, $this->reading('offDuty', cycle: 4 * 3600))->open);
 

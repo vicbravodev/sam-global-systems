@@ -31,8 +31,6 @@ class HosSituationDetector
 
     public const int FULL_DRIVE_SECONDS = 39600;
 
-    public const int FULL_SHIFT_SECONDS = 50400;
-
     /**
      * Margin above the cycle threshold before cycle_limit ends: the 70 h/8 d
      * cycle recovers hours as old days roll off, so it can hover around the

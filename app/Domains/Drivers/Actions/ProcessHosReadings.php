@@ -28,15 +28,6 @@ use Illuminate\Support\Facades\DB;
  */
 class ProcessHosReadings
 {
-    /**
-     * Oldest stored state still usable as the "before" of a transition. Polls
-     * run every minute; a driver coming back after hours or days (vehicle
-     * parked, left the set, failed polls) must not be compared with an old
-     * snapshot, or the natural reset of their clocks would read as a pause
-     * just served (false rest_complete).
-     */
-    public const int STALE_STATE_SECONDS = 300;
-
     public function __construct(private readonly HosSituationDetector $detector) {}
 
     /**
@@ -72,9 +63,7 @@ class ProcessHosReadings
                 $state = $states->get($driver->id);
                 $open = $openEpisodes->get($driver->id, collect())->keyBy(fn (HosEpisode $e) => $e->situation->value);
 
-                $previous = $state?->observed_at !== null && $state->observed_at->gte($now->toImmutable()->subSeconds(self::STALE_STATE_SECONDS))
-                    ? $state->toReading($reading->externalDriverId, $reading->externalVehicleId)
-                    : null;
+                $previous = $this->previousReading($state, $reading, $config, $now);
 
                 $detection = $this->detector->detect(
                     $previous,
@@ -132,6 +121,31 @@ class ProcessHosReadings
 
             return $counts;
         });
+    }
+
+    /**
+     * The stored clocks are only a usable "before" of a transition while
+     * they are recent. Up to the rest-complete window (default 35 min) the
+     * last real reading is trustworthy: a break served during a short
+     * Samsara outage must not be missed. Past it, the natural reset of the
+     * clocks after hours away would read as a pause just served (false
+     * rest_complete). A disconnected app keeps refreshing `observed_at` with
+     * frozen clocks, so its age counts from `app_disconnected_since`, the
+     * last moment the clocks were real.
+     */
+    private function previousReading(?HosDriverState $state, HosClockReading $reading, HosMonitoringConfig $config, CarbonInterface $now): ?HosClockReading
+    {
+        if ($state === null) {
+            return null;
+        }
+
+        $lastRealAt = $state->app_disconnected_since ?? $state->observed_at;
+
+        if ($lastRealAt->lt($now->toImmutable()->subSeconds($config->restCompleteExpireSeconds()))) {
+            return null;
+        }
+
+        return $state->toReading($reading->externalDriverId, $reading->externalVehicleId);
     }
 
     private function open(int $teamId, int $driverId, int $assetId, HosSituation $situation, HosClockReading $reading, HosMonitoringConfig $config, CarbonInterface $now): bool
