@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { BellRing, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -33,11 +34,12 @@ function writeDismissed(): void {
  */
 export function PushOptInBanner() {
     const { status, busy, enable } = useWebPush();
+    const publicKey = usePage().props.webPush?.publicKey ?? null;
     const [dismissed, setDismissed] = useState(readDismissed);
 
     useEffect(() => {
-        void syncSubscription().catch(() => undefined);
-    }, []);
+        void syncSubscription(publicKey).catch(() => undefined);
+    }, [publicKey]);
 
     if (
         dismissed ||

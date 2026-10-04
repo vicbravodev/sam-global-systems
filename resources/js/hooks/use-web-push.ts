@@ -34,10 +34,49 @@ async function resolveStatus(publicKey: string | null): Promise<WebPushStatus> {
     return (await currentSubscription()) ? 'on' : 'off';
 }
 
+async function attemptEnable(
+    publicKey: string,
+): Promise<{ status: WebPushStatus | null; failed: boolean }> {
+    try {
+        const result = await subscribeDevice(publicKey);
+
+        if (result === 'saved') {
+            return { status: 'on', failed: false };
+        }
+
+        // Con el guardado fallido no se re-lee el estado: el navegador sí
+        // tiene suscripción, pero el servidor no, y no llegaría ningún aviso.
+        return {
+            status:
+                result === 'failed' ? 'off' : await resolveStatus(publicKey),
+            failed: result === 'failed',
+        };
+    } catch {
+        return { status: 'off', failed: true };
+    }
+}
+
+async function attemptDisable(
+    publicKey: string | null,
+): Promise<WebPushStatus> {
+    try {
+        await unsubscribeDevice();
+    } catch {
+        // Se re-lee el estado real más abajo.
+    }
+
+    try {
+        return await resolveStatus(publicKey);
+    } catch {
+        return 'off';
+    }
+}
+
 export function useWebPush() {
     const publicKey = usePage().props.webPush?.publicKey ?? null;
     const [status, setStatus] = useState<WebPushStatus>('loading');
     const [busy, setBusy] = useState(false);
+    const [failed, setFailed] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -59,17 +98,23 @@ export function useWebPush() {
         }
 
         setBusy(true);
-        const ok = await subscribeDevice(publicKey).catch(() => false);
-        setStatus(ok ? 'on' : await resolveStatus(publicKey));
+        setFailed(false);
+        const result = await attemptEnable(publicKey);
         setBusy(false);
+
+        if (result.status) {
+            setStatus(result.status);
+        }
+
+        setFailed(result.failed);
     }
 
     async function disable(): Promise<void> {
         setBusy(true);
-        await unsubscribeDevice().catch(() => undefined);
-        setStatus(await resolveStatus(publicKey));
+        setFailed(false);
+        setStatus(await attemptDisable(publicKey));
         setBusy(false);
     }
 
-    return { status, busy, enable, disable };
+    return { status, busy, failed, enable, disable };
 }

@@ -19,14 +19,17 @@ const COPY: Record<WebPushStatus, string> = {
 };
 
 export function DevicePushCard() {
-    const { status, busy, enable, disable } = useWebPush();
+    const { status, busy, failed, enable, disable } = useWebPush();
+    const message = failed
+        ? 'No pudimos activar los avisos en este dispositivo. Revisa tu conexión e inténtalo de nuevo.'
+        : COPY[status];
     const actionable = status === 'off' || status === 'on';
 
     return (
         <FormCard className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
                 <BellRing size={18} className="mt-0.5 shrink-0 text-fg-3" />
-                <p className="text-sm text-fg-2">{COPY[status]}</p>
+                <p className="text-sm text-fg-2">{message}</p>
             </div>
             {actionable && (
                 <Button

@@ -88,30 +88,64 @@ async function saveSubscription(
     return response.ok;
 }
 
+export type SubscribeResult = 'saved' | 'denied' | 'failed';
+
+function sameKey(a: ArrayBuffer | null, b: Uint8Array): boolean {
+    if (!a || a.byteLength !== b.length) {
+        return false;
+    }
+
+    const bytes = new Uint8Array(a);
+
+    return bytes.every((value, index) => value === b[index]);
+}
+
+/**
+ * Devuelve una suscripción hecha con la llave VAPID actual: si la existente
+ * se creó con otra (rotación de llaves), se da de baja y se crea de nuevo.
+ */
+async function ensureSubscription(
+    registration: ServiceWorkerRegistration,
+    publicKey: string,
+): Promise<PushSubscription> {
+    const key = urlBase64ToUint8Array(publicKey);
+    const existing = await registration.pushManager.getSubscription();
+
+    if (existing && sameKey(existing.options.applicationServerKey, key)) {
+        return existing;
+    }
+
+    if (existing) {
+        await existing.unsubscribe();
+    }
+
+    return registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key,
+    });
+}
+
 /**
  * Pide permiso (sólo llamar desde un clic) y registra este dispositivo.
  */
-export async function subscribeDevice(publicKey: string): Promise<boolean> {
+export async function subscribeDevice(
+    publicKey: string,
+): Promise<SubscribeResult> {
     const permission = await Notification.requestPermission();
 
     if (permission !== 'granted') {
-        return false;
+        return 'denied';
     }
 
     const registration = await registerServiceWorker();
 
     if (!registration) {
-        return false;
+        return 'failed';
     }
 
-    const subscription =
-        (await registration.pushManager.getSubscription()) ??
-        (await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey),
-        }));
+    const subscription = await ensureSubscription(registration, publicKey);
 
-    return saveSubscription(subscription);
+    return (await saveSubscription(subscription)) ? 'saved' : 'failed';
 }
 
 export async function unsubscribeDevice(): Promise<void> {
@@ -132,17 +166,22 @@ export async function unsubscribeDevice(): Promise<void> {
  * navegador la rotó, o si ahora es otro usuario/team quien usa este
  * navegador, el servidor la reasigna (y el anterior deja de recibir aquí).
  */
-export async function syncSubscription(): Promise<void> {
+export async function syncSubscription(
+    publicKey: string | null,
+): Promise<void> {
     if (
+        !publicKey ||
         pushSupport() !== 'supported' ||
         Notification.permission !== 'granted'
     ) {
         return;
     }
 
-    const subscription = await currentSubscription();
+    const registration = await registerServiceWorker();
 
-    if (subscription) {
-        await saveSubscription(subscription);
+    if (!registration || !(await registration.pushManager.getSubscription())) {
+        return;
     }
+
+    await saveSubscription(await ensureSubscription(registration, publicKey));
 }
