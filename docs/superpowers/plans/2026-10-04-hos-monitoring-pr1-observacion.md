@@ -27,7 +27,7 @@
 ### Desviaciones del spec (decididas al planear, documentar en el PR)
 
 1. **Tags sin sync** (spec §3.3): en vez de guardar tags en `metadata_json` durante el sync, se lee `GET /tags` en el ciclo (caché 5 min por tenant+integración). `/tags` ya trae `vehicles[]` y `drivers[]` por tag, así que la membresía queda fresca sin tocar `mapVehicle`/`mapDriver`.
-2. **Resolución por reinicio de reloj** (spec §3.8): `break_due`, `drive_limit` y `shift_limit` se resuelven (`corrected`) cuando el reloj correspondiente vuelve a su valor completo, no al pasar a off-duty. Evita que una parada de 5 min cierre y reabra el episodio (avisos duplicados). En el PR 2 la escalera se **pausa** mientras el chofer no esté manejando/en turno.
+2. **Resolución por umbral** (spec §3.8; revisión final): `break_due`, `drive_limit` y `shift_limit` se resuelven (`corrected`) cuando su reloj vuelve a quedar estrictamente por encima del umbral de aviso (`lead_minutes` máx.), no al pasar a off-duty ni sólo al reiniciarse completo. No rebota en una parada corta (manejo/turno nunca suben parado y la pausa sólo se reinicia tras 30 min seguidos) y sí cierra cuando el sleeper dividido recalcula manejo/turno a un valor parcial. `cycle_limit` exige 30 min de margen sobre su umbral y `violation` sólo cierra con manejo disponible. `rest_complete` sólo abre si quedan manejo, turno y ciclo por encima de sus umbrales, y nunca contra un estado previo de más de 5 min. En el PR 2 la escalera se **pausa** mientras el chofer no esté manejando/en turno.
 3. `rest_complete` expira a los `rest_complete_expire_minutes` (default 35) para dejar pasar el último aviso de 30 min del PR 2.
 
 ## Review Focus
