@@ -18,6 +18,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -59,6 +60,30 @@ class ShadowEvaluateWithClefJob implements ShouldQueue
             return;
         }
 
+        // Un job en vivo y uno de backfill sobre la misma evaluación pagarían
+        // dos veces el mismo modelo: el segundo cede y el primero cubre ambos.
+        $lock = Cache::lock(self::lockKey($this->teamId, $evaluation->id), $this->timeout + 60);
+
+        if (! $lock->get()) {
+            SystemLog::skipped('ai.clef_shadow.skipped', reason: 'in_progress', input: ['evaluation_id' => $evaluation->id]);
+
+            return;
+        }
+
+        try {
+            $this->evaluate($evaluation, $decider, $images);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public static function lockKey(int $teamId, int $evaluationId): string
+    {
+        return "ai:clef_shadow:{$teamId}:{$evaluationId}";
+    }
+
+    private function evaluate(AIEventEvaluation $evaluation, ClefEventDecider $decider, ClefImageLoader $images): void
+    {
         TenantContext::for($this->teamId, function () use ($evaluation, $decider, $images): void {
             $snapshot = AIInferenceLog::query()
                 ->where('evaluation_id', $evaluation->id)

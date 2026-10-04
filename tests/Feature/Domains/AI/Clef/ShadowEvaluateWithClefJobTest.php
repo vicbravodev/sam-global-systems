@@ -8,6 +8,7 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Infrastructure\AI\Clef\ClefRequestFailedException;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Feature\Domains\AI\Clef\Concerns\BuildsClefFixtures;
@@ -116,6 +117,33 @@ class ShadowEvaluateWithClefJobTest extends TestCase
         $this->assertSame('http_400', $row->error_code);
         $this->assertFalse($row->retryable);
         $this->assertSystemLogged('ai.clef_shadow.failed');
+    }
+
+    public function test_concurrent_run_for_the_same_evaluation_does_not_pay_twice(): void
+    {
+        Http::fake();
+        $team = Team::factory()->create();
+        $evaluation = $this->makeEvaluation($team);
+        $held = Cache::lock(ShadowEvaluateWithClefJob::lockKey($team->id, $evaluation->id), 60);
+        $this->assertTrue($held->get());
+
+        ShadowEvaluateWithClefJob::dispatchSync($team->id, $evaluation->id);
+
+        Http::assertNothingSent();
+        $this->assertSame(0, AIShadowEvaluation::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('ai.clef_shadow.skipped', fn (array $c) => $c['reason'] === 'in_progress');
+        $held->release();
+    }
+
+    public function test_lock_is_released_after_the_run(): void
+    {
+        Http::fake(['api.cloudflare.com/*' => Http::response($this->clefResponse('noise'))]);
+        $team = Team::factory()->create();
+        $evaluation = $this->makeEvaluation($team);
+
+        ShadowEvaluateWithClefJob::dispatchSync($team->id, $evaluation->id);
+
+        $this->assertTrue(Cache::lock(ShadowEvaluateWithClefJob::lockKey($team->id, $evaluation->id), 60)->get());
     }
 
     public function test_aborts_when_team_does_not_match(): void
