@@ -150,6 +150,7 @@ Las instrucciones se derivan del prompt de `EventClassifierAgent` (misma semánt
 | `input_tokens`, `latency_ms` | int nullable |
 | `cost_estimate` | numeric(8,5) nullable |
 | `error_code` | string nullable (clase o `malformed_response`, nunca el mensaje crudo) |
+| `retryable` | bool: fallo transitorio (429, 5xx, timeout) que el siguiente job o backfill reintenta |
 | timestamps | |
 
 Índice único `(ai_event_evaluation_id, model, schema_version)`: idempotencia del job y del backfill. Modelo `AIShadowEvaluation` con `BelongsToTenant`.
