@@ -8,7 +8,7 @@ Métricas y método: [`BENCHMARK.md`](BENCHMARK.md). Todos los respaldos tienen 
 | Fase | Cambio | Alcance |
 |---|---|---|
 | 1 | Agentes propios de usuario archivados (−6,9k tokens de contexto fijo) | usuario |
-| 2 | `CLAUDE.md` raíz compactado (301 → 69 líneas); reglas por zona en `app/`, `database/`, `tests/`, `resources/js/`; §8 (rutina) movida a `ROUTINE_PROMPT.md` | repo |
+| 2 | `CLAUDE.md` raíz compactado (301 → 69 líneas); reglas por zona en `app/`, `database/`, `tests/`, `resources/js/`; §8 (rutina, inactiva desde 2026-06-10) retirada; su prompt vive en la routine "AON Engineer" (deshabilitada) | repo |
 | 3 | Plugins LSP (`php-lsp`, `typescript-lsp`) + `intelephense` global | usuario |
 | 4 | CodeGraph (MCP + hook + CLI) — **probado y retirado** tras el benchmark | — |
 | 5 | `.claude/settings.json` de proyecto (permisos + hook Pint), subagente `tenant-isolation-reviewer`, poda de worktrees mergeados, limpieza de `settings.local.json`, plugin `data` y conectores MCP ajenos desactivados | repo + usuario |
@@ -21,7 +21,6 @@ Métricas y método: [`BENCHMARK.md`](BENCHMARK.md). Todos los respaldos tienen 
 |---|---|
 | `CLAUDE.md` | versión compacta: stack, comandos, mapa, invariantes, git. Carga las reglas por zona bajo demanda |
 | `app/CLAUDE.md` · `database/CLAUDE.md` · `tests/CLAUDE.md` · `resources/js/CLAUDE.md` | reglas específicas de cada zona (checklist de tenant y patrones de `TenantContext` en `app/`) |
-| `ROUTINE_PROMPT.md` | recibe el antiguo §8 de `CLAUDE.md` (contrato de la rutina, inactiva desde 2026-06-10) |
 | `.claude/settings.json` | `allow` de comandos del gate (test, pint, wayfinder, npm checks, git de lectura); `ask` para git destructivo; `deny` de lectura/edición de `.env*` y `auth.json`; hook `PostToolUse` que corre Pint sobre cada `.php` editado |
 | `.claude/agents/tenant-isolation-reviewer.md` | subagente (Sonnet, sólo lectura) que revisa un diff buscando fugas cross-tenant; se invoca a mano antes de abrir PR |
 | `.githooks/post-merge` + `scripts/prune-merged-worktrees.sh` | tras cada `git pull`, poda worktrees de `.claude/worktrees/` ya mergeados, limpios y sin lock vivo; reporta el resto. Activo vía `git config core.hooksPath .githooks` |
@@ -46,10 +45,7 @@ Cada fila es independiente. `R` = raíz del repo.
 
 | Qué | Comando |
 |---|---|
-| `CLAUDE.md` al estado de `main` (301 líneas, con §8) | `git -C R checkout -- CLAUDE.md ROUTINE_PROMPT.md && rm R/{app,database,tests,resources/js}/CLAUDE.md` (equivale a `CLAUDE.md.bak`) |
-| `CLAUDE.md` a antes de la Fase 5 (sin mención del hook Pint) | `cp R/CLAUDE.md.bak-fase5-2026-09-28 R/CLAUDE.md` |
 | Settings de proyecto (permisos + hook Pint) | `rm R/.claude/settings.json` |
-| `settings.local.json` con los permisos viejos y plugin `data` activo | `cp R/.claude/settings.local.json.bak-fase5-2026-09-28 R/.claude/settings.local.json` |
 | Subagente de aislamiento | `rm R/.claude/agents/tenant-isolation-reviewer.md` |
 | Poda automática de worktrees | `git -C R config --unset core.hooksPath` (y opcional `rm R/.githooks/post-merge R/scripts/prune-merged-worktrees.sh`) |
 | Agentes de usuario archivados | `mv ~/.claude/agents.bak-2026-09-28/*.md ~/.claude/agents/` |
@@ -57,7 +53,7 @@ Cada fila es independiente. `R` = raíz del repo.
 | Conectores claude.ai (p. ej. Claude Docs) | `/mcp` → habilitar el conector (quita la entrada de `disabledMcpServers`) |
 | Todo `~/.claude.json` a como estaba al empezar el día | `cp ~/.claude.json.bak-2026-09-28 ~/.claude.json` (cerrar antes todas las sesiones de Claude; hay puntos intermedios `.bak-codegraph-…` y `.bak-fase5-…`) |
 | Todo `~/.claude/settings.json` a como estaba al empezar el día | `cp ~/.claude/settings.json.bak-2026-09-28 ~/.claude/settings.json` |
-| Reinstalar CodeGraph | no recomendado (ver resultados). Respaldos: `R/.claude/settings.json.bak-codegraph-2026-09-28` (hook), `R/codegraph.json.bak-codegraph-2026-09-28`, `R/.gitignore.bak-codegraph-2026-09-28` (`/.codegraph`), `~/.claude/CLAUDE.md.bak-codegraph-2026-09-28`, `~/.claude/settings.json.bak-codegraph-2026-09-28` (permiso MCP) |
+| Reinstalar CodeGraph | no recomendado (ver resultados). Respaldos: `~/.claude/CLAUDE.md.bak-codegraph-2026-09-28`, `~/.claude/settings.json.bak-codegraph-2026-09-28` (permiso MCP) |
 
 Los cambios de repo surten efecto en una sesión nueva de `claude`; los de `~/.claude.json` requieren cerrar todas las sesiones antes de restaurar el archivo (Claude lo reescribe al salir).
 
@@ -90,5 +86,4 @@ Los cambios de repo surten efecto en una sesión nueva de `claude`; los de `~/.c
 ## Pendiente
 
 - Anotar el `/context` de una sesión nueva (tabla de arriba).
-- Commitear en rama `chore/…` y abrir PR: `CLAUDE.md` + zonas, `ROUTINE_PROMPT.md`, `.claude/settings.json`, `.claude/agents/`, `.githooks/`, `scripts/prune-merged-worktrees.sh`, `docs/ai/`. No incluir los `*.bak*` ni `.playwright-cli/`.
-- Tras verificar una semana sin problemas, borrar los `*.bak*` del repo y de `~/.claude*`.
+- Borrar los `*.bak*` de `~/.claude*` (los del repo se borraron el 2026-10-05; restaurar el repo = `git log` de esos archivos).
