@@ -2,7 +2,9 @@
 
 namespace App\Domains\Assets\Jobs;
 
+use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Enums\TelematicsFeed;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -81,8 +83,17 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                 ->get()
                 ->keyBy(fn (TelematicsFeedCursor $cursor) => $cursor->tenant_integration_id.'|'.$cursor->feed->value);
 
+            // The trailers feed only runs where the catalog sync found trailers:
+            // for the rest it would be one empty request every interval.
+            $withTrailers = array_flip(Asset::query()
+                ->whereIn('source_integration_id', $integrations->modelKeys())
+                ->whereHas('assetType', fn ($query) => $query->where('category', AssetCategory::Trailer))
+                ->distinct()
+                ->pluck('source_integration_id')
+                ->all());
+
             // Platform-wide sweep: counts only, never a tenant's ids.
-            $counts = ['tenant_blocked' => 0, 'feed_disabled' => 0, 'dispatched' => 0, 'not_due' => 0, 'paused' => 0];
+            $counts = ['tenant_blocked' => 0, 'feed_disabled' => 0, 'dispatched' => 0, 'not_due' => 0, 'paused' => 0, 'no_trailers' => 0];
             $byFeed = [];
 
             foreach (TelematicsFeed::cases() as $feed) {
@@ -90,7 +101,7 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
             }
 
             foreach ($integrations as $integration) {
-                TenantContext::for($integration->team_id, function () use ($integration, $cursors, &$counts, &$byFeed): void {
+                TenantContext::for($integration->team_id, function () use ($integration, $cursors, $withTrailers, &$counts, &$byFeed): void {
                     if (TenantCanSend::blockedReason($integration->team_id) !== null) {
                         $counts['tenant_blocked']++;
 
@@ -104,6 +115,12 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                     }
 
                     foreach (TelematicsFeed::cases() as $feed) {
+                        if ($feed === TelematicsFeed::Trailers && ! isset($withTrailers[$integration->id])) {
+                            $counts['no_trailers']++;
+
+                            continue;
+                        }
+
                         $cursor = $cursors->get($integration->id.'|'.$feed->value);
                         $notDue = $this->isDue($integration, $feed, $cursor);
 
@@ -127,6 +144,7 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                 'dispatched_count' => $counts['dispatched'],
                 'not_due_count' => $counts['not_due'],
                 'paused_count' => $counts['paused'],
+                'no_trailers_count' => $counts['no_trailers'],
                 'dispatched_count_by_feed' => $byFeed,
             ], debug: $counts['dispatched'] === 0, channel: 'telematics');
         });

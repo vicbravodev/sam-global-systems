@@ -79,7 +79,7 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
         try {
             do {
                 $page = $providerAdapter->fetchVehicleStatsHistory($this->integration, $this->feed, $from, $this->until, $cursor);
-                $result = DB::transaction(fn () => $ingest->execute($this->integration, $page));
+                $result = DB::transaction(fn () => $ingest->execute($this->integration, $page, $this->feed));
 
                 $stored += $result->locationsStored + $result->readingsStored;
                 $cursor = $page->endCursor;

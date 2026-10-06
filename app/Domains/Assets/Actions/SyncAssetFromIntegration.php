@@ -2,6 +2,7 @@
 
 namespace App\Domains\Assets\Actions;
 
+use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Events\AssetDiscovered;
 use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
@@ -149,7 +150,11 @@ class SyncAssetFromIntegration
                 // El sync descubre TODA la flota del proveedor sin tope: la unidad
                 // entra al inventario como `pending` y el cliente decide si la
                 // enciende (SetAssetMonitoring). Nada se vigila ni se cobra solo.
-                'monitoring_state' => AssetMonitoringState::Pending,
+                // Un remolque nunca se vigila ni se cobra (decisión 2026-10-05):
+                // entra `excluded` y sólo se sigue como contexto de su tracto.
+                'monitoring_state' => $assetType->category === AssetCategory::Trailer
+                    ? AssetMonitoringState::Excluded
+                    : AssetMonitoringState::Pending,
                 'first_seen_at' => now(),
                 'last_seen_at' => now(),
             ]);
