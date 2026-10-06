@@ -3,6 +3,7 @@
 namespace App\Domains\Ingestion\Jobs;
 
 use App\Domains\Ingestion\Actions\AlertPipelineFailure;
+use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\PipelineFailureAlert;
@@ -212,7 +213,17 @@ class ReprocessStuckRawEventsJob implements ShouldBeUnique, ShouldQueue
                     ->whereNotExists(fn (QueryBuilder $n) => $n
                         ->selectRaw('1')
                         ->from('normalized_events')
-                        ->whereColumn('normalized_events.raw_event_id', 'raw_events.id'))));
+                        ->whereColumn('normalized_events.raw_event_id', 'raw_events.id'))
+                    // Un estado de safety event cuya entidad ya pasó a un
+                    // estado más nuevo (NormalizeRawEvent::updateProviderEntity
+                    // mueve `raw_event_id`) sí se normalizó: no está atascado.
+                    ->whereNot(fn (Builder $safety) => $safety
+                        ->where('deduplication_key', 'like', IngestSafetyEvent::KEY_PREFIX.'%')
+                        ->whereExists(fn (QueryBuilder $n) => $n
+                            ->selectRaw('1')
+                            ->from('normalized_events')
+                            ->whereColumn('normalized_events.team_id', 'raw_events.team_id')
+                            ->whereRaw('normalized_events.provider_event_key = ? || raw_events.external_event_id', [IngestSafetyEvent::KEY_PREFIX])))));
     }
 
     public function failed(\Throwable $exception): void
