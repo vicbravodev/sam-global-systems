@@ -16,6 +16,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
@@ -61,6 +62,11 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
      * Fallback delay for a 429 without a usable `Retry-After` header.
      */
     public const int RATE_LIMIT_FALLBACK_SECONDS = 60;
+
+    /**
+     * Delay before retrying after a timeout or connection failure.
+     */
+    public const int CONNECTION_RETRY_SECONDS = 60;
 
     /**
      * Prefix of the `last_error_message` this poller writes, so a successful
@@ -109,6 +115,16 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
             $result = $this->fetch($providerAdapter, $feed, $cursor, $startTime);
         } catch (\Throwable $e) {
             $this->recordError($e);
+
+            // Timeout o red caída: transitorio. Se libera sin reportar la
+            // excepción; si persiste, agotar los intentos dispara failed().
+            if ($e instanceof ConnectionException) {
+                SystemLog::degraded('ingestion.poll.provider_unreachable', reason: 'connection_failed', input: ['integration_id' => $this->integration->id, 'attempt' => $this->attempts()], calc: ['released_for_seconds' => self::CONNECTION_RETRY_SECONDS], error: $e);
+
+                $this->release(self::CONNECTION_RETRY_SECONDS);
+
+                return;
+            }
 
             if ($e instanceof ProviderRequestFailedException && $e->isRateLimited()) {
                 $releaseFor = $e->retryAfterSeconds ?? self::RATE_LIMIT_FALLBACK_SECONDS;

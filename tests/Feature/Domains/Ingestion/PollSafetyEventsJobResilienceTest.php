@@ -17,6 +17,7 @@ use App\Models\User;
 use Database\Seeders\IngestionMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\AssertsSystemLog;
@@ -334,6 +335,28 @@ class PollSafetyEventsJobResilienceTest extends TestCase
         $fresh = $integration->fresh();
         $this->assertSame($feed, $fresh->sync_state_json['safety_events']);
         $this->assertStringContainsString('HTTP 429', $fresh->last_error_message);
+    }
+
+    public function test_connection_timeout_releases_without_advancing_state(): void
+    {
+        $feed = ['cursor' => 'cursor-prev', 'start_time' => self::PINNED_START, 'last_polled_at' => '2026-09-27T11:58:00+00:00'];
+        $integration = $this->makeIntegration($feed);
+        Http::fake(['*/safety-events/stream*' => Http::failedConnection('cURL error 28: Operation timed out after 15002 milliseconds')]);
+
+        $job = (new PollSafetyEventsJob($integration))->withFakeQueueInteractions();
+        $job->handle(app(ProviderAdapter::class), app(IngestSafetyEvent::class));
+
+        $job->assertReleased(delay: PollSafetyEventsJob::CONNECTION_RETRY_SECONDS);
+        $fresh = $integration->fresh();
+        $this->assertSame($feed, $fresh->sync_state_json['safety_events']);
+        $this->assertStringStartsWith(PollSafetyEventsJob::ERROR_PREFIX, $fresh->last_error_message);
+
+        $this->assertSystemLogged('ingestion.poll.provider_unreachable', fn (array $c): bool => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'connection_failed'
+            && $c['input']['integration_id'] === $integration->id
+            && $c['calc']['released_for_seconds'] === PollSafetyEventsJob::CONNECTION_RETRY_SECONDS);
+        $this->assertSystemNotLogged('ingestion.poll.cycle_completed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_successful_poll_clears_its_own_previous_error(): void
