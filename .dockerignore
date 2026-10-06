@@ -19,7 +19,6 @@ docker
 tests
 specs
 docs
-design-brief
 resources/js/actions
 resources/js/routes
 resources/js/wayfinder

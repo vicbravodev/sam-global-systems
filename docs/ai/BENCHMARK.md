@@ -150,7 +150,7 @@ docs/ai/bench-stats.sh "$(jq -r .session_id /tmp/bench-a-$CFG.json)"
 ```
 
 Contexto fijo al arrancar, medido el 2026-09-28 **antes** de cualquier cambio: **56,4k tokens** — memoria 18,3k · tools 16,9k · skills 7,1k · agentes propios 6,9k · MCP 1,7k.
-Ese mismo día, antes de correr la línea base, ya se aplicaron: agentes propios archivados (−6,9k) y la §8 de CLAUDE.md movida a `ROUTINE_PROMPT.md`. La fila "base" mide ese estado; anota el total de `/context` de una sesión vacía como nuevo punto de partida.
+Ese mismo día, antes de correr la línea base, ya se aplicaron: agentes propios archivados (−6,9k) y la §8 de CLAUDE.md movida a `ROUTINE_PROMPT.md` (retirado el 2026-10-05). La fila "base" mide ese estado; anota el total de `/context` de una sesión vacía como nuevo punto de partida.
 
 ---
 
