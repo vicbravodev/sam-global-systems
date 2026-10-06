@@ -203,6 +203,41 @@ class ReprocessStuckRawEventsJobTest extends TestCase
         Notification::assertSentToTimes($this->superAdmin, PipelineFailureNotification::class, 1);
     }
 
+    public function test_a_safety_state_whose_entity_moved_to_a_newer_state_is_not_stuck(): void
+    {
+        // Caso real (raw 3826): `needsReview` se normalizó, a los 2 min llegó
+        // `dismissed` y la fila del safety event pasó a apuntar al raw nuevo.
+        // El viejo queda `processed` sin normalizado propio y NO está atascado.
+        Queue::fake();
+        Notification::fake();
+        $externalId = '54451117-8a6c-5eb4-9e87-a102b1182028';
+        $old = $this->stuck($this->teamA, RawEventStatus::Processed, attributes: [
+            'external_event_id' => $externalId,
+            'deduplication_key' => "safety:{$externalId}:needsReview",
+        ]);
+        $newer = $this->stuck($this->teamA, RawEventStatus::Processed, attributes: [
+            'external_event_id' => $externalId,
+            'deduplication_key' => "safety:{$externalId}:dismissed",
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $this->teamA->id,
+            'raw_event_id' => $newer->id,
+            'provider_event_key' => "safety:{$externalId}",
+        ]);
+        // El mismo id externo en otro tenant no cuenta como entidad del A.
+        $orphanB = $this->stuck($this->teamB, RawEventStatus::Processed, attributes: [
+            'external_event_id' => $externalId,
+            'deduplication_key' => "safety:{$externalId}:needsReview",
+        ]);
+
+        $this->sweep();
+
+        Queue::assertPushed(ProcessRawEventJob::class, 1);
+        Queue::assertPushed(ProcessRawEventJob::class, fn (ProcessRawEventJob $job) => $job->rawEventId === $orphanB->id);
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->find($old->id)->reprocess_attempts);
+        Notification::assertNothingSent();
+    }
+
     public function test_the_sweep_never_touches_another_tenants_rows(): void
     {
         Queue::fake();
