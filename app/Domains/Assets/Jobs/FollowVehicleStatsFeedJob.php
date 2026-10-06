@@ -63,6 +63,9 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
     /** Positions per socket message, to stay well under the payload limit. */
     private const BROADCAST_CHUNK = 200;
 
+    /** A token without the trailers scope is retried every six hours. */
+    private const MISSING_SCOPE_PAUSE_SECONDS = 6 * 3600;
+
     public function __construct(
         public readonly TenantIntegration $integration,
         public readonly TelematicsFeed $feed,
@@ -118,7 +121,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
                 $page = $providerAdapter->fetchVehicleStatsFeed($this->integration, $this->feed, $cursor->end_cursor);
 
                 $pageResult = DB::transaction(function () use ($ingest, $page, $cursor) {
-                    $pageResult = $ingest->execute($this->integration, $page);
+                    $pageResult = $ingest->execute($this->integration, $page, $this->feed);
 
                     $cursor->forceFill([
                         'end_cursor' => $page->endCursor ?? $cursor->end_cursor,
@@ -164,6 +167,12 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
 
         if ($this->feed === TelematicsFeed::Motion && $result->positions !== []) {
             $this->detectAfterHoursMovement($result, $scheduleResolver, $raiseAfterHours, $cycleInput);
+        }
+
+        // Even a cycle without new trailer points re-judges: a tractor that
+        // drives off alone is what reveals a trailer left behind.
+        if ($this->feed === TelematicsFeed::Trailers) {
+            EvaluateTrailerCouplingsJob::dispatch($this->integration->team_id);
         }
 
         $droppedByReason = [];
@@ -233,7 +242,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
      * Pause, restart or open the circuit per failure class, and return the
      * terms of that decision for the cycle line.
      *
-     * @return array{reason: 'rate_limited'|'provider_unavailable'|'cursor_rejected'|'unauthorized'|'provider_error', failure_class: string, consecutive_failures: int, retry_after_s: ?float, pause_s: ?int, backoff_base_s: ?int, backoff_max_s: ?int, paused_until: ?string, backfill_requested: bool, circuit_opened: bool}
+     * @return array{reason: 'rate_limited'|'provider_unavailable'|'cursor_rejected'|'missing_scope'|'unauthorized'|'provider_error', failure_class: string, consecutive_failures: int, retry_after_s: ?float, pause_s: ?int, backoff_base_s: ?int, backoff_max_s: ?int, paused_until: ?string, backfill_requested: bool, circuit_opened: bool}
      */
     private function handleFailure(TelematicsFeedCursor $cursor, ProviderRequestFailed $e): array
     {
@@ -244,18 +253,24 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             'last_error' => SafeErrorMessage::from($e),
         ]);
 
+        // A token without the trailers scope only loses the trailers: the
+        // vehicles keep flowing, so this feed pauses instead of opening the
+        // integration's circuit.
+        $scopeMissing = $e instanceof ProviderUnauthorized && $this->feed === TelematicsFeed::Trailers;
+
         $pauseSeconds = match (true) {
             // Whole seconds, rounded up: the column has no fractions, and
             // truncating would resume before the provider allows.
             $e instanceof ProviderRateLimited => (int) ceil(max(1.0, $e->retryAfterSeconds)),
             $e instanceof ProviderUnavailable => $this->backoffSeconds($failures),
+            $scopeMissing => self::MISSING_SCOPE_PAUSE_SECONDS,
             default => null,
         };
         $backfillRequested = false;
 
         match (true) {
-            $e instanceof ProviderRateLimited,
-            $e instanceof ProviderUnavailable => $cursor->forceFill([
+            // Exactly the failures that pause: rate limit, unavailable, missing scope.
+            $pauseSeconds !== null => $cursor->forceFill([
                 'paused_until' => now()->addSeconds($pauseSeconds),
             ]),
             $e instanceof ProviderCursorRejected => $backfillRequested = $this->restartFromHistory($cursor),
@@ -270,6 +285,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
                 $e instanceof ProviderRateLimited => 'rate_limited',
                 $e instanceof ProviderUnavailable => 'provider_unavailable',
                 $e instanceof ProviderCursorRejected => 'cursor_rejected',
+                $scopeMissing => 'missing_scope',
                 $e instanceof ProviderUnauthorized => 'unauthorized',
                 default => 'provider_error',
             },
@@ -281,7 +297,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             'backoff_max_s' => $unavailable ? (int) config('telematics.backoff.max_seconds', 300) : null,
             'paused_until' => $pauseSeconds !== null ? $cursor->paused_until?->toIso8601String() : null,
             'backfill_requested' => $backfillRequested,
-            'circuit_opened' => $e instanceof ProviderUnauthorized,
+            'circuit_opened' => $e instanceof ProviderUnauthorized && ! $scopeMissing,
         ];
     }
 

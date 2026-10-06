@@ -18,6 +18,11 @@ use App\Domains\Assets\Models\AssetExternalReference;
  * Only MONITORED assets resolve: a poll must never spend provider quota,
  * storage or alerts on a unit the tenant has not switched on (`pending`) or
  * has switched off (`excluded`). Those ids are omitted like unknown ones.
+ *
+ * Trailers are the exception, asked for explicitly with `$trailers`: they are
+ * never monitored (nor billed) and are followed only as context of the
+ * tractor that pulls them, so that lookup resolves the tenant's trailers
+ * whatever their monitoring state, and nothing else.
  */
 class ResolveAssetsFromExternalIds
 {
@@ -30,7 +35,7 @@ class ResolveAssetsFromExternalIds
      * @param  iterable<int, string>  $externalIds
      * @return array<string, Asset> keyed by external id; unknown or foreign ids are omitted
      */
-    public function execute(int $providerId, iterable $externalIds, int $teamId): array
+    public function execute(int $providerId, iterable $externalIds, int $teamId, bool $trailers = false): array
     {
         $ids = [];
 
@@ -54,7 +59,11 @@ class ResolveAssetsFromExternalIds
 
             $assets = Asset::query()
                 ->where('team_id', $teamId)
-                ->monitored()
+                ->when(
+                    $trailers,
+                    fn ($query) => $query->trailers(),
+                    fn ($query) => $query->monitored(),
+                )
                 ->whereKey($assetIdsByExternalId->values()->unique()->all())
                 ->get()
                 ->keyBy('id');

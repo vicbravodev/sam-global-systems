@@ -126,6 +126,20 @@ class SetAssetMonitoring
             ];
         }
 
+        // Un remolque es contexto del tracto, no unidad de cobro (decisión
+        // 2026-10-05): nunca entra a la vigilancia ni al tracto-día.
+        if ($state === AssetMonitoringState::Monitored && $asset->loadMissing('assetType')->isTrailer()) {
+            SystemLog::skipped('assets.monitoring.changed', reason: 'trailer_not_monitorable', input: ['team_id' => $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value], debug: $batch);
+
+            return [
+                'asset' => $asset,
+                'changed' => false,
+                'over_cap' => false,
+                'monitored' => $monitored,
+                'cap' => $cap,
+            ];
+        }
+
         $asset->forceFill([
             'monitoring_state' => $state,
             'monitoring_changed_at' => now(),

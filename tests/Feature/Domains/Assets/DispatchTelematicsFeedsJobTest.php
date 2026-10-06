@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Assets;
 use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
 use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -74,7 +75,7 @@ class DispatchTelematicsFeedsJobTest extends TestCase
         $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
         $this->assertSame(count($this->dispatched()), $context['result']['dispatched_count']);
         $this->assertSame(1, $context['result']['integrations_count']);
-        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 1], $context['result']['dispatched_count_by_feed']);
+        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 1, 'trailers_count' => 0], $context['result']['dispatched_count_by_feed']);
         $this->assertSame(DispatchTelematicsFeedsJob::TICK_SECONDS, $context['calc']['tick_seconds']);
 
         $entry = $this->systemLogEntries('telematics.feeds.dispatched')[0];
@@ -141,7 +142,7 @@ class DispatchTelematicsFeedsJobTest extends TestCase
         $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
         $this->assertSame(1, $context['result']['not_due_count']);
         $this->assertSame(0, $context['result']['paused_count']);
-        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 0], $context['result']['dispatched_count_by_feed']);
+        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 0, 'trailers_count' => 0], $context['result']['dispatched_count_by_feed']);
     }
 
     public function test_the_default_five_second_interval_does_not_drift_to_ten(): void
@@ -216,5 +217,28 @@ class DispatchTelematicsFeedsJobTest extends TestCase
 
         $this->assertTrue($delays->every(fn ($delay) => is_int($delay) && $delay >= 0 && $delay < DispatchTelematicsFeedsJob::TICK_SECONDS));
         $this->assertGreaterThan(1, $delays->unique()->count());
+    }
+
+    public function test_the_trailers_feed_only_runs_where_the_sync_found_trailers(): void
+    {
+        $withTrailers = $this->integration();
+        $without = $this->integration();
+        Asset::factory()->trailer()->create([
+            'team_id' => $withTrailers->team_id,
+            'source_integration_id' => $withTrailers->id,
+        ]);
+        Asset::factory()->create([
+            'team_id' => $without->team_id,
+            'source_integration_id' => $without->id,
+        ]);
+
+        (new DispatchTelematicsFeedsJob)->handle();
+
+        $trailerCycles = array_values(array_filter($this->dispatched(), fn (string $cycle) => str_ends_with($cycle, ':trailers')));
+        $this->assertSame(["{$withTrailers->id}:trailers"], $trailerCycles);
+
+        $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(1, $context['result']['no_trailers_count']);
+        $this->assertSame(1, $context['result']['dispatched_count_by_feed']['trailers_count']);
     }
 }

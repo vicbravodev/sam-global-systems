@@ -106,4 +106,31 @@ class ResolveAssetsFromExternalIdsTest extends TestCase
         // client has not switched on: only monitored assets resolve.
         $this->assertSame(['on'], array_keys($resolved));
     }
+
+    public function test_the_trailers_lookup_resolves_the_tenants_trailers_and_nothing_else(): void
+    {
+        $team = Team::factory()->create();
+        $other = Team::factory()->create();
+        $provider = IntegrationProvider::factory()->create();
+
+        $this->linkAsset($team, $provider, 'tractor');
+
+        foreach ([[$team, 'trailer'], [$other, 'foreign-trailer']] as [$owner, $externalId]) {
+            AssetExternalReference::factory()->create([
+                'asset_id' => Asset::factory()->trailer()->create(['team_id' => $owner->id])->id,
+                'provider_id' => $provider->id,
+                'external_id' => $externalId,
+            ]);
+        }
+
+        $resolve = app(ResolveAssetsFromExternalIds::class);
+        $ids = ['tractor', 'trailer', 'foreign-trailer'];
+
+        // Trailers are `excluded` by design, yet the trailers feed reaches them;
+        // the vehicle feeds never do, and neither reaches the vehicles of the
+        // other lookup or another tenant's trailer.
+        $trailers = $this->assertNoTenantLeak($team, fn () => $resolve->execute($provider->id, $ids, $team->id, trailers: true));
+        $this->assertSame(['trailer'], array_keys($trailers));
+        $this->assertSame(['tractor'], array_keys($resolve->execute($provider->id, $ids, $team->id)));
+    }
 }
