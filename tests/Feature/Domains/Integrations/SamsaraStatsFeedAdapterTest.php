@@ -239,4 +239,29 @@ class SamsaraStatsFeedAdapterTest extends TestCase
 
         app(SamsaraAdapter::class)->fetchVehicleStatsFeed($this->makeIntegration(), TelematicsFeed::Motion);
     }
+
+    public function test_the_trailers_feed_reads_the_trailers_gps_resource(): void
+    {
+        Http::fake(['api.samsara.com/fleet/trailers/stats/*' => Http::response([
+            'data' => [['id' => 't-1', 'gps' => [[
+                'latitude' => 25.67,
+                'longitude' => -100.31,
+                'speedMilesPerHour' => 37.28,
+                'time' => '2026-10-05T18:00:00Z',
+            ]]]],
+            'pagination' => ['endCursor' => 'trl-1', 'hasNextPage' => false],
+        ])]);
+        $integration = $this->makeIntegration();
+
+        $page = app(SamsaraAdapter::class)->fetchVehicleStatsFeed($integration, TelematicsFeed::Trailers);
+        app(SamsaraAdapter::class)->fetchVehicleStatsHistory($integration, TelematicsFeed::Trailers, now()->subHour(), now());
+
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/fleet/trailers/stats/feed')
+            && $this->typesOf($request) === ['gps']);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/fleet/trailers/stats/history'));
+        $this->assertSame('trl-1', $page->endCursor);
+        $this->assertCount(1, $page->locations);
+        $this->assertSame('t-1', $page->locations[0]['external_id']);
+        $this->assertEqualsWithDelta(60.0, $page->locations[0]['speed'], 0.01);
+    }
 }

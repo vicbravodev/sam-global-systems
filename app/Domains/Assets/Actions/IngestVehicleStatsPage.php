@@ -4,6 +4,7 @@ namespace App\Domains\Assets\Actions;
 
 use App\Domains\Assets\Data\VehicleStatsIngestResult;
 use App\Domains\Assets\Enums\LocationSource;
+use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
@@ -47,7 +48,12 @@ class IngestVehicleStatsPage
         private readonly ResolveAssetsFromExternalIds $resolveAssets,
     ) {}
 
-    public function execute(TenantIntegration $integration, VehicleStatsPage $page): VehicleStatsIngestResult
+    /**
+     * `$feed` decides which assets a provider id may resolve to: the vehicle
+     * feeds only reach monitored units; the trailers feed reaches the
+     * tenant's trailers, which are never monitored.
+     */
+    public function execute(TenantIntegration $integration, VehicleStatsPage $page, TelematicsFeed $feed = TelematicsFeed::Motion): VehicleStatsIngestResult
     {
         $externalIds = [];
         $withoutId = 0;
@@ -70,6 +76,7 @@ class IngestVehicleStatsPage
             $integration->provider_id,
             array_map('strval', array_keys($externalIds)),
             $integration->team_id,
+            trailers: $feed === TelematicsFeed::Trailers,
         );
 
         if ($assets === []) {

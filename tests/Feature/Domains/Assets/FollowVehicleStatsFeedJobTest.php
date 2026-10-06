@@ -6,6 +6,7 @@ use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Events\FleetPositionsUpdatedBroadcast;
 use App\Domains\Assets\Events\FleetTelemetryUpdatedBroadcast;
 use App\Domains\Assets\Jobs\BackfillVehicleStatsJob;
+use App\Domains\Assets\Jobs\EvaluateTrailerCouplingsJob;
 use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
@@ -737,5 +738,55 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertSame('telematics', $job->queue);
         $this->assertSame('telematics-feed:7:motion', $job->uniqueId());
         $this->assertSame(1, $job->tries);
+    }
+
+    public function test_the_trailers_feed_stores_trailer_positions_and_queues_the_coupling(): void
+    {
+        $integration = $this->integration();
+        $trailer = Asset::factory()->trailer()->create(['team_id' => $integration->team_id]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $trailer->id,
+            'provider_id' => $integration->provider_id,
+            'external_id' => 't-1',
+        ]);
+
+        Http::fake(['api.samsara.com/fleet/trailers/stats/feed*' => Http::response($this->page([['id' => 't-1', 'gps' => [$this->gps(30, 20), $this->gps(30, 5)]]], 'trl-1'))]);
+
+        $this->cycle($integration, TelematicsFeed::Trailers);
+
+        $this->assertSame(2, AssetLocationSnapshot::query()->where('asset_id', $trailer->id)->count());
+        $this->assertNotNull($trailer->fresh()->last_location_at);
+        $this->assertSame('trl-1', $this->cursor($integration, TelematicsFeed::Trailers)->end_cursor);
+        Queue::assertPushed(EvaluateTrailerCouplingsJob::class, fn (EvaluateTrailerCouplingsJob $job) => $job->teamId === $integration->team_id);
+    }
+
+    public function test_only_the_trailers_feed_queues_the_coupling(): void
+    {
+        $integration = $this->integration();
+        $this->linkAsset($integration, '200');
+
+        Http::fake([self::FEED_URL => Http::response($this->page([['id' => '200', 'gps' => [$this->gps(30, 5)]]]))]);
+
+        $this->cycle($integration);
+
+        Queue::assertNotPushed(EvaluateTrailerCouplingsJob::class);
+    }
+
+    public function test_a_token_without_the_trailers_scope_pauses_that_feed_and_leaves_the_circuit_closed(): void
+    {
+        $integration = $this->integration();
+
+        Http::fake(['api.samsara.com/fleet/trailers/stats/feed*' => Http::response(['message' => 'missing scope'], 403)]);
+
+        $this->cycle($integration, TelematicsFeed::Trailers);
+
+        $this->assertSame(TenantIntegrationStatus::Active, $integration->fresh()->status);
+        Event::assertNotDispatched(IntegrationStatusChanged::class);
+        $this->assertTrue($this->cursor($integration, TelematicsFeed::Trailers)->paused_until->equalTo(now()->addHours(6)));
+        $this->assertSystemLogged('telematics.cycle.failed', fn (array $c) => $c['reason'] === 'missing_scope'
+            && $c['calc']['circuit_opened'] === false
+            && $c['calc']['pause_s'] === 6 * 3600);
+        $this->assertSystemNotLogged('telematics.circuit.opened');
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -34,6 +34,43 @@ return [
     'diagnostics_interval_seconds' => max(5, (int) env('TELEMATICS_DIAGNOSTICS_INTERVAL', 30)),
 
     /*
+    | Seconds between two polls of the trailers feed (GPS of the AG asset
+    | gateways). A moving trailer reports every 5 s to 3 min, and the coupling
+    | is judged over minutes, so a slower cadence loses nothing. Only polled
+    | for integrations that have trailers.
+    */
+    'trailers_interval_seconds' => max(5, (int) env('TELEMATICS_TRAILERS_INTERVAL', 60)),
+
+    /*
+    | Tractor–trailer coupling (EvaluateTrailerCouplingsJob), judged by
+    | co-movement — never by proximity alone: parked in a yard, one tractor is
+    | the nearest unit to dozens of trailers.
+    |
+    | Every moving trailer point in the last `window_minutes` is compared with
+    | the tractor's position at that same instant, interpolated between the
+    | tractor's points that bracket it (at most `max_bracket_gap_seconds`
+    | apart; otherwise the point is not comparable). A point matches when the
+    | two are within `match_radius_m`. A tractor is coupled when at least
+    | `min_compared_points` points were comparable over `min_span_seconds`
+    | or more and `couple_ratio` of them matched.
+    |
+    | A coupling ends when the trailer, moving, matches its tractor in at most
+    | `decouple_ratio` of the comparable points, or when the tractor drives
+    | (`min_compared_points` moving points) while the trailer stays still
+    | farther than `left_behind_m` away. While both are stopped it holds.
+    */
+    'coupling' => [
+        'window_minutes' => 10,
+        'max_bracket_gap_seconds' => 120,
+        'match_radius_m' => 250,
+        'min_compared_points' => 3,
+        'min_span_seconds' => 90,
+        'couple_ratio' => 0.8,
+        'decouple_ratio' => 0.2,
+        'left_behind_m' => 2000,
+    ],
+
+    /*
     | Hard cap on pages followed in one cycle, so a feed that keeps saying
     | `hasNextPage` (a large backlog after an outage) yields the worker back
     | instead of pinning it; the next cycle continues from the saved cursor.

@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\TelemetryType;
@@ -238,9 +239,49 @@ class Asset extends Model
         return $query->where('monitoring_state', AssetMonitoringState::Pending);
     }
 
+    /**
+     * Remolques (categoría `trailer`, cajas y dollies). Nunca se vigilan ni
+     * facturan: son contexto del tracto que los arrastra.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopeTrailers(Builder $query): Builder
+    {
+        return $query->whereHas('assetType', fn (Builder $type) => $type->where('category', AssetCategory::Trailer));
+    }
+
     public function isMonitored(): bool
     {
         return $this->monitoring_state === AssetMonitoringState::Monitored;
+    }
+
+    /**
+     * Carga `assetType` si hace falta.
+     */
+    public function isTrailer(): bool
+    {
+        return $this->assetType?->category === AssetCategory::Trailer;
+    }
+
+    /**
+     * Remolques enganchados ahora a este tracto (un full lleva varios).
+     *
+     * @return HasMany<AssetCoupling, $this>
+     */
+    public function currentTrailerCouplings(): HasMany
+    {
+        return $this->hasMany(AssetCoupling::class, 'tractor_asset_id')->whereNull('decoupled_at');
+    }
+
+    /**
+     * El tracto que arrastra ahora a este remolque, si hay.
+     *
+     * @return HasOne<AssetCoupling, $this>
+     */
+    public function currentTractorCoupling(): HasOne
+    {
+        return $this->hasOne(AssetCoupling::class, 'trailer_asset_id')->whereNull('decoupled_at');
     }
 
     protected function casts(): array

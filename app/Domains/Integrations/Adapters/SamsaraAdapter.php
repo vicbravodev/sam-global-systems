@@ -74,6 +74,17 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     private const FEED_TYPES = [
         'motion' => ['gps', 'engineStates', 'fuelPercents'],
         'diagnostics' => ['obdOdometerMeters', 'batteryMilliVolts', 'ambientAirTemperatureMilliC'],
+        'trailers' => ['gps'],
+    ];
+
+    /**
+     * Stats resource per feed. Trailers (AG asset gateways) live under their
+     * own resource, with the same `gps` shape as vehicles.
+     */
+    private const FEED_PATHS = [
+        'motion' => '/fleet/vehicles/stats',
+        'diagnostics' => '/fleet/vehicles/stats',
+        'trailers' => '/fleet/trailers/stats',
     ];
 
     public function testConnection(TenantIntegration $integration): array
@@ -123,7 +134,10 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             return ['assets' => [], 'drivers' => [], 'events' => [], 'records_processed' => 0];
         }
 
-        $assets = $this->fetchPaginated($token, '/fleet/vehicles', fn (array $vehicle) => $this->mapVehicle($vehicle));
+        $assets = [
+            ...$this->fetchPaginated($token, '/fleet/vehicles', fn (array $vehicle) => $this->mapVehicle($vehicle)),
+            ...$this->fetchTrailers($integration, $token),
+        ];
         $drivers = $this->fetchPaginated($token, '/fleet/drivers', fn (array $driver) => $this->mapDriver($driver));
 
         return [
@@ -150,7 +164,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $query['after'] = $cursor;
         }
 
-        return $this->statsPage($token, '/fleet/vehicles/stats/feed', $query, $feed, cursorSent: isset($query['after']));
+        return $this->statsPage($token, self::FEED_PATHS[$feed->value].'/feed', $query, $feed, cursorSent: isset($query['after']));
     }
 
     public function fetchVehicleStatsHistory(
@@ -176,7 +190,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $query['after'] = $cursor;
         }
 
-        return $this->statsPage($token, '/fleet/vehicles/stats/history', $query, $feed, cursorSent: false);
+        return $this->statsPage($token, self::FEED_PATHS[$feed->value].'/history', $query, $feed, cursorSent: false);
     }
 
     /**
@@ -1232,6 +1246,71 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
 
         return $records;
+    }
+
+    /**
+     * The org's trailers (`GET /fleet/trailers`, scope "Read Trailers") as
+     * assets of type `trailer`. They are context for the tractor that pulls
+     * them, never a billed unit, so a token without the scope (or any other
+     * failure here) leaves the vehicle sync intact: the listing is skipped
+     * and narrated instead of failing the whole sync.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchTrailers(TenantIntegration $integration, string $token): array
+    {
+        $input = ['integration_id' => $integration->id, 'team_id' => $integration->team_id];
+
+        try {
+            $trailers = $this->fetchPaginated($token, '/fleet/trailers', fn (array $trailer) => $this->mapTrailer($trailer));
+        } catch (ProviderRequestFailedException $e) {
+            SystemLog::degraded('samsara.sync.trailers_skipped', reason: $e->isUnauthorized() ? 'missing_scope' : 'provider_error', input: $input, calc: [
+                'http_status' => $e->status,
+            ], error: $e);
+
+            return [];
+        }
+
+        SystemLog::ok('samsara.sync.trailers_listed', input: $input, result: [
+            'trailers_count' => count($trailers),
+            'with_gateway_count' => count(array_filter($trailers, fn (array $trailer) => $trailer['devices'] !== [])),
+        ]);
+
+        return $trailers;
+    }
+
+    /**
+     * @param  array<string, mixed>  $trailer
+     * @return array<string, mixed>
+     */
+    private function mapTrailer(array $trailer): array
+    {
+        $gatewaySerial = Arr::get($trailer, 'installedGateway.serial');
+        $devices = [];
+
+        if (is_string($gatewaySerial) && $gatewaySerial !== '') {
+            $devices[] = [
+                'device_type' => 'gateway',
+                'external_device_id' => $gatewaySerial,
+                'metadata' => array_filter([
+                    'model' => Arr::get($trailer, 'installedGateway.model'),
+                ], fn ($value) => $value !== null && $value !== ''),
+            ];
+        }
+
+        return [
+            'external_id' => (string) Arr::get($trailer, 'id'),
+            'external_type' => 'trailer',
+            'asset_type_code' => 'trailer',
+            'name' => Arr::get($trailer, 'name'),
+            'devices' => $devices,
+            'metadata' => array_filter([
+                'has_camera' => false,
+                'license_plate' => Arr::get($trailer, 'licensePlate'),
+                'serial' => Arr::get($trailer, 'trailerSerialNumber'),
+            ], fn ($value) => $value !== null && $value !== ''),
+            'raw' => $trailer,
+        ];
     }
 
     /**

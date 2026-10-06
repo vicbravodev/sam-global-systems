@@ -376,4 +376,35 @@ class AssetMonitoringTest extends TestCase
             && $c['calc']['assets_monitored_before'] === 0 && $c['calc']['assets_monitored_after'] === 1);
         $this->assertNoSensitiveDataLogged();
     }
+
+    public function test_a_trailer_can_never_be_switched_on(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $trailer = Asset::factory()->trailer()->create(['team_id' => $team->id]);
+
+        $result = app(SetAssetMonitoring::class)->execute($trailer, AssetMonitoringState::Monitored);
+
+        $this->assertFalse($result['changed']);
+        $this->assertSame(AssetMonitoringState::Excluded, $trailer->fresh()->monitoring_state);
+        $this->assertSame(0, Asset::withoutGlobalScopes()->where('team_id', $team->id)->monitored()->count());
+        $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'trailer_not_monitorable'
+            && $c['input'] === ['team_id' => $team->id, 'asset_id' => $trailer->id]);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_sync_discovers_a_trailer_as_excluded_not_pending(): void
+    {
+        [$team, $integration] = $this->setupTeam(assetLimit: null);
+        AssetType::factory()->trailer()->create();
+
+        $trailer = app(SyncAssetFromIntegration::class)->execute($team->id, $integration->id, [
+            'external_id' => 'trailer-1',
+            'name' => 'P-1043',
+            'asset_type_code' => 'trailer',
+        ]);
+
+        $this->assertSame(AssetMonitoringState::Excluded, $trailer->monitoring_state);
+        $this->assertTrue($trailer->isTrailer());
+    }
 }

@@ -29,6 +29,19 @@ class AssetFactory extends Factory
         ];
     }
 
+    /**
+     * Un remolque como lo deja el sync: categoría `trailer` (el tipo se
+     * reutiliza, su `code` es único) y `excluded`, nunca vigilado.
+     */
+    public function trailer(): static
+    {
+        return $this->state(fn () => [
+            'asset_type_id' => AssetType::query()->where('code', 'trailer')->value('id')
+                ?? AssetType::factory()->trailer(),
+            'monitoring_state' => AssetMonitoringState::Excluded,
+        ]);
+    }
+
     public function pendingMonitoring(): static
     {
         return $this->state(fn () => [

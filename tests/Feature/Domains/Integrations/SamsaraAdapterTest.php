@@ -604,4 +604,53 @@ class SamsaraAdapterTest extends TestCase
         $this->assertArrayHasKey('static_vehicle_external_id', $result['drivers'][1]);
         $this->assertNull($result['drivers'][1]['static_vehicle_external_id']);
     }
+
+    public function test_sync_lists_the_trailers_with_their_gateway_as_trailer_assets(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles*' => Http::response(['data' => [['id' => '100', 'name' => 'T-420']], 'pagination' => ['hasNextPage' => false]]),
+            'api.samsara.com/fleet/trailers*' => Http::response([
+                'data' => [
+                    ['id' => '900', 'name' => 'P-1043', 'licensePlate' => 'ABC-12', 'installedGateway' => ['serial' => 'AG53-XYZ', 'model' => 'AG53']],
+                    ['id' => '901', 'name' => 'UNIDAD 07 JCD'],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ]),
+            'api.samsara.com/fleet/drivers*' => Http::response(['data' => [], 'pagination' => ['hasNextPage' => false]]),
+        ]);
+        $integration = $this->makeIntegration();
+
+        $result = app(SamsaraAdapter::class)->sync($integration, 'full');
+
+        $this->assertSame(['100', '900', '901'], array_column($result['assets'], 'external_id'));
+        $trailer = $result['assets'][1];
+        $this->assertSame('trailer', $trailer['asset_type_code']);
+        $this->assertSame('P-1043', $trailer['name']);
+        $this->assertSame([['device_type' => 'gateway', 'external_device_id' => 'AG53-XYZ', 'metadata' => ['model' => 'AG53']]], $trailer['devices']);
+        $this->assertSame(['has_camera' => false, 'license_plate' => 'ABC-12'], $trailer['metadata']);
+        $this->assertSame([], $result['assets'][2]['devices']);
+        $this->assertSystemLogged('samsara.sync.trailers_listed', fn (array $c) => $c['input'] === ['integration_id' => $integration->id, 'team_id' => $integration->team_id]
+            && $c['result'] === ['trailers_count' => 2, 'with_gateway_count' => 1]);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_token_without_the_trailers_scope_keeps_the_vehicle_sync(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles*' => Http::response(['data' => [['id' => '100', 'name' => 'T-420']], 'pagination' => ['hasNextPage' => false]]),
+            'api.samsara.com/fleet/trailers*' => Http::response(['message' => 'missing scope'], 403),
+            'api.samsara.com/fleet/drivers*' => Http::response(['data' => [['id' => '200', 'name' => 'Jane']], 'pagination' => ['hasNextPage' => false]]),
+        ]);
+        $integration = $this->makeIntegration();
+
+        $result = app(SamsaraAdapter::class)->sync($integration, 'full');
+
+        $this->assertSame(['100'], array_column($result['assets'], 'external_id'));
+        $this->assertCount(1, $result['drivers']);
+        $this->assertSystemLogged('samsara.sync.trailers_skipped', fn (array $c) => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'missing_scope'
+            && $c['calc']['http_status'] === 403);
+        $this->assertSystemNotLogged('samsara.sync.trailers_listed');
+        $this->assertNoSensitiveDataLogged();
+    }
 }
