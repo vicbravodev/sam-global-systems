@@ -9,7 +9,7 @@
 # websockets (resources/js/echo.ts) sólo conoce el host público de Soketi por
 # estas variables, así que van como build args y no como env de runtime.
 
-ARG PHP_IMAGE=serversideup/php:8.5-fpm-nginx-debian-v4.5.1
+ARG PHP_IMAGE=serversideup/php:8.5-fpm-nginx-debian-v4.5.3
 ARG NODE_IMAGE=node:22-trixie-slim
 
 FROM ${NODE_IMAGE} AS node
