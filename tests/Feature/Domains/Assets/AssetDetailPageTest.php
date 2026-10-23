@@ -205,6 +205,9 @@ class AssetDetailPageTest extends TestCase
 
     public function test_location_history_is_one_row_per_minute_over_the_last_two_hours(): void
     {
+        // Sin reloj fijo, el loop puede cruzar un cambio de minuto y repetir recorded_at.
+        $this->freezeTime();
+
         $user = User::factory()->create();
         $team = $user->currentTeam;
 
